@@ -1,0 +1,505 @@
+import { useState, useRef, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { api } from '../lib/api-client'
+import type { FileMetadataDto } from '../lib/types'
+import {
+  FileText,
+  Upload,
+  Search,
+  Trash2,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  BookOpen,
+  Archive,
+  Eye,
+  Mic,
+  FileSearch,
+} from 'lucide-react'
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const k = 1024
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const size = bytes / Math.pow(k, i)
+  return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
+}
+
+function relativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return date.toLocaleDateString()
+}
+
+function contentTypeBadgeClass(contentType?: string): string {
+  if (!contentType) return 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400'
+  if (contentType.startsWith('image/'))
+    return 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400'
+  if (contentType.startsWith('video/'))
+    return 'bg-pink-100 dark:bg-pink-950/40 text-pink-700 dark:text-pink-400'
+  if (contentType.startsWith('audio/'))
+    return 'bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400'
+  if (contentType === 'application/pdf')
+    return 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
+  if (contentType.startsWith('text/'))
+    return 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400'
+  return 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400'
+}
+
+function contentTypeLabel(contentType?: string): string {
+  if (!contentType) return 'Unknown'
+  const parts = contentType.split('/')
+  return parts[parts.length - 1].toUpperCase()
+}
+
+const TRUNCATE_LENGTH = 200
+
+function TruncatedText({ text, label, icon }: { text: string; label: string; icon: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsTruncation = text.length > TRUNCATE_LENGTH
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+        {icon}
+        {label}
+      </div>
+      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+        {needsTruncation && !expanded ? text.slice(0, TRUNCATE_LENGTH) + '...' : text}
+      </p>
+      {needsTruncation && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+          className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function FileDetailPanel({ file }: { file: FileMetadataDto }) {
+  const hasAiDetails = file.extractedText || file.transcriptionText || file.visionDescription
+  const hasAssociations = file.knowledgeId || file.vaultId
+
+  if (!hasAiDetails && !hasAssociations) {
+    return (
+      <div className="px-4 py-4 bg-gray-50/50 dark:bg-gray-900/50 text-sm text-gray-500 dark:text-gray-400">
+        No additional details available for this file.
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-4 py-4 bg-gray-50/50 dark:bg-gray-900/50">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left: Associations */}
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            Associations
+          </h4>
+          {hasAssociations ? (
+            <div className="space-y-2">
+              {file.knowledgeId && (
+                <div className="flex items-center gap-2 text-sm">
+                  <BookOpen size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-gray-500 dark:text-gray-400">Knowledge:</span>
+                  <Link
+                    to={`/knowledge/${file.knowledgeId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-blue-600 dark:text-blue-400 hover:underline truncate"
+                  >
+                    {file.knowledgeTitle || file.knowledgeId}
+                  </Link>
+                </div>
+              )}
+              {file.vaultId && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Archive size={14} className="text-green-500 shrink-0" />
+                  <span className="text-gray-500 dark:text-gray-400">Vault:</span>
+                  <Link
+                    to={`/vaults/${file.vaultId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-green-600 dark:text-green-400 hover:underline truncate"
+                  >
+                    {file.vaultName || file.vaultId}
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Not attached to any knowledge item.</p>
+          )}
+        </div>
+
+        {/* Right: AI Details */}
+        {hasAiDetails && (
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+              AI Details
+            </h4>
+            <div className="space-y-3">
+              {file.extractedText && (
+                <TruncatedText
+                  text={file.extractedText}
+                  label="Extracted Text"
+                  icon={<FileSearch size={12} />}
+                />
+              )}
+              {file.transcriptionText && (
+                <TruncatedText
+                  text={file.transcriptionText}
+                  label="Transcription"
+                  icon={<Mic size={12} />}
+                />
+              )}
+              {file.visionDescription && (
+                <TruncatedText
+                  text={file.visionDescription}
+                  label="Vision Description"
+                  icon={<Eye size={12} />}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function FilesPage() {
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [contentTypeFilter, setContentTypeFilter] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['files', page, pageSize, search, contentTypeFilter],
+    queryFn: () => api.listFiles(page, pageSize, search || undefined, contentTypeFilter || undefined),
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => api.uploadFile(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteFile(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+  })
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setSearch(searchInput)
+    setPage(1)
+  }
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      Array.from(files).forEach((file) => uploadMutation.mutate(file))
+    }
+    // Reset input so same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDownload = async (id: string, fileName: string) => {
+    try {
+      const blob = await api.downloadFile(id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      // Error handling is minimal -- could add toast notifications
+    }
+  }
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragging(false)
+      const files = e.dataTransfer.files
+      if (files) {
+        Array.from(files).forEach((file) => uploadMutation.mutate(file))
+      }
+    },
+    [uploadMutation],
+  )
+
+  const toggleExpand = (fileId: string) => {
+    setExpandedFileId((prev) => (prev === fileId ? null : fileId))
+  }
+
+  const CONTENT_TYPE_OPTIONS = ['All', 'application/pdf', 'image/', 'text/', 'video/', 'audio/']
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <FileText size={24} />
+        <h1 className="text-2xl font-bold">Files</h1>
+      </div>
+
+      {/* Drag and Drop Upload Area */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+          isDragging
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+            : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
+        }`}
+      >
+        <Upload size={32} className="mx-auto mb-2 text-gray-400" />
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Drag and drop files here, or{' '}
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+          >
+            browse
+          </button>
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        {uploadMutation.isPending && (
+          <div className="mt-2 flex items-center justify-center gap-2 text-sm text-gray-500">
+            <Loader2 size={16} className="animate-spin" />
+            Uploading...
+          </div>
+        )}
+        {uploadMutation.error && (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+            {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Upload failed'}
+          </p>
+        )}
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div className="flex gap-2 items-center">
+        <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search files..."
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+          >
+            Search
+          </button>
+        </form>
+        <select
+          value={contentTypeFilter}
+          onChange={(e) => {
+            setContentTypeFilter(e.target.value)
+            setPage(1)
+          }}
+          className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {CONTENT_TYPE_OPTIONS.map((t) => (
+            <option key={t} value={t === 'All' ? '' : t}>
+              {t === 'All' ? 'All Types' : t}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleUploadClick}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          <Upload size={16} />
+          Upload
+        </button>
+      </div>
+
+      {/* File List */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-gray-400" />
+        </div>
+      ) : data && data.items.length > 0 ? (
+        <div className="border border-gray-200 dark:border-gray-800 rounded-md divide-y divide-gray-200 dark:divide-gray-800">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-900 text-sm font-medium text-gray-500 dark:text-gray-400">
+            <span className="w-6" />
+            <span className="flex-1">Name</span>
+            <span className="w-20 text-center">Type</span>
+            <span className="w-20 text-right">Size</span>
+            <span className="w-36 truncate">Knowledge</span>
+            <span className="w-28 truncate">Vault</span>
+            <span className="w-24 text-right">Uploaded</span>
+            <span className="w-20 text-right">Actions</span>
+          </div>
+
+          {data.items.map((file) => (
+            <div key={file.id}>
+              <div
+                onClick={() => toggleExpand(file.id)}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer select-none"
+              >
+                <span className="w-6 text-gray-400">
+                  {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-900 dark:text-white truncate">{file.fileName}</p>
+                </div>
+                <span className="w-20 text-center">
+                  <span
+                    className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${contentTypeBadgeClass(file.contentType)}`}
+                  >
+                    {contentTypeLabel(file.contentType)}
+                  </span>
+                </span>
+                <span className="w-20 text-right text-sm text-gray-500 dark:text-gray-400">
+                  {formatFileSize(file.sizeBytes)}
+                </span>
+                <span className="w-36 truncate text-sm">
+                  {file.knowledgeId ? (
+                    <Link
+                      to={`/knowledge/${file.knowledgeId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      {file.knowledgeTitle || 'Untitled'}
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-600">--</span>
+                  )}
+                </span>
+                <span className="w-28 truncate text-sm">
+                  {file.vaultId ? (
+                    <Link
+                      to={`/vaults/${file.vaultId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-green-600 dark:text-green-400 hover:underline"
+                    >
+                      {file.vaultName || 'Unnamed'}
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-600">--</span>
+                  )}
+                </span>
+                <span className="w-24 text-right text-xs text-gray-500 dark:text-gray-400">
+                  {relativeTime(file.createdAt)}
+                </span>
+                <div className="w-20 flex items-center justify-end gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(file.id, file.fileName) }}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    title="Download"
+                  >
+                    <Download size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id) }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {expandedFileId === file.id && <FileDetailPanel file={file} />}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          <FileText size={48} className="mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium">No files</p>
+          <p className="text-sm mt-1">Upload your first file using the area above.</p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.totalItems)} of{' '}
+            {data.totalItems}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Page {page} of {data.totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+              disabled={page >= data.totalPages}
+              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

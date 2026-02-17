@@ -1,0 +1,59 @@
+using Knowz.Core.Interfaces;
+using Knowz.SelfHosted.Application.Interfaces;
+using Knowz.SelfHosted.Application.Services;
+using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Interfaces;
+using Knowz.SelfHosted.Infrastructure.Services;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Knowz.SelfHosted.Application.Extensions;
+
+public static class ApplicationServiceExtensions
+{
+    /// <summary>
+    /// Registers all self-hosted application services and the generic repository.
+    /// </summary>
+    public static IServiceCollection AddSelfHostedApplication(this IServiceCollection services)
+    {
+        // Generic repository — one line covers all entities
+        services.AddScoped(typeof(ISelfHostedRepository<>), typeof(SelfHostedRepository<>));
+
+        // Chunking service
+        services.AddScoped<ISelfHostedChunkingService, SelfHostedChunkingService>();
+        services.AddScoped<IVaultAccessService, VaultAccessService>();
+
+        // Application services
+        services.AddScoped<KnowledgeService>();
+        services.AddScoped<SearchFacade>();
+        services.AddScoped<VaultService>();
+        services.AddScoped<TopicService>();
+        services.AddScoped<EntityService>();
+        services.AddScoped<TagService>();
+        services.AddScoped<InboxService>();
+        services.AddScoped<FileStorageService>();
+        services.AddScoped<CommentService>();
+
+        // Portability services
+        services.AddScoped<IPortableExportService, PortableExportService>();
+        services.AddScoped<IPortableImportService, PortableImportService>();
+
+        // Content extraction — composite pattern (routes by content type)
+        services.AddScoped<TextFileContentExtractor>();
+        services.AddScoped<PdfContentExtractor>();
+        services.AddScoped<DocxContentExtractor>();
+        services.AddScoped<IFileContentExtractor>(sp => new CompositeContentExtractor(new IFileContentExtractor[]
+        {
+            sp.GetRequiredService<TextFileContentExtractor>(),
+            sp.GetRequiredService<PdfContentExtractor>(),
+            sp.GetRequiredService<DocxContentExtractor>()
+        }));
+
+        // Enrichment outbox writer
+        services.AddScoped<IEnrichmentOutboxWriter, EnrichmentOutboxWriter>();
+
+        // Configuration management
+        services.AddScoped<IConfigurationManagementService, ConfigurationManagementService>();
+
+        return services;
+    }
+}

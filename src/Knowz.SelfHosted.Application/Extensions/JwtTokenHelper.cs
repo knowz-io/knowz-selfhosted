@@ -1,0 +1,46 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Knowz.Core.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+
+namespace Knowz.SelfHosted.Application.Extensions;
+
+public static class JwtTokenHelper
+{
+    private const string DevFallbackSecret = "dev-fallback-secret-key-must-be-at-least-32-chars!!";
+
+    public static string GenerateToken(User user, DateTime expiresAt, string jwtSecret, string jwtIssuer, ILogger logger)
+    {
+        var secret = jwtSecret;
+        if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
+        {
+            secret = DevFallbackSecret;
+            logger.LogWarning("JwtSecret is not properly configured. Using fallback for development only.");
+        }
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role.ToString()),
+            new Claim("role", user.Role.ToString()),
+            new Claim("tenantId", user.TenantId.ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: jwtIssuer,
+            audience: jwtIssuer,
+            claims: claims,
+            expires: expiresAt,
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
