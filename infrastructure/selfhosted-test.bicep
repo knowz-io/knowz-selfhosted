@@ -75,7 +75,7 @@ param additionalTags object = {}
 
 // ---- Container Apps parameters (opt-in) ----
 
-@description('Deploy Container Apps for API, MCP, and Web (requires GHCR credentials)')
+@description('Deploy Container Apps for API, MCP, and Web')
 param deployContainerApps bool = false
 
 @description('Container image tag (e.g., latest, v1.0.0)')
@@ -84,10 +84,10 @@ param imageTag string = 'latest'
 @description('Container registry server (GHCR)')
 param registryServer string = 'ghcr.io'
 
-@description('Container registry username (GitHub username or org)')
+@description('Container registry username (only needed for private GHCR images)')
 param registryUsername string = ''
 
-@description('Container registry password (GHCR PAT with read:packages)')
+@description('Container registry password (only needed for private GHCR images)')
 @secure()
 param registryPassword string = ''
 
@@ -608,18 +608,19 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         targetPort: 8080
         transport: 'http'
       }
-      registries: [
+      registries: empty(registryUsername) ? [] : [
         {
           server: registryServer
           username: registryUsername
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: [
+      secrets: concat(empty(registryUsername) ? [] : [
         {
           name: 'registry-password'
           value: registryPassword
         }
+      ], [
         {
           name: 'sql-connection'
           value: sqlConnectionString
@@ -656,7 +657,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
           name: 'selfhosted-adminpassword'
           value: adminPassword
         }
-      ]
+      ])
     }
     template: {
       containers: [
@@ -753,14 +754,14 @@ resource mcpContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         targetPort: 8080
         transport: 'http'
       }
-      registries: [
+      registries: empty(registryUsername) ? [] : [
         {
           server: registryServer
           username: registryUsername
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: [
+      secrets: empty(registryUsername) ? [] : [
         {
           name: 'registry-password'
           value: registryPassword
@@ -822,14 +823,14 @@ resource webContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         targetPort: 8080
         transport: 'http'
       }
-      registries: [
+      registries: empty(registryUsername) ? [] : [
         {
           server: registryServer
           username: registryUsername
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: [
+      secrets: empty(registryUsername) ? [] : [
         {
           name: 'registry-password'
           value: registryPassword

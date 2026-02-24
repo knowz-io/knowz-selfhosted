@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "16934040306763818456"
+      "templateHash": "13841542075120931143"
     }
   },
   "parameters": {
@@ -136,7 +136,7 @@
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Deploy Container Apps for API, MCP, and Web (requires GHCR credentials)"
+        "description": "Deploy Container Apps for API, MCP, and Web"
       }
     },
     "imageTag": {
@@ -157,14 +157,14 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Container registry username (GitHub username or org)"
+        "description": "Container registry username (only needed for private GHCR images)"
       }
     },
     "registryPassword": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "Container registry password (GHCR PAT with read:packages)"
+        "description": "Container registry password (only needed for private GHCR images)"
       }
     },
     "apiKey": {
@@ -210,6 +210,7 @@
     "storageAccountName": "[toLower(format('{0}st{1}', variables('storagePrefix'), take(variables('uniqueSuffix'), 12)))]",
     "kvPrefix": "[toLower(take(replace(parameters('prefix'), '-', ''), 8))]",
     "keyVaultName": "[format('{0}kv{1}', variables('kvPrefix'), take(variables('uniqueSuffix'), 8))]",
+    "mcpServiceKey": "[format('selfhosted-test-mcp-service-key-{0}', uniqueString(resourceGroup().id))]",
     "defaultTags": {
       "project": "knowz-selfhosted",
       "environment": "[parameters('prefix')]",
@@ -751,55 +752,8 @@
             "targetPort": 8080,
             "transport": "http"
           },
-          "registries": [
-            {
-              "server": "[parameters('registryServer')]",
-              "username": "[parameters('registryUsername')]",
-              "passwordSecretRef": "registry-password"
-            }
-          ],
-          "secrets": [
-            {
-              "name": "registry-password",
-              "value": "[parameters('registryPassword')]"
-            },
-            {
-              "name": "sql-connection",
-              "value": "[format('Server=tcp:{0},1433;Initial Catalog=McpKnowledge;Persist Security Info=False;User ID={1};Password={2};MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;', reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2022-05-01-preview').fullyQualifiedDomainName, parameters('sqlAdminUsername'), parameters('sqlAdminPassword'))]"
-            },
-            {
-              "name": "openai-endpoint",
-              "value": "[if(parameters('deployOpenAI'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalOpenAiEndpoint'))]"
-            },
-            {
-              "name": "openai-apikey",
-              "value": "[if(parameters('deployOpenAI'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalOpenAiKey'))]"
-            },
-            {
-              "name": "search-endpoint",
-              "value": "[format('https://{0}.search.windows.net', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation')))]"
-            },
-            {
-              "name": "search-apikey",
-              "value": "[listAdminKeys(resourceId('Microsoft.Search/searchServices', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation'))), '2023-11-01').primaryKey]"
-            },
-            {
-              "name": "storage-connection",
-              "value": "[format('DefaultEndpointsProtocol=https;EndpointSuffix={0};AccountName={1};AccountKey={2}', environment().suffixes.storage, variables('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2022-09-01').keys[0].value)]"
-            },
-            {
-              "name": "selfhosted-apikey",
-              "value": "[parameters('apiKey')]"
-            },
-            {
-              "name": "selfhosted-jwtsecret",
-              "value": "[parameters('jwtSecret')]"
-            },
-            {
-              "name": "selfhosted-adminpassword",
-              "value": "[parameters('adminPassword')]"
-            }
-          ]
+          "registries": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('server', parameters('registryServer'), 'username', parameters('registryUsername'), 'passwordSecretRef', 'registry-password')))]",
+          "secrets": "[concat(if(empty(parameters('registryUsername')), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword')))), createArray(createObject('name', 'sql-connection', 'value', format('Server=tcp:{0},1433;Initial Catalog=McpKnowledge;Persist Security Info=False;User ID={1};Password={2};MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;', reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2022-05-01-preview').fullyQualifiedDomainName, parameters('sqlAdminUsername'), parameters('sqlAdminPassword'))), createObject('name', 'openai-endpoint', 'value', if(parameters('deployOpenAI'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalOpenAiEndpoint'))), createObject('name', 'openai-apikey', 'value', if(parameters('deployOpenAI'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalOpenAiKey'))), createObject('name', 'search-endpoint', 'value', format('https://{0}.search.windows.net', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation')))), createObject('name', 'search-apikey', 'value', listAdminKeys(resourceId('Microsoft.Search/searchServices', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation'))), '2023-11-01').primaryKey), createObject('name', 'storage-connection', 'value', format('DefaultEndpointsProtocol=https;EndpointSuffix={0};AccountName={1};AccountKey={2}', environment().suffixes.storage, variables('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2022-09-01').keys[0].value)), createObject('name', 'selfhosted-apikey', 'value', parameters('apiKey')), createObject('name', 'selfhosted-jwtsecret', 'value', parameters('jwtSecret')), createObject('name', 'selfhosted-adminpassword', 'value', parameters('adminPassword'))))]"
         },
         "template": {
           "containers": [
@@ -866,6 +820,10 @@
                 {
                   "name": "Database__AutoMigrate",
                   "value": "true"
+                },
+                {
+                  "name": "MCP__ServiceKey",
+                  "value": "[variables('mcpServiceKey')]"
                 }
               ]
             }
@@ -901,19 +859,8 @@
             "targetPort": 8080,
             "transport": "http"
           },
-          "registries": [
-            {
-              "server": "[parameters('registryServer')]",
-              "username": "[parameters('registryUsername')]",
-              "passwordSecretRef": "registry-password"
-            }
-          ],
-          "secrets": [
-            {
-              "name": "registry-password",
-              "value": "[parameters('registryPassword')]"
-            }
-          ]
+          "registries": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('server', parameters('registryServer'), 'username', parameters('registryUsername'), 'passwordSecretRef', 'registry-password')))]",
+          "secrets": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword'))))]"
         },
         "template": {
           "containers": [
@@ -940,6 +887,10 @@
                 {
                   "name": "Authentication__ValidateApiKey",
                   "value": "true"
+                },
+                {
+                  "name": "MCP__ServiceKey",
+                  "value": "[variables('mcpServiceKey')]"
                 }
               ]
             }
@@ -971,19 +922,8 @@
             "targetPort": 8080,
             "transport": "http"
           },
-          "registries": [
-            {
-              "server": "[parameters('registryServer')]",
-              "username": "[parameters('registryUsername')]",
-              "passwordSecretRef": "registry-password"
-            }
-          ],
-          "secrets": [
-            {
-              "name": "registry-password",
-              "value": "[parameters('registryPassword')]"
-            }
-          ]
+          "registries": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('server', parameters('registryServer'), 'username', parameters('registryUsername'), 'passwordSecretRef', 'registry-password')))]",
+          "secrets": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword'))))]"
         },
         "template": {
           "containers": [
