@@ -131,6 +131,46 @@ public class AuthServiceTests : IDisposable
         Assert.True(_authService.VerifyPassword("changeme", user.PasswordHash));
     }
 
+    [Fact]
+    public async Task Should_FixExistingAdminRole_WhenSuperAdminMissing()
+    {
+        // Simulate legacy DB state: admin exists with Role=0 (old enum SuperAdmin=0)
+        var tenant = new Tenant
+        {
+            Name = "Default", Slug = "default", IsActive = true,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _db.Tenants.Add(tenant);
+        var user = new User
+        {
+            TenantId = tenant.Id, Username = "admin",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("changeme"),
+            DisplayName = "Admin", Role = UserRole.User, // Wrong role — the bug
+            IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        await _authService.EnsureSuperAdminExistsAsync();
+
+        var repaired = await _db.Users.FirstAsync(u => u.Username == "admin");
+        Assert.Equal(UserRole.SuperAdmin, repaired.Role);
+        // Should NOT create a duplicate
+        Assert.Single(await _db.Users.ToListAsync());
+    }
+
+    // --- UserRole Enum Stability ---
+
+    [Fact]
+    public void UserRole_Values_MustNotChange()
+    {
+        // These values are persisted in the database. Changing them silently breaks
+        // existing users' roles. If this test fails, you've changed the enum — DON'T.
+        Assert.Equal(0, (int)UserRole.User);
+        Assert.Equal(1, (int)UserRole.Admin);
+        Assert.Equal(2, (int)UserRole.SuperAdmin);
+    }
+
     // --- LoginAsync ---
 
     [Fact]

@@ -24,10 +24,13 @@ import type {
 
 const TAB_ORDER = [
   'ConnectionStrings',
+  'KnowzPlatform',
   'AzureOpenAI',
   'AzureAISearch',
   'Storage',
   'SelfHosted',
+  'Inbox',
+  'SSO',
   'Logging',
   'AzureKeyVault',
 ]
@@ -57,7 +60,7 @@ export default function AdminSettingsPage() {
         </p>
         <button
           onClick={() => categoriesQuery.refetch()}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
         >
           <RefreshCw size={16} /> Retry
         </button>
@@ -73,7 +76,7 @@ export default function AdminSettingsPage() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"
+              className="h-24 bg-muted rounded-lg animate-pulse"
             />
           ))}
         </div>
@@ -98,7 +101,7 @@ export default function AdminSettingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Settings size={24} className="text-gray-400" />
+          <Settings size={24} className="text-muted-foreground" />
           <h1 className="text-2xl font-bold">Settings</h1>
         </div>
         <button
@@ -107,7 +110,7 @@ export default function AdminSettingsPage() {
             statusQuery.refetch()
           }}
           disabled={categoriesQuery.isFetching}
-          className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-3 py-1.5 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
         >
           {categoriesQuery.isFetching ? (
             <Loader2 size={14} className="animate-spin" />
@@ -120,23 +123,23 @@ export default function AdminSettingsPage() {
 
       {/* Deployment Status Card */}
       {status && (
-        <div className="flex flex-wrap gap-4 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+        <div className="flex flex-wrap gap-4 p-4 bg-card border border-border/60 rounded-xl shadow-sm">
           <div className="flex items-center gap-2">
-            <Activity size={14} className="text-gray-400" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <Activity size={14} className="text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
               Mode:
             </span>
             <span className="text-sm font-medium">{status.mode}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="text-sm text-muted-foreground">
               Version:
             </span>
             <span className="text-sm font-medium">{status.version}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Clock size={14} className="text-gray-400" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <Clock size={14} className="text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
               Uptime:
             </span>
             <span className="text-sm font-medium">
@@ -168,7 +171,7 @@ export default function AdminSettingsPage() {
       )}
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-800">
+      <div className="border-b border-border/60">
         <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
           {sortedCategories.map((cat) => (
             <button
@@ -176,8 +179,8 @@ export default function AdminSettingsPage() {
               onClick={() => setActiveTab(cat.category)}
               className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                 activeTab === cat.category
-                  ? 'border-gray-900 dark:border-white text-gray-900 dark:text-white'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                  ? 'border-foreground text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               {cat.displayName}
@@ -275,23 +278,24 @@ function CategorySection({
 
   const hasTestableConnection = [
     'ConnectionStrings',
+    'KnowzPlatform',
     'AzureOpenAI',
     'AzureAISearch',
     'Storage',
   ].includes(category.category)
 
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+    <div className="bg-card border border-border/60 rounded-xl shadow-sm">
       {/* Section Header */}
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="px-6 py-4 border-b border-border/60">
         <h2 className="text-lg font-semibold">{category.displayName}</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           {category.description}
         </p>
       </div>
 
       {/* Config Entries */}
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="divide-y divide-border">
         {category.entries.map((entry) => (
           <ConfigEntryField
             key={entry.key}
@@ -306,12 +310,12 @@ function CategorySection({
       </div>
 
       {/* Action Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 rounded-b-lg">
+      <div className="flex items-center justify-between px-6 py-4 border-t border-border/60 bg-muted rounded-b-xl">
         <div className="flex items-center gap-3">
           <button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || dirtyFields.size === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saveMutation.isPending ? (
               <Loader2 size={14} className="animate-spin" />
@@ -341,7 +345,7 @@ function CategorySection({
             <button
               onClick={() => healthMutation.mutate()}
               disabled={healthMutation.isPending}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
             >
               {healthMutation.isPending ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -378,7 +382,7 @@ function ConfigEntryField({
     <div className="px-6 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <label className="block text-sm font-medium text-gray-900 dark:text-white">
+          <label className="block text-sm font-medium text-foreground">
             {entry.key}
             {entry.source && <SourceBadge source={entry.source} />}
             {entry.requiresRestart && (
@@ -388,7 +392,7 @@ function ConfigEntryField({
             )}
           </label>
           {entry.description && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {entry.description}
             </p>
           )}
@@ -402,10 +406,10 @@ function ConfigEntryField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={entry.isSet ? undefined : 'Not configured'}
-            className={`w-full px-3 py-2 text-sm border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500 ${
+            className={`w-full px-3 py-2 text-sm border rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${
               isDirty
                 ? 'border-blue-400 dark:border-blue-500'
-                : 'border-gray-300 dark:border-gray-700'
+                : 'border-input'
             }`}
           />
         </div>
@@ -413,7 +417,7 @@ function ConfigEntryField({
           <button
             type="button"
             onClick={onToggleVisibility}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
             title={isSecretVisible ? 'Hide value' : 'Show value'}
           >
             {isSecretVisible ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -422,7 +426,7 @@ function ConfigEntryField({
       </div>
 
       {entry.lastModifiedAt && (
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+        <p className="text-xs text-muted-foreground mt-1.5">
           Last modified: {new Date(entry.lastModifiedAt).toLocaleDateString()}{' '}
           {entry.lastModifiedBy ? `by ${entry.lastModifiedBy}` : ''}
         </p>
@@ -446,12 +450,12 @@ function SourceBadge({ source }: { source: string }) {
     environment: {
       label: 'Env',
       className:
-        'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+        'bg-muted text-muted-foreground',
     },
     appsettings: {
       label: 'Config',
       className:
-        'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+        'bg-muted text-muted-foreground',
     },
   }
 

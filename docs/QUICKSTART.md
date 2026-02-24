@@ -78,12 +78,33 @@ Open [http://localhost:3000](http://localhost:3000) in your browser and log in w
 
 ## Enabling AI Features
 
-Knowz works without AI services for basic knowledge management. To enable AI-powered search, chat, and automatic enrichment:
+Knowz works without AI services for basic knowledge management. To enable AI-powered search, chat, and automatic enrichment, choose one of two approaches:
+
+### Option 1: Knowz Platform Proxy (simplest)
+
+No Azure subscription needed -- just an API key from your Knowz account. Add to your `.env` file:
+
+```bash
+KNOWZ_PLATFORM_ENABLED=true
+KNOWZ_PLATFORM_BASE_URL=https://api.knowz.io
+KNOWZ_PLATFORM_API_KEY=ukz_your_api_key
+```
+
+All AI features (chat, summarization, embeddings, enrichment) work via the platform. Search uses local keyword matching.
+
+### Option 2: Direct Azure (full-featured)
+
+Uses your own Azure resources for the best search quality (hybrid vector + keyword):
 
 1. Set up an [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 2. Set up an [Azure AI Search](https://azure.microsoft.com/en-us/products/ai-services/ai-search) resource
 3. Add the credentials to your `.env` file (see [Configuration Reference](CONFIGURATION.md))
-4. Restart the stack: `docker compose up -d`
+
+### After configuring either option:
+
+```bash
+docker compose up -d
+```
 
 ## Stopping and Restarting
 

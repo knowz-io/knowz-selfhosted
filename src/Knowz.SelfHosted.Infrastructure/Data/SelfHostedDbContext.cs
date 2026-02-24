@@ -262,6 +262,7 @@ public class SelfHostedDbContext : DbContext
         modelBuilder.Entity<Knowledge>().HasIndex(k => new { k.TenantId, k.CreatedAt });
         modelBuilder.Entity<Knowledge>().HasIndex(k => new { k.TenantId, k.Title });
         modelBuilder.Entity<Knowledge>().HasIndex(k => new { k.TenantId, k.FilePath });
+        modelBuilder.Entity<Knowledge>().HasIndex(k => new { k.TenantId, k.CreatedByUserId });
         modelBuilder.Entity<Vault>().HasIndex(v => v.TenantId);
         modelBuilder.Entity<Vault>().HasIndex(v => new { v.TenantId, v.Name });
         modelBuilder.Entity<Topic>().HasIndex(t => new { t.TenantId, t.Name });
@@ -270,6 +271,9 @@ public class SelfHostedDbContext : DbContext
         modelBuilder.Entity<KnowledgeVault>().HasIndex(kv => kv.TenantId);
         modelBuilder.Entity<Event>().HasIndex(e => e.TenantId);
         modelBuilder.Entity<InboxItem>().HasIndex(i => i.TenantId);
+        modelBuilder.Entity<InboxItem>()
+            .HasIndex(i => new { i.TenantId, i.CreatedByUserId, i.CreatedAt })
+            .HasDatabaseName("IX_InboxItems_TenantId_CreatedByUserId_CreatedAt");
         modelBuilder.Entity<Location>().HasIndex(l => l.TenantId);
         modelBuilder.Entity<Person>().HasIndex(p => p.TenantId);
         modelBuilder.Entity<KnowledgeComment>().HasIndex(c => c.TenantId);

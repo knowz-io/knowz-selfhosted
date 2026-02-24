@@ -33,14 +33,14 @@ export default function Layout({ children }: LayoutProps) {
   }, [userMenuOpen])
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
+        <header className="h-14 flex items-center justify-between px-4 border-b bg-card/80 backdrop-blur-sm lg:hidden">
           <div className="flex items-center">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="p-1 rounded hover:bg-muted transition-colors"
               aria-label="Open menu"
             >
               <Menu size={22} />
@@ -53,21 +53,21 @@ export default function Layout({ children }: LayoutProps) {
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-muted transition-colors"
               >
-                <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                  <User size={14} className="text-gray-500 dark:text-gray-400" />
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User size={14} className="text-primary" />
                 </div>
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className="text-muted-foreground" />
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg py-1 z-50">
-                  <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-border/60 rounded-xl shadow-lg py-1 z-50 animate-fade-in">
+                  <div className="px-3 py-2 border-b">
                     <p className="text-sm font-medium truncate">
                       {user.displayName || user.username}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       {roleLabels[user.role] ?? 'User'}
                     </p>
                   </div>
@@ -76,7 +76,7 @@ export default function Layout({ children }: LayoutProps) {
                       setUserMenuOpen(false)
                       logout()
                     }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted transition-colors"
                   >
                     <LogOut size={14} />
                     Sign out
@@ -87,7 +87,7 @@ export default function Layout({ children }: LayoutProps) {
           )}
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-6xl mx-auto">{children}</div>
+          <div className="max-w-6xl mx-auto animate-fade-in">{children}</div>
         </main>
       </div>
     </div>

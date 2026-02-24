@@ -7,6 +7,11 @@ namespace Knowz.SelfHosted.API.Endpoints;
 
 public static class SearchEndpoints
 {
+    private static readonly System.Text.Json.JsonSerializerOptions CamelCaseJson = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+    };
+
     public static void MapSearchEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/search", async (
@@ -62,5 +67,68 @@ public static class SearchEndpoints
             var result = await svc.AskQuestionAsync(req.Question, vaultId, req.ResearchMode, ct, accessibleVaultIds);
             return Results.Ok(result);
         }).WithTags("Search").Produces<AskAnswerResponse>().Produces(400);
+
+        app.MapPost("/api/v1/ask/stream", async (
+            SearchFacade svc,
+            IVaultAccessService vaultAccessService,
+            HttpContext context,
+            AskQuestionRequest req,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Question))
+            {
+                context.Response.StatusCode = 400;
+                await context.Response.WriteAsJsonAsync(new { error = "question is required" });
+                return;
+            }
+
+            var accessibleVaultIds = await VaultEndpoints.ResolveAccessibleVaultIdsAsync(context, vaultAccessService, ct);
+
+            Guid? vaultId = null;
+            if (!string.IsNullOrWhiteSpace(req.VaultId) && Guid.TryParse(req.VaultId, out var vid))
+                vaultId = vid;
+
+            context.Response.Headers["Content-Type"] = "text/event-stream";
+            context.Response.Headers["Cache-Control"] = "no-cache";
+            context.Response.Headers["Connection"] = "keep-alive";
+
+            try
+            {
+                var result = await svc.AskQuestionStreamingAsync(req.Question, vaultId, req.ResearchMode, ct, accessibleVaultIds);
+
+                var sourcesJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    type = "sources",
+                    sources = result.Sources,
+                    confidence = result.Confidence
+                }, CamelCaseJson);
+                await context.Response.WriteAsync($"data: {sourcesJson}\n\n", ct);
+                await context.Response.Body.FlushAsync(ct);
+
+                await foreach (var token in result.TokenStream.WithCancellation(ct))
+                {
+                    var tokenJson = System.Text.Json.JsonSerializer.Serialize(new { type = "token", content = token }, CamelCaseJson);
+                    await context.Response.WriteAsync($"data: {tokenJson}\n\n", ct);
+                    await context.Response.Body.FlushAsync(ct);
+                }
+
+                await context.Response.WriteAsync("data: {\"type\":\"done\"}\n\n", ct);
+                await context.Response.Body.FlushAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // Client disconnected - normal, don't log as error
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    var errorJson = System.Text.Json.JsonSerializer.Serialize(new { type = "error", message = ex.Message }, CamelCaseJson);
+                    await context.Response.WriteAsync($"data: {errorJson}\n\n", ct);
+                    await context.Response.Body.FlushAsync(ct);
+                }
+                catch { /* Client may have disconnected */ }
+            }
+        }).WithTags("Search");
     }
 }

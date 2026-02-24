@@ -60,17 +60,17 @@ export default function SSOCallbackPage() {
 
   if (processing) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950 px-4">
-        <Loader2 size={32} className="animate-spin text-gray-400 dark:text-gray-500 mb-4" />
-        <p className="text-sm text-gray-600 dark:text-gray-400">Completing sign-in...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background px-4">
+        <Loader2 size={32} className="animate-spin text-muted-foreground mb-4" />
+        <p className="text-sm text-muted-foreground">Completing sign-in...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950 px-4">
+    <div className="flex items-center justify-center min-h-screen bg-background px-4">
       <div className="w-full max-w-sm">
-        <div className="bg-white dark:bg-gray-900 border border-red-200 dark:border-red-800 rounded-xl shadow-sm p-6">
+        <div className="bg-card border border-red-200 dark:border-red-800 rounded-xl shadow-sm p-6">
           <div className="flex items-start gap-3">
             <AlertCircle size={20} className="text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
             <div>
@@ -80,7 +80,7 @@ export default function SSOCallbackPage() {
               <p className="text-sm text-red-600 dark:text-red-400 mb-4">{error}</p>
               <Link
                 to="/login"
-                className="inline-flex px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+                className="inline-flex px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 Back to login
               </Link>

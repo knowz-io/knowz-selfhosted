@@ -71,10 +71,10 @@ export default function TagsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Tags</h1>
+        <span className="text-lg font-semibold">Tags</span>
         <button
           onClick={() => { setShowCreate(true); setError(null) }}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-80"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-80 transition-colors"
         >
           <Plus size={16} /> Add Tag
         </button>
@@ -88,14 +88,14 @@ export default function TagsPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+        <div className="flex items-center gap-2 p-3 bg-card border border-border/60 rounded-xl shadow-sm">
           <input
             type="text"
             value={newTagName}
             onChange={(e) => setNewTagName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             placeholder="Tag name..."
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+            className="flex-1 px-3 py-1.5 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             autoFocus
           />
           <button
@@ -107,7 +107,7 @@ export default function TagsPage() {
           </button>
           <button
             onClick={() => { setShowCreate(false); setNewTagName(''); setError(null) }}
-            className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+            className="p-1.5 text-muted-foreground hover:bg-muted rounded transition-colors"
           >
             <X size={18} />
           </button>
@@ -120,14 +120,14 @@ export default function TagsPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search tags..."
-        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
       />
 
       {/* List */}
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+            <div key={i} className="h-12 bg-muted rounded animate-pulse" />
           ))}
         </div>
       ) : (
@@ -135,9 +135,9 @@ export default function TagsPage() {
           {tags?.map((tag: TagItem) => (
             <div
               key={tag.id}
-              className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"
+              className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl shadow-sm"
             >
-              <Tag size={16} className="text-gray-400 flex-shrink-0" />
+              <Tag size={16} className="text-muted-foreground flex-shrink-0" />
               {editingId === tag.id ? (
                 <>
                   <input
@@ -148,7 +148,7 @@ export default function TagsPage() {
                       if (e.key === 'Enter') handleUpdate(tag.id)
                       if (e.key === 'Escape') setEditingId(null)
                     }}
-                    className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-card focus:outline-none focus:ring-1 focus:ring-ring"
                     autoFocus
                   />
                   <button
@@ -160,7 +160,7 @@ export default function TagsPage() {
                   </button>
                   <button
                     onClick={() => setEditingId(null)}
-                    className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                    className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors"
                   >
                     <X size={16} />
                   </button>
@@ -168,12 +168,12 @@ export default function TagsPage() {
               ) : (
                 <>
                   <span className="flex-1 font-medium text-sm">{tag.name}</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     {tag.knowledgeCount} item{tag.knowledgeCount !== 1 ? 's' : ''}
                   </span>
                   <button
                     onClick={() => startEdit(tag)}
-                    className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
                   >
                     <Pencil size={14} />
                   </button>
@@ -188,7 +188,7 @@ export default function TagsPage() {
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                        className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors"
                       >
                         <X size={14} />
                       </button>
@@ -196,7 +196,7 @@ export default function TagsPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(tag.id)}
-                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
+                      className="p-1 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -206,7 +206,7 @@ export default function TagsPage() {
             </div>
           ))}
           {tags?.length === 0 && (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+            <p className="text-muted-foreground text-center py-8">
               No tags found.
             </p>
           )}

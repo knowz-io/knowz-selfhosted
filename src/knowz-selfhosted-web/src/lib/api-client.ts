@@ -1,7 +1,9 @@
+import { normalizeUser } from './types'
 import type {
   KnowledgeItem,
   KnowledgeListResponse,
   KnowledgeStats,
+  CreatorRef,
   Vault,
   VaultContentsResponse,
   SearchResponse,
@@ -29,6 +31,7 @@ import type {
   BatchConvertResult,
   ChatRequestData,
   ChatResponseData,
+  SSEEvent,
   FileUploadResult,
   FileListResponse,
   FileMetadataDto,
@@ -179,6 +182,83 @@ async function requestBlob(path: string): Promise<Blob> {
   return response.blob()
 }
 
+async function streamRequest(
+  path: string,
+  body: unknown,
+  onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const apiUrl = getApiUrl()
+  const authToken = getAuthToken()
+  const apiKey = getApiKey()
+  const activeTenantId = getActiveTenantId()
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
+  } else if (apiKey) {
+    headers['X-Api-Key'] = apiKey
+  }
+
+  if (activeTenantId) {
+    headers['X-Tenant-Id'] = activeTenantId
+  }
+
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  })
+
+  if (!response.ok) {
+    if (response.status === 401 && authToken) {
+      localStorage.removeItem('authToken')
+    }
+    const errorBody = await response.json().catch(() => ({}))
+    throw new ApiError(
+      response.status,
+      (errorBody as { error?: string }).error || `Request failed: ${response.status}`,
+    )
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('No response body')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // Parse SSE lines
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
+        const jsonStr = trimmed.slice(6) // Remove "data: "
+        try {
+          const event = JSON.parse(jsonStr) as SSEEvent
+          onEvent(event)
+        } catch {
+          // Skip malformed events
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 function buildQuery(params?: Record<string, string | undefined>): string {
   if (!params) return ''
   const filtered = Object.entries(params).filter(
@@ -217,6 +297,9 @@ export const api = {
     request<{ id: string; title: string; reprocessed: boolean }>(`/api/v1/knowledge/${id}/reprocess`, {
       method: 'POST',
     }),
+
+  getKnowledgeCreators: () =>
+    request<CreatorRef[]>('/api/v1/knowledge/creators'),
 
   getStats: () =>
     request<KnowledgeStats>('/api/v1/knowledge/stats'),
@@ -431,6 +514,19 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  // --- Streaming ---
+  askStream: (
+    data: { question: string; vaultId?: string; researchMode?: boolean },
+    onEvent: (event: SSEEvent) => void,
+    signal?: AbortSignal,
+  ) => streamRequest('/api/v1/ask/stream', data, onEvent, signal),
+
+  chatStream: (
+    data: ChatRequestData,
+    onEvent: (event: SSEEvent) => void,
+    signal?: AbortSignal,
+  ) => streamRequest('/api/v1/chat/stream', data, onEvent, signal),
+
   // --- Health ---
   testConnection: () =>
     request<{ status: string }>('/healthz'),
@@ -440,10 +536,10 @@ export const api = {
     request<LoginResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
-    }),
+    }).then(r => ({ ...r, user: normalizeUser(r.user) })),
 
   getMe: () =>
-    request<UserDto>('/api/v1/auth/me'),
+    request<UserDto>('/api/v1/auth/me').then(normalizeUser),
 
   // --- Admin: Tenants ---
   listTenants: () =>
@@ -471,22 +567,22 @@ export const api = {
 
   // --- Admin: Users ---
   listUsers: (tenantId?: string) =>
-    request<UserDto[]>(`/api/v1/admin/users${buildQuery({ tenantId })}`),
+    request<UserDto[]>(`/api/v1/admin/users${buildQuery({ tenantId })}`).then(users => users.map(normalizeUser)),
 
   getUser: (id: string) =>
-    request<UserDto>(`/api/v1/admin/users/${id}`),
+    request<UserDto>(`/api/v1/admin/users/${id}`).then(normalizeUser),
 
   createUser: (data: CreateUserData) =>
     request<UserDto>('/api/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
+    }).then(normalizeUser),
 
   updateUser: (id: string, data: UpdateUserData) =>
     request<UserDto>(`/api/v1/admin/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
+    }).then(normalizeUser),
 
   deleteUser: (id: string) =>
     request<{ message: string }>(`/api/v1/admin/users/${id}`, {

@@ -35,18 +35,38 @@ public class ProxyToolBackend : IToolBackend
 
         _logger.LogInformation("ProxyToolBackend: Forwarding tool {ToolName} to Knowz API", toolName);
 
-        var result = await _proxyService.ProxyRequestAsync<Dictionary<string, object>, object>(
-            $"tools/call",
-            new Dictionary<string, object>
-            {
-                ["name"] = toolName,
-                ["arguments"] = arguments
-            },
-            apiKey,
-            cancellationToken);
+        try
+        {
+            var result = await _proxyService.ProxyRequestAsync<Dictionary<string, object>, object>(
+                $"tools/call",
+                new Dictionary<string, object>
+                {
+                    ["name"] = toolName,
+                    ["arguments"] = arguments
+                },
+                apiKey,
+                cancellationToken);
 
-        return result != null
-            ? JsonSerializer.Serialize(result)
-            : "{}";
+            return result != null
+                ? JsonSerializer.Serialize(result)
+                : "{}";
+        }
+        catch (McpProxyException ex)
+        {
+            var errorMessage = ex.StatusCode switch
+            {
+                401 => "Authentication failed — API key is invalid or expired. Check your MCP server configuration.",
+                403 => "Access denied — your API key does not have permission for this operation.",
+                404 => $"Tool '{toolName}' not found on the Knowz API.",
+                429 => "Rate limited — too many requests. Please wait and try again.",
+                >= 500 => $"Knowz API server error (HTTP {ex.StatusCode}). The service may be temporarily unavailable.",
+                _ => $"Knowz API request failed (HTTP {ex.StatusCode})."
+            };
+
+            _logger.LogWarning(ex, "ProxyToolBackend: Tool {ToolName} failed with HTTP {StatusCode}: {Error}",
+                toolName, ex.StatusCode, errorMessage);
+
+            return JsonSerializer.Serialize(new { error = errorMessage, statusCode = ex.StatusCode });
+        }
     }
 }

@@ -1,4 +1,5 @@
-using System.Security.Claims;
+using Knowz.Core.Enums;
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Models;
 
@@ -10,17 +11,19 @@ public static class AdminEndpoints
     {
         var group = app.MapGroup("/api/v1/admin").WithTags("Administration");
 
-        // --- Tenant endpoints ---
+        // --- Tenant endpoints (SuperAdmin only) ---
 
         group.MapGet("/tenants", async (HttpContext context, ITenantManagementService svc) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             return Results.Ok(await svc.ListTenantsAsync());
         }).Produces<List<TenantDto>>().Produces(403);
 
         group.MapGet("/tenants/{id:guid}", async (HttpContext context, ITenantManagementService svc, Guid id) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             var result = await svc.GetTenantAsync(id);
             return result is null
                 ? Results.NotFound(new { error = "Tenant not found." })
@@ -29,7 +32,8 @@ public static class AdminEndpoints
 
         group.MapPost("/tenants", async (HttpContext context, ITenantManagementService svc, CreateTenantRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
 
             if (string.IsNullOrWhiteSpace(request.Name))
                 return Results.BadRequest(new { error = "Name is required." });
@@ -49,7 +53,8 @@ public static class AdminEndpoints
 
         group.MapPut("/tenants/{id:guid}", async (HttpContext context, ITenantManagementService svc, Guid id, UpdateTenantRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
 
             try
             {
@@ -68,7 +73,8 @@ public static class AdminEndpoints
 
         group.MapDelete("/tenants/{id:guid}", async (HttpContext context, ITenantManagementService svc, Guid id) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
 
             try
             {
@@ -81,26 +87,62 @@ public static class AdminEndpoints
             }
         }).Produces(200).Produces(403).Produces(404);
 
-        // --- User endpoints ---
+        // --- User endpoints (Admin or above, with tenant scoping) ---
 
         group.MapGet("/users", async (HttpContext context, IUserManagementService svc, Guid? tenantId) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: force-scope to own tenant, ignore query param
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                tenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (!tenantId.HasValue)
+                    return AuthorizationHelpers.Forbidden("Tenant context required.");
+            }
+
             return Results.Ok(await svc.ListUsersAsync(tenantId));
         }).Produces<List<UserDto>>().Produces(403);
 
         group.MapGet("/users/{id:guid}", async (HttpContext context, IUserManagementService svc, Guid id) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
             var result = await svc.GetUserAsync(id);
-            return result is null
-                ? Results.NotFound(new { error = "User not found." })
-                : Results.Ok(result);
+            if (result is null)
+                return Results.NotFound(new { error = "User not found." });
+
+            // Admin: validate same tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (result.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+            }
+
+            return Results.Ok(result);
         }).Produces<UserDto>().Produces(403).Produces(404);
 
         group.MapPost("/users", async (HttpContext context, IUserManagementService svc, CreateUserRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: force tenant to own tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (!callerTenantId.HasValue)
+                    return AuthorizationHelpers.Forbidden("Tenant context required.");
+                request.TenantId = callerTenantId.Value;
+            }
+
+            // Role-cap validation
+            if (!AuthorizationHelpers.CanAssignRole(context, request.Role))
+                return AuthorizationHelpers.Forbidden(
+                    $"Cannot assign role '{request.Role}'. Insufficient privileges.");
 
             if (string.IsNullOrWhiteSpace(request.Username))
                 return Results.BadRequest(new { error = "Username is required." });
@@ -126,7 +168,24 @@ public static class AdminEndpoints
 
         group.MapPut("/users/{id:guid}", async (HttpContext context, IUserManagementService svc, Guid id, UpdateUserRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: validate target user is in same tenant and not a higher role
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                var targetUser = await svc.GetUserAsync(id);
+                if (targetUser is null || targetUser.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+                if (AuthorizationHelpers.IsPrivilegedRole(targetUser.Role))
+                    return AuthorizationHelpers.Forbidden("Cannot modify a user with Admin or higher role.");
+            }
+
+            // Role-cap validation
+            if (request.Role.HasValue && !AuthorizationHelpers.CanAssignRole(context, request.Role.Value))
+                return AuthorizationHelpers.Forbidden(
+                    $"Cannot assign role '{request.Role.Value}'. Insufficient privileges.");
 
             try
             {
@@ -141,7 +200,19 @@ public static class AdminEndpoints
 
         group.MapDelete("/users/{id:guid}", async (HttpContext context, IUserManagementService svc, Guid id) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: validate target user is in same tenant and not a higher role
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                var targetUser = await svc.GetUserAsync(id);
+                if (targetUser is null || targetUser.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+                if (AuthorizationHelpers.IsPrivilegedRole(targetUser.Role))
+                    return AuthorizationHelpers.Forbidden("Cannot delete a user with Admin or higher role.");
+            }
 
             try
             {
@@ -156,7 +227,19 @@ public static class AdminEndpoints
 
         group.MapPost("/users/{id:guid}/generate-api-key", async (HttpContext context, IUserManagementService svc, Guid id) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: validate target user is in same tenant and not a higher role
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                var targetUser = await svc.GetUserAsync(id);
+                if (targetUser is null || targetUser.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+                if (AuthorizationHelpers.IsPrivilegedRole(targetUser.Role))
+                    return AuthorizationHelpers.Forbidden("Cannot generate API key for a user with Admin or higher role.");
+            }
 
             try
             {
@@ -171,7 +254,19 @@ public static class AdminEndpoints
 
         group.MapPost("/users/{id:guid}/reset-password", async (HttpContext context, IUserManagementService svc, Guid id, ResetPasswordRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: validate target user is in same tenant and not a higher role
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                var targetUser = await svc.GetUserAsync(id);
+                if (targetUser is null || targetUser.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+                if (AuthorizationHelpers.IsPrivilegedRole(targetUser.Role))
+                    return AuthorizationHelpers.Forbidden("Cannot reset password for a user with Admin or higher role.");
+            }
 
             if (string.IsNullOrWhiteSpace(request.NewPassword))
                 return Results.BadRequest(new { error = "New password is required." });
@@ -188,13 +283,5 @@ public static class AdminEndpoints
                 return Results.NotFound(new { error = "User not found." });
             }
         }).Produces(200).Produces(400).Produces(403).Produces(404);
-    }
-
-    /// <summary>
-    /// Checks if the current user has the SuperAdmin role.
-    /// </summary>
-    private static bool IsSuperAdmin(HttpContext context)
-    {
-        return context.User.IsInRole("SuperAdmin");
     }
 }

@@ -60,16 +60,13 @@ public static class OAuthPageGenerator
             </div>";
         }
 
-        // Username/password login form for self-hosted mode
-        var credentialsFormHtml = "";
-        if (isSelfHosted)
-        {
-            credentialsFormHtml = $@"
+        // Username/password login form (available in all modes)
+        var credentialsFormHtml = $@"
             <form method=""POST"" action=""{baseUrl}/oauth/authorize"">
                 <input type=""hidden"" name=""request_id"" value=""{requestId}"">
                 <div class=""form-group"">
-                    <label for=""username"">Username</label>
-                    <input type=""text"" id=""username"" name=""username"" placeholder=""Enter your username"" autocomplete=""username"">
+                    <label for=""email"">Email or username</label>
+                    <input type=""text"" id=""email"" name=""email"" placeholder=""Enter your email or username"" autocomplete=""email"">
                 </div>
                 <div class=""form-group"">
                     <label for=""password"">Password</label>
@@ -80,7 +77,6 @@ public static class OAuthPageGenerator
             <div class=""divider"">
                 <span>or enter your API key</span>
             </div>";
-        }
 
         return $@"<!DOCTYPE html>
 <html lang=""en"">

@@ -156,8 +156,8 @@ export default function KnowledgeDetailPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="h-8 w-48 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-        <div className="h-64 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+        <div className="h-8 w-48 bg-muted rounded animate-pulse" />
+        <div className="h-64 bg-muted rounded animate-pulse" />
       </div>
     )
   }
@@ -165,7 +165,7 @@ export default function KnowledgeDetailPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Link to="/knowledge" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">
+        <Link to="/knowledge" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={16} /> Back to Knowledge
         </Link>
         <p className="text-red-600 dark:text-red-400">
@@ -181,7 +181,7 @@ export default function KnowledgeDetailPage() {
     <div className="space-y-4">
       <Link
         to="/knowledge"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} /> Back to Knowledge
       </Link>
@@ -192,17 +192,17 @@ export default function KnowledgeDetailPage() {
             type="text"
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-lg font-semibold"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-lg font-semibold"
           />
-          <div className="border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden">
-            <div className="flex border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div className="border border-input rounded-md overflow-hidden">
+            <div className="flex border-b border-input bg-muted">
               <button
                 type="button"
                 onClick={() => setEditTab('write')}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   editTab === 'write'
-                    ? 'text-gray-900 dark:text-white bg-white dark:bg-gray-900 border-b-2 border-gray-900 dark:border-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-foreground bg-card border-b-2 border-primary'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Write
@@ -212,8 +212,8 @@ export default function KnowledgeDetailPage() {
                 onClick={() => setEditTab('preview')}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   editTab === 'preview'
-                    ? 'text-gray-900 dark:text-white bg-white dark:bg-gray-900 border-b-2 border-gray-900 dark:border-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-foreground bg-card border-b-2 border-primary'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Preview
@@ -224,17 +224,17 @@ export default function KnowledgeDetailPage() {
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
                 rows={16}
-                className="w-full px-3 py-2 bg-white dark:bg-gray-900 text-sm font-mono border-0 focus:ring-0 focus:outline-none"
+                className="w-full px-3 py-2 bg-card text-sm font-mono border-0 focus:ring-0 focus:outline-none"
               />
             ) : (
-              <div className="px-3 py-2 bg-white dark:bg-gray-900 min-h-[384px]">
+              <div className="px-3 py-2 bg-card min-h-[384px]">
                 {editContent.trim() ? (
                   <div
                     className="prose prose-sm dark:prose-invert max-w-none"
                     dangerouslySetInnerHTML={{ __html: formatMarkdown(editContent) }}
                   />
                 ) : (
-                  <p className="text-gray-400 dark:text-gray-500 text-sm italic">
+                  <p className="text-muted-foreground text-sm italic">
                     Nothing to preview
                   </p>
                 )}
@@ -246,14 +246,14 @@ export default function KnowledgeDetailPage() {
             value={editSource}
             onChange={(e) => setEditSource(e.target.value)}
             placeholder="Source (optional)"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
           <input
             type="text"
             value={editTags}
             onChange={(e) => setEditTags(e.target.value)}
             placeholder="Tags (comma-separated)"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
           {updateMut.error && (
             <p className="text-red-600 dark:text-red-400 text-sm">
@@ -264,13 +264,13 @@ export default function KnowledgeDetailPage() {
             <button
               onClick={() => updateMut.mutate()}
               disabled={updateMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
             >
               <Save size={16} /> {updateMut.isPending ? 'Saving...' : 'Save'}
             </button>
             <button
               onClick={() => setEditing(false)}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-md text-sm font-medium transition-colors"
             >
               <X size={16} /> Cancel
             </button>
@@ -283,14 +283,14 @@ export default function KnowledgeDetailPage() {
             <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={startEditing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md text-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm transition-colors"
               >
                 <Pencil size={14} /> Edit
               </button>
               <button
                 onClick={() => { setReprocessMsg(null); reprocessMut.mutate() }}
                 disabled={reprocessMut.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md text-sm disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm disabled:opacity-50 transition-colors"
               >
                 <RefreshCw size={14} className={reprocessMut.isPending ? 'animate-spin' : ''} /> {reprocessMut.isPending ? 'Reprocessing...' : 'Reprocess'}
               </button>
@@ -310,7 +310,7 @@ export default function KnowledgeDetailPage() {
           )}
 
           <div className="flex flex-wrap gap-2 text-sm">
-            <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
+            <span className="px-2 py-0.5 bg-muted rounded">
               {data.type}
             </span>
             {data.tags.map((tag) => (
@@ -321,14 +321,14 @@ export default function KnowledgeDetailPage() {
           </div>
 
           {data.summary && (
-            <p className="text-gray-600 dark:text-gray-400 italic">{data.summary}</p>
+            <p className="text-muted-foreground italic">{data.summary}</p>
           )}
 
-          <div className="whitespace-pre-wrap text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+          <div className="whitespace-pre-wrap text-sm bg-muted border border-border/60 rounded-xl p-4">
             {data.content}
           </div>
 
-          <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
+          <div className="text-sm text-muted-foreground space-y-1">
             {data.source && <p>Source: {data.source}</p>}
             {data.filePath && <p>File: {data.filePath}</p>}
             {data.vaults.length > 0 && (
@@ -359,16 +359,16 @@ export default function KnowledgeDetailPage() {
                   {data.indexedAt && ` on ${new Date(data.indexedAt).toLocaleString()}`}
                 </>
               ) : (
-                <span className="text-gray-500">Pending</span>
+                <span className="text-muted-foreground">Pending</span>
               )}
             </p>
           </div>
 
           {/* Attachments Section */}
-          <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-3">
+          <div className="border border-border/60 rounded-xl p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Paperclip size={16} className="text-gray-500" />
+                <Paperclip size={16} className="text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Attachments</h2>
               </div>
               <div className="flex gap-2">
@@ -390,7 +390,7 @@ export default function KnowledgeDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowAttachPicker(!showAttachPicker)}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-input rounded hover:bg-muted transition-colors"
                 >
                   <Paperclip size={12} />
                   Attach File
@@ -399,7 +399,7 @@ export default function KnowledgeDetailPage() {
             </div>
 
             {uploadAndAttachMut.isPending && (
-              <div className="flex items-center gap-2 text-xs text-gray-500">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 size={14} className="animate-spin" />
                 Uploading and attaching...
               </div>
@@ -407,33 +407,33 @@ export default function KnowledgeDetailPage() {
 
             {attachmentsLoading ? (
               <div className="flex items-center justify-center py-4">
-                <Loader2 size={16} className="animate-spin text-gray-400" />
+                <Loader2 size={16} className="animate-spin text-muted-foreground" />
               </div>
             ) : attachments && attachments.length > 0 ? (
               <div className="space-y-2">
                 {attachments.map((file: FileMetadataDto) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Paperclip size={14} className="text-gray-400 flex-shrink-0" />
+                      <Paperclip size={14} className="text-muted-foreground flex-shrink-0" />
                       <span className="text-sm truncate">{file.fileName}</span>
-                      <span className="text-xs text-gray-400 flex-shrink-0">
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
                         {formatFileSize(file.sizeBytes)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => handleDownloadAttachment(file.id, file.fileName)}
-                        className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                        className="p-1 text-muted-foreground hover:text-blue-600 rounded"
                         title="Download"
                       >
                         <Download size={14} />
                       </button>
                       <button
                         onClick={() => detachMut.mutate(file.id)}
-                        className="p-1 text-gray-400 hover:text-red-600 rounded"
+                        className="p-1 text-muted-foreground hover:text-red-600 rounded"
                         title="Detach"
                       >
                         <X size={14} />
@@ -443,13 +443,13 @@ export default function KnowledgeDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 py-2">No attachments yet.</p>
+              <p className="text-xs text-muted-foreground py-2">No attachments yet.</p>
             )}
 
             {/* Attach from existing files picker */}
             {showAttachPicker && (
-              <div className="border border-gray-200 dark:border-gray-700 rounded p-3 space-y-2">
-                <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+              <div className="border border-border/60 rounded p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
                   Select an existing file to attach:
                 </p>
                 {availableFiles && availableFiles.items.length > 0 ? (
@@ -463,23 +463,23 @@ export default function KnowledgeDetailPage() {
                           key={file.id}
                           onClick={() => attachMut.mutate(file.id)}
                           disabled={attachMut.isPending}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-muted disabled:opacity-50 transition-colors"
                         >
-                          <Paperclip size={12} className="text-gray-400" />
+                          <Paperclip size={12} className="text-muted-foreground" />
                           <span className="truncate">{file.fileName}</span>
-                          <span className="text-xs text-gray-400 ml-auto">
+                          <span className="text-xs text-muted-foreground ml-auto">
                             {formatFileSize(file.sizeBytes)}
                           </span>
                         </button>
                       ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400">No files available.</p>
+                  <p className="text-xs text-muted-foreground">No files available.</p>
                 )}
                 <button
                   type="button"
                   onClick={() => setShowAttachPicker(false)}
-                  className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Close
                 </button>
@@ -494,9 +494,9 @@ export default function KnowledgeDetailPage() {
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-sm w-full space-y-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold">Delete Knowledge Item?</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               This will permanently delete &quot;{data.title}&quot;. This action cannot be undone.
             </p>
             {deleteMut.error && (
@@ -507,7 +507,7 @@ export default function KnowledgeDetailPage() {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm"
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
               >
                 Cancel
               </button>

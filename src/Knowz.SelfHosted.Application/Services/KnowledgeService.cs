@@ -54,7 +54,8 @@ public class KnowledgeService
 
     public async Task<CreateKnowledgeResult> CreateKnowledgeAsync(
         string content, string title, string typeStr, string? vaultIdStr,
-        List<string> tagNames, string? source, CancellationToken ct)
+        List<string> tagNames, string? source, CancellationToken ct,
+        Guid? createdByUserId = null)
     {
         var tenantId = _tenantProvider.TenantId;
 
@@ -64,7 +65,8 @@ public class KnowledgeService
             Title = title,
             Content = content,
             Type = Enum.TryParse<KnowledgeType>(typeStr, true, out var t) ? t : KnowledgeType.Note,
-            Source = source
+            Source = source,
+            CreatedByUserId = createdByUserId
         };
 
         _db.KnowledgeItems.Add(item);
@@ -349,12 +351,19 @@ public class KnowledgeService
         int page, int pageSize, string sortBy, string sortDir,
         string? knowledgeType, string? titlePattern, string? fileNamePattern,
         string? startDateStr, string? endDateStr, CancellationToken ct,
-        List<Guid>? accessibleVaultIds = null)
+        List<Guid>? accessibleVaultIds = null,
+        Guid? filterVaultId = null, Guid? filterCreatedByUserId = null)
     {
         var query = BuildFilteredQuery(knowledgeType, titlePattern, fileNamePattern, startDateStr, endDateStr);
 
         if (accessibleVaultIds != null)
             query = ApplyVaultAccessFilter(query, accessibleVaultIds);
+
+        if (filterVaultId.HasValue)
+            query = query.Where(k => _db.KnowledgeVaults.Any(kv => kv.KnowledgeId == k.Id && kv.VaultId == filterVaultId.Value));
+
+        if (filterCreatedByUserId.HasValue)
+            query = query.Where(k => k.CreatedByUserId == filterCreatedByUserId.Value);
 
         query = (sortBy, sortDir) switch
         {
@@ -374,7 +383,25 @@ public class KnowledgeService
                 k.Id, k.Title,
                 k.Summary ?? (k.Content.Length > 200 ? k.Content.Substring(0, 200) : k.Content),
                 k.Type.ToString(),
-                k.FilePath, k.CreatedAt, k.UpdatedAt,
+                k.FilePath,
+                _db.KnowledgeVaults
+                    .Where(kv => kv.KnowledgeId == k.Id)
+                    .OrderByDescending(kv => kv.IsPrimary)
+                    .Select(kv => (Guid?)kv.VaultId)
+                    .FirstOrDefault(),
+                _db.KnowledgeVaults
+                    .Where(kv => kv.KnowledgeId == k.Id)
+                    .OrderByDescending(kv => kv.IsPrimary)
+                    .Join(_db.Vaults, kv => kv.VaultId, v => v.Id, (kv, v) => v.Name)
+                    .FirstOrDefault(),
+                k.CreatedByUserId,
+                k.CreatedByUserId.HasValue
+                    ? _db.Users
+                        .Where(u => u.Id == k.CreatedByUserId.Value)
+                        .Select(u => u.DisplayName ?? u.Username)
+                        .FirstOrDefault()
+                    : null,
+                k.CreatedAt, k.UpdatedAt,
                 k.IsIndexed))
             .ToListAsync(ct);
 
@@ -435,6 +462,17 @@ public class KnowledgeService
         return await _db.KnowledgeVaults
             .Where(kv => kv.KnowledgeId == knowledgeId)
             .Select(kv => kv.VaultId)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<CreatorRef>> GetKnowledgeCreatorsAsync(CancellationToken ct)
+    {
+        return await _db.KnowledgeItems
+            .Where(k => k.CreatedByUserId.HasValue)
+            .Select(k => k.CreatedByUserId!.Value)
+            .Distinct()
+            .Join(_db.Users, uid => uid, u => u.Id, (uid, u) => new CreatorRef(u.Id, u.DisplayName ?? u.Username))
+            .OrderBy(c => c.Name)
             .ToListAsync(ct);
     }
 
@@ -511,16 +549,17 @@ public class KnowledgeService
                 currentTags, strategy);
             _logger.LogInformation("Re-indexing knowledge {Id} as {ChunkCount} chunk(s)", item.Id, chunks.Count);
 
-            var chunkHashes = new Dictionary<int, string>();
+            var chunkData = new Dictionary<int, (string Hash, string? EmbeddingJson)>();
 
             foreach (var chunk in chunks)
             {
                 var hash = ContentHasher.Hash(chunk.Content);
-                chunkHashes[chunk.Position] = hash;
                 float[]? embedding;
+                string? embeddingJson;
 
                 if (existingHashMap.TryGetValue(hash, out var cachedVector))
                 {
+                    embeddingJson = cachedVector;
                     try
                     {
                         embedding = JsonSerializer.Deserialize<float[]>(cachedVector);
@@ -528,12 +567,16 @@ public class KnowledgeService
                     catch (JsonException)
                     {
                         embedding = await _openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                        embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
                     }
                 }
                 else
                 {
                     embedding = await _openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                    embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
                 }
+
+                chunkData[chunk.Position] = (hash, embeddingJson);
 
                 await _searchService.IndexDocumentAsync(
                     item.Id, item.Title, chunk.Content, item.Summary,
@@ -544,19 +587,22 @@ public class KnowledgeService
                     cancellationToken: ct);
             }
 
-            // Replace persisted chunks
+            // Replace persisted chunks (now includes freshly generated embeddings)
             try
             {
                 _db.ContentChunks.RemoveRange(existingChunks);
                 foreach (var chunk in chunks)
                 {
+                    var (hash, embeddingJson) = chunkData[chunk.Position];
                     _db.ContentChunks.Add(new ContentChunk
                     {
                         TenantId = item.TenantId,
                         KnowledgeId = item.Id,
                         Position = chunk.Position,
                         Content = chunk.Content,
-                        ContentHash = chunkHashes[chunk.Position]
+                        ContentHash = hash,
+                        EmbeddingVectorJson = embeddingJson,
+                        EmbeddedAt = embeddingJson != null ? DateTime.UtcNow : null
                     });
                 }
             }

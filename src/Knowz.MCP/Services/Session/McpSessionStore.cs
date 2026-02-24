@@ -37,7 +37,7 @@ public class McpSessionStore : IMcpSessionStore
     private readonly ConcurrentDictionary<string, SessionData> _sessions = new();
     private readonly ConcurrentDictionary<string, FingerprintData> _fingerprints = new();
     private readonly TimeSpan _sessionTimeout = TimeSpan.FromHours(24);
-    private readonly TimeSpan _lastAuthKeyTimeout = TimeSpan.FromMinutes(30);
+    private readonly TimeSpan _lastAuthKeyTimeout = TimeSpan.FromHours(24);
     private readonly ILogger<McpSessionStore> _logger;
 
     private string? _lastAuthenticatedApiKey;

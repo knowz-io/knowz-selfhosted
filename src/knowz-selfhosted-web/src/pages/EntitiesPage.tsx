@@ -86,25 +86,25 @@ export default function EntitiesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Entities</h1>
+        <span className="text-lg font-semibold">Entities</span>
         <button
           onClick={() => { setShowCreate(true); setError(null) }}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-80"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-80"
         >
           <Plus size={16} /> Add {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800">
+      <div className="flex border-b border-border/60">
         {entityTabs.map(({ type, label, icon: Icon }) => (
           <button
             key={type}
             onClick={() => handleTabChange(type)}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === type
-                ? 'border-gray-900 dark:border-white text-gray-900 dark:text-white'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             <Icon size={16} />
@@ -121,14 +121,14 @@ export default function EntitiesPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+        <div className="flex items-center gap-2 p-3 bg-card border border-border/60 rounded-lg">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             placeholder={`${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} name...`}
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+            className="flex-1 px-3 py-1.5 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             autoFocus
           />
           <button
@@ -140,7 +140,7 @@ export default function EntitiesPage() {
           </button>
           <button
             onClick={() => { setShowCreate(false); setNewName(''); setError(null) }}
-            className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+            className="p-1.5 text-muted-foreground hover:bg-muted rounded"
           >
             <X size={18} />
           </button>
@@ -153,14 +153,14 @@ export default function EntitiesPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder={`Search ${activeTab}s...`}
-        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
       />
 
       {/* List */}
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+            <div key={i} className="h-12 bg-muted rounded animate-pulse" />
           ))}
         </div>
       ) : (
@@ -170,9 +170,9 @@ export default function EntitiesPage() {
             return (
               <div
                 key={entity.id}
-                className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"
+                className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-lg"
               >
-                <ActiveIcon size={16} className="text-gray-400 flex-shrink-0" />
+                <ActiveIcon size={16} className="text-muted-foreground flex-shrink-0" />
                 {editingId === entity.id ? (
                   <>
                     <input
@@ -183,7 +183,7 @@ export default function EntitiesPage() {
                         if (e.key === 'Enter') handleUpdate(entity.id)
                         if (e.key === 'Escape') setEditingId(null)
                       }}
-                      className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                      className="flex-1 px-2 py-1 text-sm border border-input rounded bg-card focus:outline-none focus:ring-1 focus:ring-ring"
                       autoFocus
                     />
                     <button
@@ -195,7 +195,7 @@ export default function EntitiesPage() {
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 text-muted-foreground hover:bg-muted rounded"
                     >
                       <X size={16} />
                     </button>
@@ -203,7 +203,7 @@ export default function EntitiesPage() {
                 ) : (
                   <>
                     <span className="flex-1 font-medium text-sm">{entity.name}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {new Date(entity.createdAt).toLocaleDateString()}
                     </span>
                     <button
@@ -212,7 +212,7 @@ export default function EntitiesPage() {
                         setEditName(entity.name)
                         setError(null)
                       }}
-                      className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded"
                     >
                       <Pencil size={14} />
                     </button>
@@ -227,7 +227,7 @@ export default function EntitiesPage() {
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(null)}
-                          className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                          className="p-1 text-muted-foreground hover:bg-muted rounded"
                         >
                           <X size={14} />
                         </button>
@@ -235,7 +235,7 @@ export default function EntitiesPage() {
                     ) : (
                       <button
                         onClick={() => setDeleteConfirm(entity.id)}
-                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
+                        className="p-1 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -246,7 +246,7 @@ export default function EntitiesPage() {
             )
           })}
           {entities.length === 0 && (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+            <p className="text-muted-foreground text-center py-8">
               No {activeTab}s found.
             </p>
           )}

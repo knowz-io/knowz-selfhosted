@@ -323,17 +323,28 @@ if (string.IsNullOrWhiteSpace(selfHostedOptions.ApiKey) && string.IsNullOrWhiteS
         "All API requests will be rejected with 401. Set 'SelfHosted:JwtSecret' or 'SelfHosted:ApiKey' to enable authentication.");
 }
 
-// Warn if AI services are not configured
-var searchConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["AzureAISearch:Endpoint"]);
-var openAiConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:Endpoint"]);
-if (!searchConfigured || !openAiConfigured)
+// Log active AI/Search provider
+var platformEnabled = string.Equals(builder.Configuration["KnowzPlatform:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+if (platformEnabled)
 {
-    var missing = new List<string>();
-    if (!searchConfigured) missing.Add("AzureAISearch");
-    if (!openAiConfigured) missing.Add("AzureOpenAI");
-    app.Logger.LogWarning(
-        "AI services ({MissingServices}) not configured. Knowledge search and AI features are disabled. Set {MissingServices} config to enable.",
-        string.Join(", ", missing), string.Join(" and ", missing));
+    var platformUrl = builder.Configuration["KnowzPlatform:BaseUrl"] ?? "(not set)";
+    app.Logger.LogInformation("AI Provider: Knowz Platform ({PlatformUrl})", platformUrl);
+    app.Logger.LogInformation("Search Provider: Local Text Search");
+}
+else
+{
+    var openAiConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:Endpoint"]);
+    var searchConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["AzureAISearch:Endpoint"]);
+
+    if (openAiConfigured)
+        app.Logger.LogInformation("AI Provider: Azure OpenAI ({Endpoint})", builder.Configuration["AzureOpenAI:Endpoint"]);
+    else
+        app.Logger.LogWarning("AI Provider: None (NoOp) — AI features disabled");
+
+    if (searchConfigured)
+        app.Logger.LogInformation("Search Provider: Azure AI Search ({Endpoint})", builder.Configuration["AzureAISearch:Endpoint"]);
+    else
+        app.Logger.LogWarning("Search Provider: None (NoOp) — Search features disabled");
 }
 
 app.UseCors();

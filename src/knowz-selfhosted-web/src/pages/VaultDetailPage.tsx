@@ -72,9 +72,9 @@ export default function VaultDetailPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="h-8 w-48 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+        <div className="h-8 w-48 bg-muted rounded animate-pulse" />
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-14 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-14 bg-muted rounded animate-pulse" />
         ))}
       </div>
     )
@@ -83,7 +83,7 @@ export default function VaultDetailPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Link to="/vaults" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">
+        <Link to="/vaults" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={16} /> Back to Vaults
         </Link>
         <p className="text-red-600 dark:text-red-400">
@@ -97,7 +97,7 @@ export default function VaultDetailPage() {
     <div className="space-y-4">
       <Link
         to="/vaults"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} /> Back to Vaults
       </Link>
@@ -106,21 +106,21 @@ export default function VaultDetailPage() {
         <div>
           <h1 className="text-2xl font-bold">{vault?.name ?? 'Vault Contents'}</h1>
           {vault?.description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{vault.description}</p>
+            <p className="text-sm text-muted-foreground mt-1">{vault.description}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
           {vault?.vaultType && (
-            <span className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 rounded">
+            <span className="px-2 py-0.5 text-xs bg-muted rounded">
               {vault.vaultType}
             </span>
           )}
-          <span className="text-sm text-gray-500 dark:text-gray-400">
+          <span className="text-sm text-muted-foreground">
             {contents?.totalItems ?? 0} items
           </span>
           <button
             onClick={openEditModal}
-            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            className="p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title="Edit vault"
           >
             <Pencil size={16} />
@@ -128,7 +128,7 @@ export default function VaultDetailPage() {
           {!vault?.isDefault && (
             <button
               onClick={() => setShowDelete(true)}
-              className="p-2 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className="p-2 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
               title="Delete vault"
             >
               <Trash2 size={16} />
@@ -140,12 +140,12 @@ export default function VaultDetailPage() {
       {/* Edit Modal */}
       {showEdit && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
               <h2 className="text-lg font-semibold">Edit Vault</h2>
               <button
                 onClick={() => setShowEdit(false)}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="p-1 rounded hover:bg-muted transition-colors"
               >
                 <X size={20} />
               </button>
@@ -157,7 +157,7 @@ export default function VaultDetailPage() {
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   autoFocus
                   required
                 />
@@ -168,7 +168,7 @@ export default function VaultDetailPage() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white resize-none"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>
               {editError && (
@@ -178,14 +178,14 @@ export default function VaultDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowEdit(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted rounded-md transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!editName.trim() || updateMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
                   {updateMutation.isPending ? 'Saving...' : 'Save'}
                 </button>
@@ -198,10 +198,10 @@ export default function VaultDetailPage() {
       {/* Delete Confirmation Modal */}
       {showDelete && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm">
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-sm">
             <div className="p-6 space-y-4">
               <h2 className="text-lg font-semibold">Delete Vault</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 Are you sure you want to delete <strong>{vault?.name}</strong>? This action cannot be undone.
                 Knowledge items in this vault will not be deleted.
               </p>
@@ -209,7 +209,7 @@ export default function VaultDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowDelete(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted rounded-md transition-colors"
                 >
                   Cancel
                 </button>
@@ -231,25 +231,25 @@ export default function VaultDetailPage() {
           <Link
             key={item.id}
             to={`/knowledge/${item.id}`}
-            className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-gray-400 dark:hover:border-gray-600 transition-colors"
+            className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl hover:shadow-md transition-all"
           >
-            <BookOpen size={16} className="text-gray-400 flex-shrink-0" />
+            <BookOpen size={16} className="text-muted-foreground flex-shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="font-medium truncate">{item.title}</p>
               {item.summary && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{item.summary}</p>
+                <p className="text-sm text-muted-foreground truncate">{item.summary}</p>
               )}
             </div>
-            <span className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0">
+            <span className="px-2 py-0.5 text-xs bg-muted rounded flex-shrink-0">
               {item.type}
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+            <span className="text-xs text-muted-foreground flex-shrink-0">
               {new Date(item.createdAt).toLocaleDateString()}
             </span>
           </Link>
         ))}
         {contents?.items.length === 0 && (
-          <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+          <p className="text-muted-foreground text-center py-8">
             This vault is empty.
           </p>
         )}

@@ -4,6 +4,7 @@ using Knowz.SelfHosted.Application.DTOs;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Knowz.SelfHosted.Application.Services;
@@ -18,6 +19,7 @@ public class InboxService
     private readonly SelfHostedDbContext _db;
     private readonly KnowledgeService _knowledgeService;
     private readonly ITenantProvider _tenantProvider;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<InboxService> _logger;
 
     public InboxService(
@@ -25,21 +27,24 @@ public class InboxService
         SelfHostedDbContext db,
         KnowledgeService knowledgeService,
         ITenantProvider tenantProvider,
+        IConfiguration configuration,
         ILogger<InboxService> logger)
     {
         _inboxRepo = inboxRepo;
         _db = db;
         _knowledgeService = knowledgeService;
         _tenantProvider = tenantProvider;
+        _configuration = configuration;
         _logger = logger;
     }
 
-    public async Task<InboxItemResult> CreateInboxItemAsync(string body, CancellationToken ct)
+    public async Task<InboxItemResult> CreateInboxItemAsync(string body, Guid? createdByUserId, CancellationToken ct)
     {
         var item = new InboxItem
         {
             TenantId = _tenantProvider.TenantId,
-            Body = body
+            Body = body,
+            CreatedByUserId = createdByUserId
         };
 
         await _inboxRepo.AddAsync(item, ct);
@@ -49,9 +54,20 @@ public class InboxService
     }
 
     public async Task<InboxListResponse> ListInboxItemsAsync(
-        int page, int pageSize, string? search, string? type, CancellationToken ct)
+        int page, int pageSize, string? search, string? type,
+        Guid? callerUserId, bool isCallerAdmin,
+        CancellationToken ct)
     {
         var query = _db.InboxItems.AsQueryable();
+
+        // Apply user scoping based on config
+        var scope = _configuration["Inbox:VisibilityScope"] ?? "Shared";
+        if (scope.Equals("PerUser", StringComparison.OrdinalIgnoreCase)
+            && !isCallerAdmin
+            && callerUserId.HasValue)
+        {
+            query = query.Where(i => i.CreatedByUserId == callerUserId.Value || i.CreatedByUserId == null);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -76,12 +92,13 @@ public class InboxService
                 i.Id,
                 i.Body,
                 i.Type.ToString(),
+                i.CreatedByUserId,
                 i.CreatedAt,
                 i.UpdatedAt))
             .ToListAsync(ct);
 
         var totalPages = pageSize > 0 ? (int)Math.Ceiling((double)total / pageSize) : 0;
-        return new InboxListResponse(items, page, pageSize, total, totalPages);
+        return new InboxListResponse(items, page, pageSize, total, totalPages, scope);
     }
 
     public async Task<InboxItemDto?> GetInboxItemAsync(Guid id, CancellationToken ct)
@@ -90,7 +107,7 @@ public class InboxService
         if (item == null)
             return null;
 
-        return new InboxItemDto(item.Id, item.Body, item.Type.ToString(), item.CreatedAt, item.UpdatedAt);
+        return new InboxItemDto(item.Id, item.Body, item.Type.ToString(), item.CreatedByUserId, item.CreatedAt, item.UpdatedAt);
     }
 
     public async Task<InboxItemDto?> UpdateInboxItemAsync(Guid id, string body, CancellationToken ct)
@@ -103,7 +120,7 @@ public class InboxService
         await _inboxRepo.UpdateAsync(item, ct);
         await _inboxRepo.SaveChangesAsync(ct);
 
-        return new InboxItemDto(item.Id, item.Body, item.Type.ToString(), item.CreatedAt, item.UpdatedAt);
+        return new InboxItemDto(item.Id, item.Body, item.Type.ToString(), item.CreatedByUserId, item.CreatedAt, item.UpdatedAt);
     }
 
     public async Task<DeleteResult?> DeleteInboxItemAsync(Guid id, CancellationToken ct)

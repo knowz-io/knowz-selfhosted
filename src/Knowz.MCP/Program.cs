@@ -75,7 +75,7 @@ builder.Services
     })
     .WithHttpTransport(options =>
     {
-        // Increase idle timeout to 24 hours (sessions still lost on deployment)
+        // Increase idle timeout to 24 hours (sessions persist via Redis across deployments)
         options.IdleTimeout = TimeSpan.FromHours(24);
 
         // Session handler - stores API key in session store for access during tool invocations

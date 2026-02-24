@@ -115,12 +115,9 @@ export default function DataPortabilityPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold">Data Portability</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Export your data for backup or migrate between Knowz instances.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Export your data for backup or migrate between Knowz instances.
+      </p>
 
       {/* Schema info */}
       {schema && (
@@ -131,15 +128,15 @@ export default function DataPortabilityPage() {
       )}
 
       {/* Export section */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm">
         <h2 className="text-lg font-semibold mb-2">Export</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        <p className="text-sm text-muted-foreground mb-4">
           Download all your knowledge, vaults, topics, tags, and entities as a JSON file.
         </p>
         <button
           onClick={() => exportMutation.mutate()}
           disabled={exportMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {exportMutation.isPending ? (
             <Loader2 size={14} className="animate-spin" />
@@ -161,9 +158,9 @@ export default function DataPortabilityPage() {
       </div>
 
       {/* Import section */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm">
         <h2 className="text-lg font-semibold mb-2">Import</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        <p className="text-sm text-muted-foreground mb-4">
           Import data from a Knowz export file. Validate first to check for conflicts.
         </p>
 
@@ -179,13 +176,13 @@ export default function DataPortabilityPage() {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
             >
               <Upload size={14} />
               {importFile ? 'Change File' : 'Select JSON File'}
             </button>
             {importFile && (
-              <span className="ml-3 text-sm text-gray-600 dark:text-gray-400">
+              <span className="ml-3 text-sm text-muted-foreground">
                 {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
               </span>
             )}
@@ -205,10 +202,10 @@ export default function DataPortabilityPage() {
                 {(Object.keys(strategyDescriptions) as Strategy[]).map((key) => (
                   <label
                     key={key}
-                    className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors duration-150 ${
                       strategy === key
-                        ? 'border-gray-900 dark:border-white bg-gray-50 dark:bg-gray-800'
-                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border/60 hover:bg-muted'
                     }`}
                   >
                     <input
@@ -221,7 +218,7 @@ export default function DataPortabilityPage() {
                     />
                     <div>
                       <span className="text-sm font-medium">{strategyDescriptions[key].label}</span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         {strategyDescriptions[key].description}
                       </p>
                     </div>
@@ -237,7 +234,7 @@ export default function DataPortabilityPage() {
               <button
                 onClick={handleValidate}
                 disabled={validateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {validateMutation.isPending ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -249,7 +246,7 @@ export default function DataPortabilityPage() {
               <button
                 onClick={handleImport}
                 disabled={importMutation.isPending || !validationResult}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
                 title={!validationResult ? 'Validate the file first' : undefined}
               >
                 {importMutation.isPending ? (
@@ -265,7 +262,7 @@ export default function DataPortabilityPage() {
           {/* Validation results */}
           {vr && (
             <div
-              className={`border rounded-lg p-4 ${
+              className={`border rounded-xl p-4 ${
                 vr.isValid
                   ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30'
                   : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30'
@@ -283,24 +280,24 @@ export default function DataPortabilityPage() {
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                 {vr.totalVaults != null && (
-                  <div className="text-gray-600 dark:text-gray-400">Vaults: {vr.totalVaults as number}</div>
+                  <div className="text-muted-foreground">Vaults: {vr.totalVaults as number}</div>
                 )}
                 {vr.totalKnowledgeItems != null && (
-                  <div className="text-gray-600 dark:text-gray-400">
+                  <div className="text-muted-foreground">
                     Knowledge Items: {vr.totalKnowledgeItems as number}
                   </div>
                 )}
                 {vr.totalTopics != null && (
-                  <div className="text-gray-600 dark:text-gray-400">Topics: {vr.totalTopics as number}</div>
+                  <div className="text-muted-foreground">Topics: {vr.totalTopics as number}</div>
                 )}
                 {vr.totalTags != null && (
-                  <div className="text-gray-600 dark:text-gray-400">Tags: {vr.totalTags as number}</div>
+                  <div className="text-muted-foreground">Tags: {vr.totalTags as number}</div>
                 )}
                 {vr.totalPersons != null && (
-                  <div className="text-gray-600 dark:text-gray-400">Persons: {vr.totalPersons as number}</div>
+                  <div className="text-muted-foreground">Persons: {vr.totalPersons as number}</div>
                 )}
                 {vr.totalInboxItems != null && (
-                  <div className="text-gray-600 dark:text-gray-400">
+                  <div className="text-muted-foreground">
                     Inbox Items: {vr.totalInboxItems as number}
                   </div>
                 )}
@@ -329,7 +326,7 @@ export default function DataPortabilityPage() {
           {/* Import results */}
           {importResult && (
             <div
-              className={`border rounded-lg p-4 ${
+              className={`border rounded-xl p-4 ${
                 (importResult as Record<string, unknown>).success
                   ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30'
                   : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30'
@@ -348,7 +345,7 @@ export default function DataPortabilityPage() {
                 </span>
               </div>
               {Boolean((importResult as Record<string, unknown>).success) && (
-                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                <div className="text-sm text-muted-foreground space-y-1">
                   <ImportCountLine label="Vaults" counts={(importResult as Record<string, unknown>).vaults} />
                   <ImportCountLine label="Knowledge" counts={(importResult as Record<string, unknown>).knowledgeItems} />
                   <ImportCountLine label="Topics" counts={(importResult as Record<string, unknown>).topics} />

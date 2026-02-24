@@ -1,0 +1,323 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true
+    },
+    "basics": [
+      {
+        "name": "prefix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Resource Prefix",
+        "toolTip": "A short prefix for all Azure resource names (2-8 lowercase alphanumeric characters or hyphens). For example, 'knowz' creates resources like 'knowz-api', 'knowz-sql', etc.",
+        "defaultValue": "knowz",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z][a-z0-9-]{0,6}[a-z0-9]$",
+          "validationMessage": "Must be 2-8 characters: lowercase letters, digits, or hyphens. Must start with a letter and end with a letter or digit."
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "databaseSecurity",
+        "label": "Database & Security",
+        "elements": [
+          {
+            "name": "sqlAdminUsername",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL Admin Username",
+            "toolTip": "Administrator username for the Azure SQL Server. Cannot be 'admin', 'sa', or other reserved names.",
+            "defaultValue": "sqladmin",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-zA-Z][a-zA-Z0-9]{0,127}$",
+              "validationMessage": "Must start with a letter. Only letters and digits allowed. Max 128 characters. Cannot be 'admin' or 'sa'."
+            }
+          },
+          {
+            "name": "sqlAdminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "SQL Admin Password",
+              "confirmPassword": "Confirm SQL Admin Password"
+            },
+            "toolTip": "Password for the SQL Server administrator account. Must be at least 12 characters with uppercase, lowercase, digit, and special character.",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{12,128}$",
+              "validationMessage": "Must be 12-128 characters with at least 1 uppercase, 1 lowercase, 1 digit, and 1 special character (@$!%*?&)."
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          },
+          {
+            "name": "adminPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "SuperAdmin Password",
+              "confirmPassword": "Confirm SuperAdmin Password"
+            },
+            "toolTip": "Password for the Knowz application SuperAdmin account (used to log in to the Web UI). Must be at least 8 characters with uppercase, lowercase, digit, and special character.",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,128}$",
+              "validationMessage": "Must be 8-128 characters with at least 1 uppercase, 1 lowercase, 1 digit, and 1 special character (@$!%*?&)."
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "aiServices",
+        "label": "AI Services",
+        "elements": [
+          {
+            "name": "deployOpenAI",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Deploy Azure OpenAI",
+            "toolTip": "Deploy a new Azure OpenAI resource with chat and embedding models. Select 'No' to use your own OpenAI-compatible endpoint.",
+            "defaultValue": "Yes",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Yes",
+                  "value": true
+                },
+                {
+                  "label": "No",
+                  "value": false
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "externalOpenAiEndpoint",
+            "type": "Microsoft.Common.TextBox",
+            "label": "External OpenAI Endpoint",
+            "toolTip": "Your OpenAI-compatible API endpoint URL (e.g., https://your-openai.openai.azure.com/).",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').deployOpenAI, false)]",
+              "regex": "^https?://.+$",
+              "validationMessage": "Must be a valid URL starting with http:// or https://."
+            }
+          },
+          {
+            "name": "externalOpenAiKey",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "External OpenAI API Key",
+              "confirmPassword": "Confirm API Key"
+            },
+            "toolTip": "API key for your external OpenAI-compatible endpoint.",
+            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "caDeploymentName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Chat Model Deployment Name",
+            "toolTip": "The deployment name for the chat completion model on your external endpoint.",
+            "defaultValue": "gpt-4o",
+            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+            }
+          },
+          {
+            "name": "caEmbeddingDeploymentName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Embedding Model Deployment Name",
+            "toolTip": "The deployment name for the embedding model on your external endpoint.",
+            "defaultValue": "text-embedding-3-small",
+            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+            }
+          },
+          {
+            "name": "searchSku",
+            "type": "Microsoft.Common.DropDown",
+            "label": "AI Search SKU",
+            "toolTip": "The pricing tier for Azure AI Search. 'free' has limited indexes and storage. 'basic' is recommended for production.",
+            "defaultValue": "basic",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Free",
+                  "value": "free"
+                },
+                {
+                  "label": "Basic",
+                  "value": "basic"
+                },
+                {
+                  "label": "Standard",
+                  "value": "standard"
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "searchLocation",
+            "type": "Microsoft.Common.TextBox",
+            "label": "AI Search Location",
+            "toolTip": "Azure region for AI Search. Defaults to the selected resource group location. Override if the Search SKU is not available in your selected region.",
+            "defaultValue": "[location()]",
+            "constraints": {
+              "required": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "containerImages",
+        "label": "Container Images",
+        "elements": [
+          {
+            "name": "imageTag",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Image Tag",
+            "toolTip": "The container image tag to deploy (e.g., 'latest', 'v1.0.0').",
+            "defaultValue": "latest",
+            "constraints": {
+              "required": true,
+              "regex": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$",
+              "validationMessage": "Must be a valid container image tag."
+            }
+          },
+          {
+            "name": "ghcrInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "text": "Container images are hosted on GitHub Container Registry (ghcr.io). If images are public, no credentials are needed. If private, provide your GitHub username and a Personal Access Token with 'read:packages' scope.",
+              "style": "Info"
+            }
+          },
+          {
+            "name": "registryUsername",
+            "type": "Microsoft.Common.TextBox",
+            "label": "GHCR Username (optional)",
+            "toolTip": "GitHub username or organization for GHCR authentication. Leave empty for public images.",
+            "defaultValue": "",
+            "constraints": {
+              "required": false
+            }
+          },
+          {
+            "name": "registryPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "GHCR Token (optional)",
+              "confirmPassword": "Confirm GHCR Token"
+            },
+            "toolTip": "GitHub Personal Access Token with 'read:packages' scope. Leave empty for public images.",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "monitoringAdvanced",
+        "label": "Monitoring & Advanced",
+        "elements": [
+          {
+            "name": "deployKeyVault",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Deploy Key Vault",
+            "toolTip": "Deploy Azure Key Vault to store secrets. Recommended for production deployments.",
+            "defaultValue": "Yes",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Yes",
+                  "value": true
+                },
+                {
+                  "label": "No",
+                  "value": false
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "deployMonitoring",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Deploy Monitoring",
+            "toolTip": "Deploy Log Analytics workspace and Application Insights for monitoring and diagnostics.",
+            "defaultValue": "Yes",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Yes",
+                  "value": true
+                },
+                {
+                  "label": "No",
+                  "value": false
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "costInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "text": "Estimated monthly cost at basic SKUs: ~$90-100/month. Breakdown: SQL Server Basic (~$5), Azure AI Search Basic (~$70), Storage (~$1), Container Apps (~$10-15), Key Vault (~$0.03/operation), Log Analytics (~$2-5). Azure OpenAI is pay-per-use based on token consumption.",
+              "style": "Info"
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "prefix": "[basics('prefix')]",
+      "location": "[location()]",
+      "sqlAdminUsername": "[steps('databaseSecurity').sqlAdminUsername]",
+      "sqlAdminPassword": "[steps('databaseSecurity').sqlAdminPassword]",
+      "adminPassword": "[steps('databaseSecurity').adminPassword]",
+      "deployOpenAI": "[steps('aiServices').deployOpenAI]",
+      "externalOpenAiEndpoint": "[steps('aiServices').externalOpenAiEndpoint]",
+      "externalOpenAiKey": "[steps('aiServices').externalOpenAiKey]",
+      "searchSku": "[steps('aiServices').searchSku]",
+      "searchLocation": "[steps('aiServices').searchLocation]",
+      "chatDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', 'gpt-5.2-chat')]",
+      "embeddingDeploymentName": "text-embedding-3-small",
+      "embeddingModelName": "text-embedding-3-small",
+      "caDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
+      "caEmbeddingDeploymentName": "[if(steps('aiServices').deployOpenAI, 'text-embedding-3-small', steps('aiServices').caEmbeddingDeploymentName)]",
+      "deployKeyVault": "[steps('monitoringAdvanced').deployKeyVault]",
+      "deployMonitoring": "[steps('monitoringAdvanced').deployMonitoring]",
+      "deployContainerApps": true,
+      "imageTag": "[steps('containerImages').imageTag]",
+      "registryServer": "ghcr.io",
+      "registryUsername": "[steps('containerImages').registryUsername]",
+      "registryPassword": "[steps('containerImages').registryPassword]",
+      "apiKey": "[concat('sh-', substring(newGuid(), 0, 24))]",
+      "jwtSecret": "[newGuid()]",
+      "allowAllIps": false,
+      "storageAllowSharedKeyAccess": true,
+      "additionalTags": {}
+    }
+  }
+}

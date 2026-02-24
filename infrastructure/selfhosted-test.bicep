@@ -121,6 +121,7 @@ var storageAccountName = toLower('${storagePrefix}st${take(uniqueSuffix, 12)}')
 // Key Vault names must be globally unique, 3-24 chars, alphanumeric + hyphens
 var kvPrefix = toLower(take(replace(prefix, '-', ''), 8))
 var keyVaultName = '${kvPrefix}kv${take(uniqueSuffix, 8)}'
+var mcpServiceKey = 'selfhosted-test-mcp-service-key-${uniqueString(resourceGroup().id)}'
 
 // Connection strings (constructed from resource properties + parameters)
 var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=McpKnowledge;Persist Security Info=False;User ID=${sqlAdminUsername};Password=${sqlAdminPassword};MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
@@ -579,6 +580,14 @@ resource secretJwtSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   }
 }
 
+resource secretAdminPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployContainerApps && deployKeyVault) {
+  parent: keyVault
+  name: 'SelfHosted--SuperAdminPassword'
+  properties: {
+    value: adminPassword
+  }
+}
+
 // ---- API Container App ----
 resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployContainerApps) {
   name: '${prefix}-api'
@@ -643,6 +652,10 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
           name: 'selfhosted-jwtsecret'
           value: jwtSecret
         }
+        {
+          name: 'selfhosted-adminpassword'
+          value: adminPassword
+        }
       ]
     }
     template: {
@@ -705,11 +718,15 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             }
             {
               name: 'SelfHosted__SuperAdminPassword'
-              value: adminPassword
+              secretRef: 'selfhosted-adminpassword'
             }
             {
               name: 'Database__AutoMigrate'
               value: 'true'
+            }
+            {
+              name: 'MCP__ServiceKey'
+              value: mcpServiceKey
             }
           ]
         }
@@ -775,6 +792,10 @@ resource mcpContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             {
               name: 'Authentication__ValidateApiKey'
               value: 'true'
+            }
+            {
+              name: 'MCP__ServiceKey'
+              value: mcpServiceKey
             }
           ]
         }

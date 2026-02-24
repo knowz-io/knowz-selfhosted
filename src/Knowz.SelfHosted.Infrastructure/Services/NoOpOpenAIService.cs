@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Knowz.Core.Interfaces;
 using Knowz.Core.Models;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
@@ -10,7 +11,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 /// Returns null embeddings and error responses so the API can still start
 /// and serve auth/admin/CRUD features without Azure credentials.
 /// </summary>
-public class NoOpOpenAIService : IOpenAIService, IContentAmendmentService
+public class NoOpOpenAIService : IOpenAIService, IContentAmendmentService, IStreamingOpenAIService
 {
     private readonly ILogger<NoOpOpenAIService> _logger;
 
@@ -41,6 +42,18 @@ public class NoOpOpenAIService : IOpenAIService, IContentAmendmentService
             SourceKnowledgeIds = new List<Guid>(),
             Confidence = 0
         });
+    }
+
+    public async IAsyncEnumerable<string> AnswerQuestionStreamingAsync(
+        string question,
+        List<SearchResultItem> searchResults,
+        string? vaultSystemPrompt = null,
+        bool researchMode = false,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        _logger.LogWarning("OpenAI is not configured. Streaming Q&A is unavailable.");
+        yield return "AI services are not configured. Please set AzureOpenAI settings to enable Q&A.";
+        await Task.CompletedTask; // Satisfy async requirement
     }
 
     public Task<string> ApplyContentUpdateAsync(

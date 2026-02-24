@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
+import { useAuth } from '../lib/auth'
+import { UserRole } from '../lib/types'
 import type { InboxItemDto, Vault } from '../lib/types'
 import {
   Inbox,
@@ -14,17 +16,21 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Mail,
 } from 'lucide-react'
 
 const TYPE_OPTIONS = ['All', 'Note', 'Link', 'File'] as const
 
 export default function InboxPage() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const isAdmin = user?.role === UserRole.Admin || user?.role === UserRole.SuperAdmin
   const [page, setPage] = useState(1)
   const [pageSize] = useState(20)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('All')
+  const [showAllItems, setShowAllItems] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [quickCapture, setQuickCapture] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -39,12 +45,15 @@ export default function InboxPage() {
     pageSize: String(pageSize),
     search: search || undefined,
     type: typeFilter !== 'All' ? typeFilter : undefined,
+    userFilter: isAdmin && !showAllItems ? 'mine' : undefined,
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inbox', page, search, typeFilter],
+    queryKey: ['inbox', page, search, typeFilter, showAllItems],
     queryFn: () => api.listInbox(queryParams),
   })
+
+  const isPerUser = data?.inboxVisibilityScope === 'PerUser'
 
   const { data: vaultsData } = useQuery({
     queryKey: ['vaults'],
@@ -201,7 +210,7 @@ export default function InboxPage() {
       case 'File':
         return 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400'
       default:
-        return 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400'
+        return 'bg-muted text-muted-foreground'
     }
   }
 
@@ -229,7 +238,7 @@ export default function InboxPage() {
             }
           }}
           placeholder="Quick capture: type a note... (Ctrl+Enter to save)"
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+          className="flex-1 px-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
         />
         <button
           type="button"
@@ -247,21 +256,21 @@ export default function InboxPage() {
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="flex gap-2 items-center">
-        <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+      <div className="flex gap-2 items-center flex-wrap">
+        <form onSubmit={handleSearch} className="flex-1 flex gap-2 min-w-0">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search inbox..."
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+            className="px-4 py-2 bg-muted text-foreground rounded-md hover:bg-muted/80 transition-colors"
           >
             Search
           </button>
@@ -272,7 +281,7 @@ export default function InboxPage() {
             setTypeFilter(e.target.value)
             setPage(1)
           }}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {TYPE_OPTIONS.map((t) => (
             <option key={t} value={t}>
@@ -280,6 +289,34 @@ export default function InboxPage() {
             </option>
           ))}
         </select>
+        {/* Admin toggle: show when PerUser mode is active and user is admin */}
+        {isPerUser && isAdmin && (
+          <div className="flex items-center gap-1 text-sm">
+            <span className="text-muted-foreground mr-1">View:</span>
+            <button
+              type="button"
+              onClick={() => { setShowAllItems(true); setPage(1) }}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                showAllItems
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              All Items
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAllItems(false); setPage(1) }}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                !showAllItems
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              My Items
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Batch Action Bar */}
@@ -307,7 +344,7 @@ export default function InboxPage() {
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Clear
           </button>
@@ -317,12 +354,12 @@ export default function InboxPage() {
       {/* Items List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-gray-400" />
+          <Loader2 size={24} className="animate-spin text-muted-foreground" />
         </div>
       ) : data && data.items.length > 0 ? (
-        <div className="border border-gray-200 dark:border-gray-800 rounded-md divide-y divide-gray-200 dark:divide-gray-800">
+        <div className="border border-border/60 rounded-xl divide-y divide-border/60 shadow-sm">
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-900 text-sm font-medium text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-3 px-4 py-2 bg-muted text-sm font-medium text-muted-foreground">
             <input
               type="checkbox"
               checked={selectedIds.size === data.items.length && data.items.length > 0}
@@ -338,7 +375,7 @@ export default function InboxPage() {
           {data.items.map((item) => (
             <div
               key={item.id}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+              className="flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors"
             >
               <input
                 type="checkbox"
@@ -353,7 +390,7 @@ export default function InboxPage() {
                       type="text"
                       value={editBody}
                       onChange={(e) => setEditBody(e.target.value)}
-                      className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-sm"
+                      className="flex-1 px-2 py-1 border border-input rounded bg-card text-sm"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') saveEdit()
@@ -369,14 +406,22 @@ export default function InboxPage() {
                     </button>
                     <button
                       onClick={cancelEdit}
-                      className="p-1 text-gray-400 hover:text-gray-600"
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
                       title="Cancel"
                     >
                       <X size={16} />
                     </button>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-900 dark:text-white truncate">{preview(item.body)}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-sm text-foreground truncate">{preview(item.body)}</p>
+                    {isPerUser && item.createdByUserId === null && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                        <Mail size={10} />
+                        System
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <span className="w-16 text-center">
@@ -386,27 +431,27 @@ export default function InboxPage() {
                   {item.type}
                 </span>
               </span>
-              <span className="w-24 text-right text-xs text-gray-500 dark:text-gray-400">
+              <span className="w-24 text-right text-xs text-muted-foreground">
                 {relativeTime(item.createdAt)}
               </span>
               <div className="w-28 flex items-center justify-end gap-1">
                 <button
                   onClick={() => startEdit(item)}
-                  className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted"
                   title="Edit"
                 >
                   <Pencil size={14} />
                 </button>
                 <button
                   onClick={() => openConvertDialog([item.id])}
-                  className="p-1.5 text-gray-400 hover:text-green-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="p-1.5 text-muted-foreground hover:text-green-600 rounded hover:bg-muted"
                   title="Convert to Knowledge"
                 >
                   <ArrowRightLeft size={14} />
                 </button>
                 <button
                   onClick={() => deleteMutation.mutate(item.id)}
-                  className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="p-1.5 text-muted-foreground hover:text-red-600 rounded hover:bg-muted"
                   title="Delete"
                 >
                   <Trash2 size={14} />
@@ -416,7 +461,7 @@ export default function InboxPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-muted-foreground">
           <Inbox size={48} className="mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">No inbox items</p>
           <p className="text-sm mt-1">Use the quick capture above to add your first item.</p>
@@ -426,7 +471,7 @@ export default function InboxPage() {
       {/* Pagination */}
       {data && data.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.totalItems)} of{' '}
             {data.totalItems}
           </p>
@@ -434,17 +479,17 @@ export default function InboxPage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="text-sm text-foreground">
               Page {page} of {data.totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
               disabled={page >= data.totalPages}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight size={16} />
             </button>
@@ -455,9 +500,9 @@ export default function InboxPage() {
       {/* Convert Dialog */}
       {showConvertDialog && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="bg-card rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             <h2 className="text-lg font-semibold mb-4">Convert to Knowledge</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               Converting {convertIds.length} item{convertIds.length > 1 ? 's' : ''} to knowledge.
             </p>
 
@@ -469,7 +514,7 @@ export default function InboxPage() {
                 <select
                   value={convertVaultId}
                   onChange={(e) => setConvertVaultId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card"
                 >
                   <option value="">No vault</option>
                   {vaults.map((v) => (
@@ -489,7 +534,7 @@ export default function InboxPage() {
                   value={convertTags}
                   onChange={(e) => setConvertTags(e.target.value)}
                   placeholder="tag1, tag2"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card"
                 />
               </div>
             </div>
@@ -497,7 +542,7 @@ export default function InboxPage() {
             <div className="flex justify-end gap-2 mt-6">
               <button
                 onClick={() => setShowConvertDialog(false)}
-                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>

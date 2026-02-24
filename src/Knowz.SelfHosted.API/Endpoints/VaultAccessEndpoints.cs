@@ -1,3 +1,4 @@
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -18,8 +19,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
             if (tenantId == null)
@@ -48,8 +49,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             // Fix E: reuse VaultEndpoints helper instead of duplicating
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
@@ -74,8 +75,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
             if (tenantId == null)
@@ -99,8 +100,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
             if (tenantId == null)
@@ -136,8 +137,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
             if (tenantId == null)
@@ -163,8 +164,8 @@ public static class VaultAccessEndpoints
             IVaultAccessService vaultAccessService,
             SelfHostedDbContext dbContext) =>
         {
-            if (!IsSuperAdminOrAdmin(context))
-                return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
 
             var tenantId = VaultEndpoints.GetTenantIdFromContext(context);
             if (tenantId == null)
@@ -194,9 +195,6 @@ public static class VaultAccessEndpoints
 
         return app;
     }
-
-    private static bool IsSuperAdminOrAdmin(HttpContext context) =>
-        context.User.IsInRole("SuperAdmin") || context.User.IsInRole("Admin");
 }
 
 // Request DTOs

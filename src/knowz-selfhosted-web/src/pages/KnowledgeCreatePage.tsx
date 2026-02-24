@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { ArrowLeft } from 'lucide-react'
 import { formatMarkdown } from '../lib/format-markdown'
@@ -9,6 +9,7 @@ const KNOWLEDGE_TYPES = ['Note', 'Document', 'Email', 'Image', 'Audio', 'Video',
 
 export default function KnowledgeCreatePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -38,6 +39,7 @@ export default function KnowledgeCreatePage() {
         source: source || undefined,
       }),
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge'] })
       navigate(`/knowledge/${data.id}`)
     },
   })
@@ -56,7 +58,7 @@ export default function KnowledgeCreatePage() {
     <div className="space-y-4">
       <Link
         to="/knowledge"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} /> Back to Knowledge
       </Link>
@@ -71,7 +73,7 @@ export default function KnowledgeCreatePage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Optional - auto-generated from content if empty"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
         </div>
 
@@ -79,15 +81,15 @@ export default function KnowledgeCreatePage() {
           <label className="block text-sm font-medium mb-1">
             Content <span className="text-red-500">*</span>
           </label>
-          <div className="border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden">
-            <div className="flex border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div className="border border-input rounded-md overflow-hidden">
+            <div className="flex border-b border-input bg-muted">
               <button
                 type="button"
                 onClick={() => setActiveTab('write')}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'write'
-                    ? 'text-gray-900 dark:text-white bg-white dark:bg-gray-900 border-b-2 border-gray-900 dark:border-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-foreground bg-card border-b-2 border-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Write
@@ -97,8 +99,8 @@ export default function KnowledgeCreatePage() {
                 onClick={() => setActiveTab('preview')}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'preview'
-                    ? 'text-gray-900 dark:text-white bg-white dark:bg-gray-900 border-b-2 border-gray-900 dark:border-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-foreground bg-card border-b-2 border-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Preview
@@ -110,17 +112,17 @@ export default function KnowledgeCreatePage() {
                 onChange={(e) => setContent(e.target.value)}
                 rows={12}
                 placeholder="Enter knowledge content... (supports Markdown)"
-                className="w-full px-3 py-2 bg-white dark:bg-gray-900 text-sm font-mono border-0 focus:ring-0 focus:outline-none"
+                className="w-full px-3 py-2 bg-card text-sm font-mono border-0 focus:ring-0 focus:outline-none"
               />
             ) : (
-              <div className="px-3 py-2 bg-white dark:bg-gray-900 min-h-[288px]">
+              <div className="px-3 py-2 bg-card min-h-[288px]">
                 {content.trim() ? (
                   <div
                     className="prose prose-sm dark:prose-invert max-w-none"
                     dangerouslySetInnerHTML={{ __html: formatMarkdown(content) }}
                   />
                 ) : (
-                  <p className="text-gray-400 dark:text-gray-500 text-sm italic">
+                  <p className="text-muted-foreground text-sm italic">
                     Nothing to preview
                   </p>
                 )}
@@ -138,7 +140,7 @@ export default function KnowledgeCreatePage() {
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
             >
               {KNOWLEDGE_TYPES.map((t) => (
                 <option key={t} value={t}>{t}</option>
@@ -151,7 +153,7 @@ export default function KnowledgeCreatePage() {
             <select
               value={vaultId}
               onChange={(e) => setVaultId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
             >
               <option value="">Default vault</option>
               {vaults.data?.vaults.map((v) => (
@@ -168,7 +170,7 @@ export default function KnowledgeCreatePage() {
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="Comma-separated tags"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
         </div>
 
@@ -179,7 +181,7 @@ export default function KnowledgeCreatePage() {
             value={source}
             onChange={(e) => setSource(e.target.value)}
             placeholder="URL or reference (optional)"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
         </div>
 
@@ -192,7 +194,7 @@ export default function KnowledgeCreatePage() {
         <button
           type="submit"
           disabled={createMut.isPending}
-          className="px-6 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium disabled:opacity-50"
+          className="px-6 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {createMut.isPending ? 'Creating...' : 'Create'}
         </button>

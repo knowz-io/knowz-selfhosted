@@ -45,7 +45,7 @@ function relativeTime(dateStr: string): string {
 }
 
 function contentTypeBadgeClass(contentType?: string): string {
-  if (!contentType) return 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400'
+  if (!contentType) return 'bg-muted text-muted-foreground'
   if (contentType.startsWith('image/'))
     return 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400'
   if (contentType.startsWith('video/'))
@@ -73,11 +73,11 @@ function TruncatedText({ text, label, icon }: { text: string; label: string; ico
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-1.5 mb-1 text-xs font-medium text-muted-foreground">
         {icon}
         {label}
       </div>
-      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+      <p className="text-sm text-foreground whitespace-pre-wrap break-words">
         {needsTruncation && !expanded ? text.slice(0, TRUNCATE_LENGTH) + '...' : text}
       </p>
       {needsTruncation && (
@@ -98,18 +98,18 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
 
   if (!hasAiDetails && !hasAssociations) {
     return (
-      <div className="px-4 py-4 bg-gray-50/50 dark:bg-gray-900/50 text-sm text-gray-500 dark:text-gray-400">
+      <div className="px-4 py-4 bg-muted/50 text-sm text-muted-foreground">
         No additional details available for this file.
       </div>
     )
   }
 
   return (
-    <div className="px-4 py-4 bg-gray-50/50 dark:bg-gray-900/50">
+    <div className="px-4 py-4 bg-muted/50">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left: Associations */}
         <div>
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
             Associations
           </h4>
           {hasAssociations ? (
@@ -117,7 +117,7 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
               {file.knowledgeId && (
                 <div className="flex items-center gap-2 text-sm">
                   <BookOpen size={14} className="text-blue-500 shrink-0" />
-                  <span className="text-gray-500 dark:text-gray-400">Knowledge:</span>
+                  <span className="text-muted-foreground">Knowledge:</span>
                   <Link
                     to={`/knowledge/${file.knowledgeId}`}
                     onClick={(e) => e.stopPropagation()}
@@ -130,7 +130,7 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
               {file.vaultId && (
                 <div className="flex items-center gap-2 text-sm">
                   <Archive size={14} className="text-green-500 shrink-0" />
-                  <span className="text-gray-500 dark:text-gray-400">Vault:</span>
+                  <span className="text-muted-foreground">Vault:</span>
                   <Link
                     to={`/vaults/${file.vaultId}`}
                     onClick={(e) => e.stopPropagation()}
@@ -142,14 +142,14 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
               )}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-500">Not attached to any knowledge item.</p>
+            <p className="text-sm text-muted-foreground">Not attached to any knowledge item.</p>
           )}
         </div>
 
         {/* Right: AI Details */}
         {hasAiDetails && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               AI Details
             </h4>
             <div className="space-y-3">
@@ -295,11 +295,11 @@ export default function FilesPage() {
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isDragging
             ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-            : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
+            : 'border-input hover:shadow-md'
         }`}
       >
-        <Upload size={32} className="mx-auto mb-2 text-gray-400" />
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <Upload size={32} className="mx-auto mb-2 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
           Drag and drop files here, or{' '}
           <button
             type="button"
@@ -317,7 +317,7 @@ export default function FilesPage() {
           className="hidden"
         />
         {uploadMutation.isPending && (
-          <div className="mt-2 flex items-center justify-center gap-2 text-sm text-gray-500">
+          <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 size={16} className="animate-spin" />
             Uploading...
           </div>
@@ -333,18 +333,18 @@ export default function FilesPage() {
       <div className="flex gap-2 items-center">
         <form onSubmit={handleSearch} className="flex-1 flex gap-2">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search files..."
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+            className="px-4 py-2 bg-muted text-foreground rounded-md hover:bg-muted/80 transition-colors"
           >
             Search
           </button>
@@ -355,7 +355,7 @@ export default function FilesPage() {
             setContentTypeFilter(e.target.value)
             setPage(1)
           }}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {CONTENT_TYPE_OPTIONS.map((t) => (
             <option key={t} value={t === 'All' ? '' : t}>
@@ -376,12 +376,12 @@ export default function FilesPage() {
       {/* File List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-gray-400" />
+          <Loader2 size={24} className="animate-spin text-muted-foreground" />
         </div>
       ) : data && data.items.length > 0 ? (
-        <div className="border border-gray-200 dark:border-gray-800 rounded-md divide-y divide-gray-200 dark:divide-gray-800">
+        <div className="border border-border/60 rounded-xl divide-y divide-border/60 shadow-sm">
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-900 text-sm font-medium text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-3 px-4 py-2 bg-muted text-sm font-medium text-muted-foreground">
             <span className="w-6" />
             <span className="flex-1">Name</span>
             <span className="w-20 text-center">Type</span>
@@ -396,13 +396,13 @@ export default function FilesPage() {
             <div key={file.id}>
               <div
                 onClick={() => toggleExpand(file.id)}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer select-none"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-muted cursor-pointer select-none transition-colors"
               >
-                <span className="w-6 text-gray-400">
+                <span className="w-6 text-muted-foreground">
                   {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 dark:text-white truncate">{file.fileName}</p>
+                  <p className="text-sm text-foreground truncate">{file.fileName}</p>
                 </div>
                 <span className="w-20 text-center">
                   <span
@@ -411,7 +411,7 @@ export default function FilesPage() {
                     {contentTypeLabel(file.contentType)}
                   </span>
                 </span>
-                <span className="w-20 text-right text-sm text-gray-500 dark:text-gray-400">
+                <span className="w-20 text-right text-sm text-muted-foreground">
                   {formatFileSize(file.sizeBytes)}
                 </span>
                 <span className="w-36 truncate text-sm">
@@ -424,7 +424,7 @@ export default function FilesPage() {
                       {file.knowledgeTitle || 'Untitled'}
                     </Link>
                   ) : (
-                    <span className="text-gray-400 dark:text-gray-600">--</span>
+                    <span className="text-muted-foreground">--</span>
                   )}
                 </span>
                 <span className="w-28 truncate text-sm">
@@ -437,23 +437,23 @@ export default function FilesPage() {
                       {file.vaultName || 'Unnamed'}
                     </Link>
                   ) : (
-                    <span className="text-gray-400 dark:text-gray-600">--</span>
+                    <span className="text-muted-foreground">--</span>
                   )}
                 </span>
-                <span className="w-24 text-right text-xs text-gray-500 dark:text-gray-400">
+                <span className="w-24 text-right text-xs text-muted-foreground">
                   {relativeTime(file.createdAt)}
                 </span>
                 <div className="w-20 flex items-center justify-end gap-1">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(file.id, file.fileName) }}
-                    className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted"
                     title="Download"
                   >
                     <Download size={14} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id) }}
-                    className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="p-1.5 text-muted-foreground hover:text-red-600 rounded hover:bg-muted"
                     title="Delete"
                   >
                     <Trash2 size={14} />
@@ -465,7 +465,7 @@ export default function FilesPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-muted-foreground">
           <FileText size={48} className="mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">No files</p>
           <p className="text-sm mt-1">Upload your first file using the area above.</p>
@@ -475,7 +475,7 @@ export default function FilesPage() {
       {/* Pagination */}
       {data && data.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.totalItems)} of{' '}
             {data.totalItems}
           </p>
@@ -483,17 +483,17 @@ export default function FilesPage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="text-sm text-foreground">
               Page {page} of {data.totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
               disabled={page >= data.totalPages}
-              className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight size={16} />
             </button>

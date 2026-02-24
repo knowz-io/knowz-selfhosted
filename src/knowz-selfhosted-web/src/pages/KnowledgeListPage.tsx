@@ -1,8 +1,43 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
-import { Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw } from 'lucide-react'
+import {
+  Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw,
+  Search, StickyNote, FileText, Mail, Image, AudioLines, Video, Code2, Link2,
+  Archive, PackageOpen, Filter,
+} from 'lucide-react'
+
+const KNOWLEDGE_TYPES = ['Note', 'Document', 'Email', 'Image', 'Audio', 'Video', 'Code', 'Link'] as const
+
+const TYPE_ICONS: Record<string, typeof StickyNote> = {
+  Note: StickyNote,
+  Document: FileText,
+  Email: Mail,
+  Image: Image,
+  Audio: AudioLines,
+  Video: Video,
+  Code: Code2,
+  Link: Link2,
+}
+
+const PAGE_SIZES = [10, 20, 50, 100] as const
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now()
+  const date = new Date(dateStr).getTime()
+  const diffMs = now - date
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `${diffH}h ago`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 30) return `${diffD}d ago`
+  const diffMo = Math.floor(diffD / 30)
+  if (diffMo < 12) return `${diffMo}mo ago`
+  return `${Math.floor(diffMo / 12)}y ago`
+}
 
 export default function KnowledgeListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -10,31 +45,61 @@ export default function KnowledgeListPage() {
   const queryClient = useQueryClient()
 
   const page = Number(searchParams.get('page') || '1')
-  const pageSize = 20
+  const pageSize = Number(searchParams.get('pageSize') || '20')
   const type = searchParams.get('type') || ''
   const title = searchParams.get('title') || ''
+  const vaultId = searchParams.get('vaultId') || ''
+  const createdByUserId = searchParams.get('createdByUserId') || ''
   const sort = searchParams.get('sort') || 'created'
   const sortDir = searchParams.get('sortDir') || 'desc'
+
+  // Debounced title search
+  const [titleInput, setTitleInput] = useState(title)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (titleInput !== title) {
+        updateParam('title', titleInput)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [titleInput]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showMoveToVault, setShowMoveToVault] = useState(false)
   const [batchError, setBatchError] = useState('')
 
+  const activeFilterCount = [type, vaultId, createdByUserId, title].filter(Boolean).length
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['knowledge', page, type, title, sort, sortDir],
+    queryKey: ['knowledge', page, pageSize, type, title, vaultId, createdByUserId, sort, sortDir],
     queryFn: () =>
       api.listKnowledge({
         page: String(page),
         pageSize: String(pageSize),
         type: type || undefined,
         title: title || undefined,
+        vaultId: vaultId || undefined,
+        createdByUserId: createdByUserId || undefined,
         sort,
         sortDir,
       }),
   })
 
-  const vaults = useQuery({
+  // Vault list for filter dropdown
+  const vaultsQuery = useQuery({
+    queryKey: ['vaults', 'filter'],
+    queryFn: () => api.listVaults(false),
+  })
+
+  // Creators list for filter dropdown
+  const creatorsQuery = useQuery({
+    queryKey: ['knowledge-creators'],
+    queryFn: () => api.getKnowledgeCreators(),
+  })
+
+  // Vault list for bulk move modal
+  const moveVaults = useQuery({
     queryKey: ['vaults', 'bulk-move'],
     queryFn: () => api.listVaults(false),
     enabled: showMoveToVault,
@@ -76,9 +141,9 @@ export default function KnowledgeListPage() {
   })
 
   const batchMoveMut = useMutation({
-    mutationFn: async ({ ids, vaultId }: { ids: string[]; vaultId: string }) => {
+    mutationFn: async ({ ids, vaultId: vid }: { ids: string[]; vaultId: string }) => {
       const results = await Promise.allSettled(
-        ids.map((id) => api.updateKnowledge(id, { vaultId })),
+        ids.map((id) => api.updateKnowledge(id, { vaultId: vid })),
       )
       const failed = results.filter((r) => r.status === 'rejected').length
       if (failed > 0) throw new Error(`${failed} of ${ids.length} moves failed`)
@@ -97,26 +162,43 @@ export default function KnowledgeListPage() {
 
   const isBatchOperating = batchDeleteMut.isPending || batchMoveMut.isPending || batchReprocessMut.isPending
 
-  const updateParam = (key: string, value: string) => {
-    const params = new URLSearchParams(searchParams)
-    if (value) {
-      params.set(key, value)
-    } else {
-      params.delete(key)
-    }
-    if (key !== 'page') params.set('page', '1')
-    setSearchParams(params)
+  const updateParam = useCallback((key: string, value: string) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      if (value) {
+        params.set(key, value)
+      } else {
+        params.delete(key)
+      }
+      if (key !== 'page') params.set('page', '1')
+      return params
+    })
+  }, [setSearchParams])
+
+  const clearFilters = () => {
+    setTitleInput('')
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.delete('title')
+      params.delete('type')
+      params.delete('vaultId')
+      params.delete('createdByUserId')
+      params.set('page', '1')
+      return params
+    })
   }
 
   const toggleSort = (field: string) => {
     if (sort === field) {
       updateParam('sortDir', sortDir === 'asc' ? 'desc' : 'asc')
     } else {
-      const params = new URLSearchParams(searchParams)
-      params.set('sort', field)
-      params.set('sortDir', 'desc')
-      params.set('page', '1')
-      setSearchParams(params)
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev)
+        params.set('sort', field)
+        params.set('sortDir', 'desc')
+        params.set('page', '1')
+        return params
+      })
     }
   }
 
@@ -139,145 +221,255 @@ export default function KnowledgeListPage() {
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
 
+  // Pagination: generate visible page numbers
+  const totalPages = data?.totalPages || 0
+  const pageNumbers: number[] = []
+  if (totalPages > 0) {
+    const maxVisible = 5
+    let start = Math.max(1, page - Math.floor(maxVisible / 2))
+    let end = Math.min(totalPages, start + maxVisible - 1)
+    if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1)
+    for (let i = start; i <= end; i++) pageNumbers.push(i)
+  }
+
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Knowledge</h1>
         <Link
           to="/knowledge/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
         >
           <Plus size={16} /> New
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="text"
-          placeholder="Filter by title..."
-          value={title}
-          onChange={(e) => updateParam('title', e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
-        />
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search by title..."
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
+            className="pl-9 pr-3 py-1.5 border border-input rounded-md bg-card text-sm w-56"
+          />
+        </div>
         <select
           value={type}
           onChange={(e) => updateParam('type', e.target.value)}
-          className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
         >
           <option value="">All types</option>
-          {['Note', 'Document', 'Email', 'Image', 'Audio', 'Video', 'Code', 'Link'].map((t) => (
+          {KNOWLEDGE_TYPES.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
+        <select
+          value={vaultId}
+          onChange={(e) => updateParam('vaultId', e.target.value)}
+          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
+        >
+          <option value="">All vaults</option>
+          {vaultsQuery.data?.vaults.map((v) => (
+            <option key={v.id} value={v.id}>{v.name}</option>
+          ))}
+        </select>
+        <select
+          value={createdByUserId}
+          onChange={(e) => updateParam('createdByUserId', e.target.value)}
+          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
+        >
+          <option value="">All creators</option>
+          {creatorsQuery.data?.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-md transition-colors"
+          >
+            <Filter size={14} />
+            <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-primary text-primary-foreground rounded-full">
+              {activeFilterCount}
+            </span>
+            Clear
+          </button>
+        )}
       </div>
 
+      {/* Error */}
       {error && (
         <p className="text-red-600 dark:text-red-400">
           {error instanceof Error ? error.message : 'Failed to load'}
         </p>
       )}
 
+      {/* Table */}
       {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-14 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead>
+              <tr className="border-b border-border/60">
+                <th className="py-2.5 px-3 w-10"><div className="w-4 h-4 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3"><div className="w-32 h-3 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3 w-24"><div className="w-12 h-3 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3 w-28"><div className="w-16 h-3 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3 w-20"><div className="w-12 h-3 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3 w-28"><div className="w-16 h-3 bg-muted rounded" /></th>
+                <th className="py-2.5 px-3 w-24"><div className="w-12 h-3 bg-muted rounded" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-border/40">
+                  <td className="py-3 px-3"><div className="w-4 h-4 bg-muted rounded animate-pulse" /></td>
+                  <td className="py-3 px-3">
+                    <div className="w-48 h-4 bg-muted rounded animate-pulse mb-1" />
+                    <div className="w-72 h-3 bg-muted rounded animate-pulse" />
+                  </td>
+                  <td className="py-3 px-3"><div className="w-14 h-5 bg-muted rounded animate-pulse" /></td>
+                  <td className="py-3 px-3"><div className="w-20 h-5 bg-muted rounded animate-pulse" /></td>
+                  <td className="py-3 px-3"><div className="w-14 h-5 bg-muted rounded animate-pulse" /></td>
+                  <td className="py-3 px-3"><div className="w-16 h-3 bg-muted rounded animate-pulse" /></td>
+                  <td className="py-3 px-3"><div className="w-12 h-3 bg-muted rounded animate-pulse" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400">
-                  <th className="py-2 px-3 w-10">
+                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <th className="py-2.5 px-3 w-10">
                     <input
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleSelectAll}
                       disabled={currentItems.length === 0}
-                      className="rounded border-gray-300 dark:border-gray-600"
+                      className="rounded border-input"
                     />
                   </th>
                   <th
-                    className="py-2 px-3 font-medium cursor-pointer select-none"
+                    className="py-2.5 px-3 font-semibold cursor-pointer select-none"
                     onClick={() => toggleSort('title')}
                   >
                     Title{sortIndicator('title')}
                   </th>
-                  <th className="py-2 px-3 font-medium w-24">Type</th>
-                  <th className="py-2 px-3 font-medium w-24">Status</th>
+                  <th className="py-2.5 px-3 font-semibold w-24">Type</th>
+                  <th className="py-2.5 px-3 font-semibold w-28">Vault</th>
+                  <th className="py-2.5 px-3 font-semibold w-20">Status</th>
+                  <th className="py-2.5 px-3 font-semibold w-28">Creator</th>
                   <th
-                    className="py-2 px-3 font-medium cursor-pointer select-none w-36"
+                    className="py-2.5 px-3 font-semibold cursor-pointer select-none w-24"
                     onClick={() => toggleSort('created')}
                   >
                     Created{sortIndicator('created')}
                   </th>
-                  <th
-                    className="py-2 px-3 font-medium cursor-pointer select-none w-36"
-                    onClick={() => toggleSort('updated')}
-                  >
-                    Updated{sortIndicator('updated')}
-                  </th>
                 </tr>
               </thead>
               <tbody>
-                {currentItems.map((item) => (
-                  <tr
-                    key={item.id}
-                    className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-900 cursor-pointer ${
-                      selectedIds.has(item.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
-                    }`}
-                  >
-                    <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(item.id)}
-                        onChange={() => toggleSelect(item.id)}
-                        className="rounded border-gray-300 dark:border-gray-600"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                      <p className="font-medium truncate max-w-md">{item.title}</p>
-                      {item.summary && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-md">
-                          {item.summary}
-                        </p>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                      <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 rounded">
-                        {item.type}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                      <span className="inline-flex items-center gap-1.5 text-xs">
-                        <span className={`inline-block w-2 h-2 rounded-full ${
-                          item.isIndexed ? 'bg-green-500' : 'bg-gray-400'
-                        }`} />
-                        {item.isIndexed ? 'Indexed' : 'Pending'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-gray-500 dark:text-gray-400" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                      {new Date(item.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="py-2.5 px-3 text-gray-500 dark:text-gray-400" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                      {new Date(item.updatedAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                {currentItems.map((item) => {
+                  const TypeIcon = TYPE_ICONS[item.type] || StickyNote
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-border/40 hover:bg-muted cursor-pointer transition-colors ${
+                        selectedIds.has(item.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                      }`}
+                    >
+                      <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                          className="rounded border-input"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                        <p className="font-medium truncate max-w-md">{item.title}</p>
+                        {item.summary && (
+                          <p className="text-xs text-muted-foreground truncate max-w-md mt-0.5">
+                            {item.summary}
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs bg-muted rounded">
+                          <TypeIcon size={12} />
+                          {item.type}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                        {item.vaultName ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded">
+                            <Archive size={11} />
+                            {item.vaultName}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">&mdash;</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span className={`inline-block w-2 h-2 rounded-full ${
+                            item.isIndexed ? 'bg-green-500' : 'bg-muted-foreground/40'
+                          }`} />
+                          {item.isIndexed ? 'Indexed' : 'Pending'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-muted-foreground" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                        {item.createdByUserName || <span className="text-muted-foreground">&mdash;</span>}
+                      </td>
+                      <td
+                        className="py-2.5 px-3 text-xs text-muted-foreground"
+                        onClick={() => navigate(`/knowledge/${item.id}`)}
+                        title={new Date(item.createdAt).toLocaleString()}
+                      >
+                        {relativeTime(item.createdAt)}
+                      </td>
+                    </tr>
+                  )
+                })}
                 {currentItems.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-gray-500 dark:text-gray-400">
-                      No knowledge items found.
+                    <td colSpan={7} className="py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <PackageOpen size={40} className="text-muted-foreground/40" />
+                        <p className="text-muted-foreground text-sm">
+                          {activeFilterCount > 0
+                            ? 'No items match the current filters.'
+                            : 'No knowledge items yet.'}
+                        </p>
+                        {activeFilterCount > 0 ? (
+                          <button
+                            onClick={clearFilters}
+                            className="text-sm text-muted-foreground hover:text-foreground underline transition-colors"
+                          >
+                            Clear all filters
+                          </button>
+                        ) : (
+                          <Link
+                            to="/knowledge/new"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
+                          >
+                            <Plus size={14} /> Create your first item
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -285,23 +477,48 @@ export default function KnowledgeListPage() {
             </table>
           </div>
 
-          {data && data.totalPages > 1 && (
+          {/* Pagination */}
+          {data && (data.totalPages > 1 || pageSize !== 20) && (
             <div className="flex items-center justify-between pt-2">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Page {data.page} of {data.totalPages} ({data.totalItems} items)
-              </p>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing {Math.min((page - 1) * pageSize + 1, data.totalItems)}&ndash;{Math.min(page * pageSize, data.totalItems)} of {data.totalItems} items
+                </p>
+                <select
+                  value={pageSize}
+                  onChange={(e) => updateParam('pageSize', e.target.value)}
+                  className="px-2 py-1 border border-input rounded text-xs bg-card"
+                >
+                  {PAGE_SIZES.map((s) => (
+                    <option key={s} value={s}>{s} / page</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
                   disabled={page <= 1}
                   onClick={() => updateParam('page', String(page - 1))}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30"
+                  className="p-1.5 border border-input rounded disabled:opacity-30 text-sm transition-colors"
                 >
                   <ChevronLeft size={16} />
                 </button>
+                {pageNumbers.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => updateParam('page', String(n))}
+                    className={`px-2.5 py-1 text-sm rounded border transition-colors ${
+                      n === page
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-input hover:bg-muted'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
                 <button
-                  disabled={page >= data.totalPages}
+                  disabled={page >= totalPages}
                   onClick={() => updateParam('page', String(page + 1))}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30"
+                  className="p-1.5 border border-input rounded disabled:opacity-30 text-sm transition-colors"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -314,22 +531,22 @@ export default function KnowledgeListPage() {
       {/* Floating action bar for bulk operations */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
-          <div className="flex items-center gap-3 px-5 py-3 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg shadow-xl">
+          <div className="flex items-center gap-3 px-5 py-3 bg-foreground text-background rounded-lg shadow-xl">
             <span className="text-sm font-medium whitespace-nowrap">
               {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''} selected
             </span>
-            <div className="w-px h-5 bg-gray-700 dark:bg-gray-300" />
+            <div className="w-px h-5 bg-border" />
             <button
               onClick={() => setShowMoveToVault(true)}
               disabled={isBatchOperating}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 dark:bg-gray-200 hover:bg-gray-700 dark:hover:bg-gray-300 rounded disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/80 hover:bg-primary/70 rounded disabled:opacity-50 transition-colors"
             >
               <FolderInput size={14} /> Move to Vault
             </button>
             <button
               onClick={() => { setBatchError(''); batchReprocessMut.mutate(Array.from(selectedIds)) }}
               disabled={isBatchOperating}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 dark:bg-gray-200 hover:bg-gray-700 dark:hover:bg-gray-300 rounded disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/80 hover:bg-primary/70 rounded disabled:opacity-50 transition-colors"
             >
               <RefreshCw size={14} className={batchReprocessMut.isPending ? 'animate-spin' : ''} /> {batchReprocessMut.isPending ? 'Reprocessing...' : 'Reprocess'}
             </button>
@@ -343,7 +560,7 @@ export default function KnowledgeListPage() {
             <button
               onClick={() => setSelectedIds(new Set())}
               disabled={isBatchOperating}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-sm hover:bg-gray-800 dark:hover:bg-gray-200 rounded transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-sm hover:bg-primary/70 rounded transition-colors"
               title="Deselect all"
             >
               <X size={14} />
@@ -355,9 +572,9 @@ export default function KnowledgeListPage() {
       {/* Batch delete confirmation modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-sm w-full space-y-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold">Delete {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''}?</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Are you sure you want to delete {selectedIds.size} knowledge item{selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.
             </p>
             {batchError && (
@@ -367,7 +584,7 @@ export default function KnowledgeListPage() {
               <button
                 onClick={() => { setShowDeleteConfirm(false); setBatchError('') }}
                 disabled={batchDeleteMut.isPending}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm"
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
               >
                 Cancel
               </button>
@@ -392,30 +609,30 @@ export default function KnowledgeListPage() {
       {/* Move to vault modal */}
       {showMoveToVault && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-sm w-full space-y-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold">
               Move {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''} to vault
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Select a vault to move the selected items to.
             </p>
             {batchError && (
               <p className="text-red-600 dark:text-red-400 text-sm">{batchError}</p>
             )}
             <div className="space-y-2">
-              {vaults.isLoading ? (
-                <div className="h-10 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+              {moveVaults.isLoading ? (
+                <div className="h-10 bg-muted rounded animate-pulse" />
               ) : (
-                vaults.data?.vaults.map((vault) => (
+                moveVaults.data?.vaults.map((vault) => (
                   <button
                     key={vault.id}
                     onClick={() => batchMoveMut.mutate({ ids: Array.from(selectedIds), vaultId: vault.id })}
                     disabled={batchMoveMut.isPending}
-                    className="w-full text-left px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 text-sm transition-colors disabled:opacity-50"
+                    className="w-full text-left px-4 py-2.5 border border-border/60 rounded-md hover:bg-muted text-sm transition-colors disabled:opacity-50"
                   >
                     <span className="font-medium">{vault.name}</span>
                     {vault.description && (
-                      <span className="text-gray-500 dark:text-gray-400 ml-2">
+                      <span className="text-muted-foreground ml-2">
                         {vault.description}
                       </span>
                     )}
@@ -424,7 +641,7 @@ export default function KnowledgeListPage() {
               )}
             </div>
             {batchMoveMut.isPending && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 size={14} className="animate-spin" /> Moving items...
               </div>
             )}
@@ -432,7 +649,7 @@ export default function KnowledgeListPage() {
               <button
                 onClick={() => { setShowMoveToVault(false); setBatchError('') }}
                 disabled={batchMoveMut.isPending}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm"
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
               >
                 Cancel
               </button>

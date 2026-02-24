@@ -56,6 +56,7 @@ public class TopicService
                 SearchFacade.Truncate(k.Summary ?? k.Content, 200) ?? string.Empty,
                 k.Type.ToString(),
                 k.FilePath,
+                null, null, k.CreatedByUserId, null,
                 k.CreatedAt, k.UpdatedAt,
                 k.IsIndexed));
 

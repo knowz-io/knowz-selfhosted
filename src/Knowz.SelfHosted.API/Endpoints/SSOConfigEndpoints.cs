@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Knowz.Core.Interfaces;
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Models;
 
@@ -14,7 +15,8 @@ public static class SSOConfigEndpoints
         group.MapGet("/", async (HttpContext ctx, IConfigurationManagementService configSvc,
             ISelfHostedSSOService ssoService) =>
         {
-            if (!IsSuperAdmin(ctx)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(ctx))
+                return AuthorizationHelpers.Forbidden();
 
             var category = await configSvc.GetCategoryAsync("SSO");
             if (category is null)
@@ -43,7 +45,8 @@ public static class SSOConfigEndpoints
         group.MapPut("/", async (HttpContext ctx, IConfigurationManagementService configSvc,
             ISelfHostedSSOService ssoService, SelfHostedSSOConfigRequest request) =>
         {
-            if (!IsSuperAdmin(ctx)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(ctx))
+                return AuthorizationHelpers.Forbidden();
 
             var username = ctx.User.FindFirst(ClaimTypes.Name)?.Value ?? "unknown";
 
@@ -93,7 +96,8 @@ public static class SSOConfigEndpoints
 
         group.MapDelete("/", async (HttpContext ctx, IConfigurationManagementService configSvc) =>
         {
-            if (!IsSuperAdmin(ctx)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(ctx))
+                return AuthorizationHelpers.Forbidden();
 
             var username = ctx.User.FindFirst(ClaimTypes.Name)?.Value ?? "unknown";
 
@@ -113,7 +117,8 @@ public static class SSOConfigEndpoints
 
         group.MapPost("/test", async (HttpContext ctx, IConfigurationManagementService configSvc) =>
         {
-            if (!IsSuperAdmin(ctx)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(ctx))
+                return AuthorizationHelpers.Forbidden();
 
             var result = await configSvc.TestConnectionAsync("SSO");
 
@@ -130,17 +135,13 @@ public static class SSOConfigEndpoints
 
         group.MapGet("/mode", async (HttpContext ctx, ISelfHostedSSOService ssoService) =>
         {
-            if (!IsSuperAdmin(ctx)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(ctx))
+                return AuthorizationHelpers.Forbidden();
 
             var providers = await ssoService.GetEnabledProvidersAsync();
             var msProvider = providers.FirstOrDefault(p => p.Provider == "Microsoft");
 
             return Results.Ok(new { mode = msProvider?.Mode ?? "Disabled" });
         }).Produces(403);
-    }
-
-    private static bool IsSuperAdmin(HttpContext context)
-    {
-        return context.User.IsInRole("SuperAdmin");
     }
 }

@@ -50,19 +50,16 @@ export default function ApiKeysPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-gray-400" />
+        <Loader2 size={24} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold">API Keys</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Manage your personal API key for programmatic access to Knowz.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Manage your personal API key for programmatic access to Knowz.
+      </p>
 
       {/* New key banner - shown once after generation */}
       {newKey && (
@@ -77,7 +74,7 @@ export default function ApiKeysPage() {
                 Copy this key now. You will not be able to see it again.
               </p>
               <div className="mt-3 flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-green-300 dark:border-green-700 rounded text-sm font-mono break-all">
+                <code className="flex-1 px-3 py-2 bg-card border border-green-300 dark:border-green-700 rounded text-sm font-mono break-all">
                   {newKey}
                 </code>
                 <button
@@ -94,15 +91,15 @@ export default function ApiKeysPage() {
       )}
 
       {/* Current key status */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <div className="border border-border/60 rounded-xl shadow-sm p-5">
         <h2 className="text-lg font-semibold mb-4">Current API Key</h2>
 
         {keyStatus?.hasKey ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Key size={16} className="text-gray-400 shrink-0" />
-                <code className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded text-sm font-mono">
+                <Key size={16} className="text-muted-foreground shrink-0" />
+                <code className="px-3 py-1.5 bg-muted rounded text-sm font-mono">
                   {keyStatus.maskedKey}
                 </code>
               </div>
@@ -112,7 +109,7 @@ export default function ApiKeysPage() {
               <button
                 onClick={handleGenerate}
                 disabled={generateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {generateMutation.isPending ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -137,13 +134,13 @@ export default function ApiKeysPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               No API key generated yet. Generate one to access the Knowz API programmatically.
             </p>
             <button
               onClick={() => generateMutation.mutate()}
               disabled={generateMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {generateMutation.isPending ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -170,12 +167,12 @@ export default function ApiKeysPage() {
       {/* Confirm regenerate dialog */}
       {showConfirmGenerate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+          <div className="bg-card border border-border/60 rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-amber-500 mt-0.5 shrink-0" />
               <div>
                 <h3 className="font-semibold">Regenerate API Key?</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   This will invalidate your existing API key. Any applications using the current key will stop working.
                 </p>
               </div>
@@ -183,14 +180,14 @@ export default function ApiKeysPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setShowConfirmGenerate(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => generateMutation.mutate()}
                 disabled={generateMutation.isPending}
-                className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50"
               >
                 {generateMutation.isPending ? 'Generating...' : 'Regenerate'}
               </button>
@@ -202,12 +199,12 @@ export default function ApiKeysPage() {
       {/* Confirm revoke dialog */}
       {showConfirmRevoke && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+          <div className="bg-card border border-border/60 rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-red-500 mt-0.5 shrink-0" />
               <div>
                 <h3 className="font-semibold">Revoke API Key?</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   This will permanently revoke your API key. Any applications using this key will immediately lose access.
                 </p>
               </div>
@@ -215,14 +212,14 @@ export default function ApiKeysPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setShowConfirmRevoke(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => revokeMutation.mutate()}
                 disabled={revokeMutation.isPending}
-                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {revokeMutation.isPending ? 'Revoking...' : 'Revoke Key'}
               </button>
@@ -232,12 +229,12 @@ export default function ApiKeysPage() {
       )}
 
       {/* Usage instructions */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <div className="border border-border/60 rounded-xl shadow-sm p-5">
         <h2 className="text-lg font-semibold mb-3">Usage</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-          Include your API key in the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">X-Api-Key</code> header with each request:
+        <p className="text-sm text-muted-foreground mb-3">
+          Include your API key in the <code className="px-1.5 py-0.5 bg-muted rounded text-xs">X-Api-Key</code> header with each request:
         </p>
-        <pre className="px-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-mono overflow-x-auto">
+        <pre className="px-4 py-3 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
 {`curl -H "X-Api-Key: your-api-key" \\
   ${window.location.origin}/api/v1/knowledge`}
         </pre>

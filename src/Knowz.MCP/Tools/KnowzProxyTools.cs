@@ -253,7 +253,7 @@ public class KnowzProxyTools
     [McpServerTool(Name = "create_knowledge")]
     [Description("Save, store, create, add, remember, document, record, write, persist, or capture any information, notes, decisions, learnings, specs, documentation, or content for later retrieval. Use when the user wants to save something, document a decision, create a note, or store information. AI processing (summarization, entity extraction) runs automatically.")]
     public async Task<string> CreateKnowledge(
-        [Description("Content of the knowledge item (required)")] string content,
+        [Description("Content of the knowledge item (optional if file attachments will be added separately)")] string? content = null,
         [Description("Title for the knowledge item (optional)")] string? title = null,
         [Description("Knowledge type: Note, Document, Transcript, Image, Video, Audio (default: Note)")] string knowledgeType = "Note",
         [Description("Optional vault ID to store the item (defaults to tenant's default vault)")] string? vaultId = null,
@@ -270,10 +270,13 @@ public class KnowzProxyTools
 
         var args = new Dictionary<string, object>
         {
-            ["content"] = content,
             ["knowledgeType"] = knowledgeType
         };
 
+        if (!string.IsNullOrEmpty(content))
+        {
+            args["content"] = content;
+        }
         if (!string.IsNullOrEmpty(title))
         {
             args["title"] = title;

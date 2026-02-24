@@ -52,6 +52,36 @@ public class McpAuthMiddleware
             // to trigger the MCP OAuth flow in compliant clients (Claude Code, mcp-remote, etc.)
             if (context.Items["ApiKey"] is not string)
             {
+                var mcpSessionId = context.Request.Headers["Mcp-Session-Id"].FirstOrDefault();
+                var cookieSession = context.Request.Cookies["mcp_session"];
+                var hasAuthHeader = !string.IsNullOrEmpty(context.Request.Headers["Authorization"].FirstOrDefault());
+
+                // Determine the most likely cause to help users self-diagnose
+                string diagnosticHint;
+                if (!string.IsNullOrEmpty(mcpSessionId) || !string.IsNullOrEmpty(cookieSession))
+                {
+                    // Had a session but API key not found — session expired or server restarted
+                    diagnosticHint = "MCP session was found but the associated API key has expired or was lost (server restart). " +
+                                     "Re-authenticate by running the MCP login flow again.";
+                    _logger.LogWarning(
+                        "Auth failed on /mcp: session found (header={SessionHeader}, cookie={SessionCookie}) but no API key in store. " +
+                        "Likely cause: server restart or session expiry.",
+                        mcpSessionId ?? "(none)", cookieSession ?? "(none)");
+                }
+                else if (hasAuthHeader)
+                {
+                    // Sent an auth header but it wasn't a valid Knowz key format
+                    diagnosticHint = "Authorization header was provided but did not contain a valid Knowz API key. " +
+                                     "Ensure the Bearer token is a valid API key (starting with kz_, ukz_, or ksh_).";
+                    _logger.LogWarning("Auth failed on /mcp: Authorization header present but no valid Knowz API key extracted.");
+                }
+                else
+                {
+                    // No session, no auth header — first-time or client not sending credentials
+                    diagnosticHint = "No authentication credentials found. Complete the MCP OAuth login flow first.";
+                    _logger.LogWarning("Auth failed on /mcp: no session ID, no auth header, no fallback available.");
+                }
+
                 var baseUrl = Helpers.ApiKeyValidator.GetBaseUrl(context);
                 context.Response.StatusCode = 401;
                 context.Response.Headers["WWW-Authenticate"] =
@@ -59,7 +89,7 @@ public class McpAuthMiddleware
                 await context.Response.WriteAsJsonAsync(new
                 {
                     error = "unauthorized",
-                    error_description = "Authentication required. Use OAuth flow or provide Authorization: Bearer <api-key> header."
+                    error_description = diagnosticHint
                 });
                 return;
             }

@@ -136,7 +136,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="w-8 h-8 border-4 border-gray-300 dark:border-gray-600 border-t-gray-900 dark:border-t-white rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
       </div>
     )
   }
@@ -158,7 +158,33 @@ export function AdminRoute({ children }: AdminRouteProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="w-8 h-8 border-4 border-gray-300 dark:border-gray-600 border-t-gray-900 dark:border-t-white rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (user?.role !== UserRole.SuperAdmin && user?.role !== UserRole.Admin) {
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
+interface SuperAdminRouteProps {
+  children: ReactNode
+}
+
+export function SuperAdminRoute({ children }: SuperAdminRouteProps) {
+  const { user, isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
       </div>
     )
   }
@@ -168,7 +194,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
   }
 
   if (user?.role !== UserRole.SuperAdmin) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/admin" replace />
   }
 
   return <>{children}</>

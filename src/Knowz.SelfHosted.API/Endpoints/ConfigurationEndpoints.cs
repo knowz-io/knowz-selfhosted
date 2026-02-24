@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Knowz.Core.Interfaces;
+using Knowz.SelfHosted.API.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 namespace Knowz.SelfHosted.API.Endpoints;
@@ -12,13 +13,15 @@ public static class ConfigurationEndpoints
 
         group.MapGet("/categories", async (HttpContext context, IConfigurationManagementService svc) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             return Results.Ok(await svc.GetAllCategoriesAsync());
         }).Produces<List<ConfigCategoryDto>>().Produces(403);
 
         group.MapGet("/{category}", async (HttpContext context, IConfigurationManagementService svc, string category) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             var result = await svc.GetCategoryAsync(category);
             return result is null
                 ? Results.NotFound(new { error = "Category not found." })
@@ -27,7 +30,8 @@ public static class ConfigurationEndpoints
 
         group.MapPut("/{category}", async (HttpContext context, IConfigurationManagementService svc, string category, UpdateConfigRequest request) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
 
             var username = context.User.FindFirst(ClaimTypes.Name)?.Value ?? "unknown";
             try
@@ -51,27 +55,25 @@ public static class ConfigurationEndpoints
 
         group.MapPost("/health/{category}", async (HttpContext context, IConfigurationManagementService svc, string category) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             var result = await svc.TestConnectionAsync(category);
             return Results.Ok(result);
         }).Produces<ServiceHealthResult>().Produces(403);
 
         group.MapPost("/health", async (HttpContext context, IConfigurationManagementService svc) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             return Results.Ok(await svc.TestAllConnectionsAsync());
         }).Produces<List<ServiceHealthResult>>().Produces(403);
 
         group.MapGet("/status", (HttpContext context, IConfigurationManagementService svc) =>
         {
-            if (!IsSuperAdmin(context)) return Results.Json(new { error = "Forbidden." }, statusCode: 403);
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
             return Results.Ok(svc.GetDeploymentStatus());
         }).Produces<DeploymentStatusDto>().Produces(403);
-    }
-
-    private static bool IsSuperAdmin(HttpContext context)
-    {
-        return context.User.IsInRole("SuperAdmin");
     }
 }
 

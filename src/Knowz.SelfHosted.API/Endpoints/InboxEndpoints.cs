@@ -1,3 +1,4 @@
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.API.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
@@ -11,27 +12,37 @@ public static class InboxEndpoints
     {
         // POST /api/inbox -- create (existing)
         app.MapPost("/api/v1/inbox", async (
-            InboxService svc, CreateInboxItemRequest req, CancellationToken ct) =>
+            InboxService svc, HttpContext context, CreateInboxItemRequest req, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.Body))
                 return Results.BadRequest(new { error = "body is required" });
 
-            var result = await svc.CreateInboxItemAsync(req.Body, ct);
+            var userId = AuthorizationHelpers.GetCallerId(context);
+            var result = await svc.CreateInboxItemAsync(req.Body, userId, ct);
             return Results.Created($"/api/v1/inbox/{result.Id}", result);
         }).WithTags("Inbox").Produces<InboxItemResult>(201).Produces(400);
 
         // GET /api/inbox -- list (paginated, searchable, filterable)
         app.MapGet("/api/v1/inbox", async (
             InboxService svc,
+            HttpContext context,
             int page, int pageSize,
             string? search, string? type,
+            string? userFilter,
             CancellationToken ct) =>
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 20;
             if (pageSize > 100) pageSize = 100;
 
-            var result = await svc.ListInboxItemsAsync(page, pageSize, search, type, ct);
+            var callerUserId = AuthorizationHelpers.GetCallerId(context);
+            var isCallerAdmin = AuthorizationHelpers.IsAdminOrAbove(context);
+
+            // If admin requests "mine", treat as non-admin for filtering purposes
+            if (string.Equals(userFilter, "mine", StringComparison.OrdinalIgnoreCase))
+                isCallerAdmin = false;
+
+            var result = await svc.ListInboxItemsAsync(page, pageSize, search, type, callerUserId, isCallerAdmin, ct);
             return Results.Ok(result);
         }).WithTags("Inbox").Produces<InboxListResponse>();
 

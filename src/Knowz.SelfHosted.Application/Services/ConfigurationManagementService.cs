@@ -213,6 +213,9 @@ public class ConfigurationManagementService : IConfigurationManagementService
                 case "SSO":
                     await TestSSOConnectionAsync(dbEntries, result);
                     break;
+                case "KnowzPlatform":
+                    await TestKnowzPlatformAsync(dbEntries, result);
+                    break;
                 default:
                     result.IsHealthy = true;
                     result.Status = "No connectivity test available";
@@ -620,6 +623,45 @@ public class ConfigurationManagementService : IConfigurationManagementService
         }
     }
 
+    private async Task TestKnowzPlatformAsync(List<SystemConfiguration> dbEntries, ServiceHealthResult result)
+    {
+        var isEnabled = GetDecryptedValue(dbEntries, "Enabled");
+        if (isEnabled?.ToLower() != "true")
+        {
+            result.IsHealthy = true;
+            result.Status = "Knowz Platform is disabled";
+            return;
+        }
+
+        var baseUrl = GetDecryptedValue(dbEntries, "BaseUrl");
+        var apiKey = GetDecryptedValue(dbEntries, "ApiKey");
+
+        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            result.IsHealthy = false;
+            result.Status = "BaseUrl or ApiKey not configured";
+            return;
+        }
+
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        httpClient.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var response = await httpClient.GetAsync($"{baseUrl.TrimEnd('/')}/api/v1/ai-services/pricing");
+        sw.Stop();
+
+        if (response.IsSuccessStatusCode)
+        {
+            result.IsHealthy = true;
+            result.Status = $"Connected ({sw.ElapsedMilliseconds}ms)";
+        }
+        else
+        {
+            result.IsHealthy = false;
+            result.Status = $"Platform returned HTTP {(int)response.StatusCode}: {response.ReasonPhrase}";
+        }
+    }
+
     private string? GetDecryptedValue(List<SystemConfiguration> entries, string key)
     {
         var entry = entries.FirstOrDefault(e => e.Key == key);
@@ -721,6 +763,31 @@ public class ConfigurationManagementService : IConfigurationManagementService
             {
                 ["VaultUri"] = new() { IsSecret = false, RequiresRestart = true, Description = "Key Vault URI (e.g., https://my-vault.vault.azure.net/)" },
                 ["Enabled"] = new() { IsSecret = false, RequiresRestart = true, Description = "Enable Key Vault integration (true/false)" }
+            }
+        },
+        ["KnowzPlatform"] = new CategorySchema
+        {
+            DisplayName = "Knowz Platform",
+            Description = "Connect to Knowz platform for AI services (alternative to Azure OpenAI + Azure AI Search)",
+            Keys = new Dictionary<string, KeySchema>
+            {
+                ["Enabled"] = new() { IsSecret = false, RequiresRestart = true, Description = "Enable platform AI proxy (true/false)" },
+                ["BaseUrl"] = new() { IsSecret = false, RequiresRestart = true, Description = "Platform API base URL (e.g., https://api.knowz.io)" },
+                ["ApiKey"] = new() { IsSecret = true, RequiresRestart = true, Description = "Platform API key (starts with ukz_)" }
+            }
+        },
+        ["Inbox"] = new CategorySchema
+        {
+            DisplayName = "Inbox",
+            Description = "Inbox visibility and behavior settings",
+            Keys = new Dictionary<string, KeySchema>
+            {
+                ["VisibilityScope"] = new()
+                {
+                    IsSecret = false,
+                    RequiresRestart = false,
+                    Description = "Inbox visibility scope: Shared (all users see all items) or PerUser (users see only their own items)"
+                }
             }
         },
         ["SSO"] = new CategorySchema

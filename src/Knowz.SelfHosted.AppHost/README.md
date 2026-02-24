@@ -13,10 +13,10 @@ Dedicated .NET Aspire orchestrator for the self-hosted scenario. Starts everythi
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [.NET Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling): `dotnet workload install aspire`
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for SQL Server container)
-- [Node.js 20+](https://nodejs.org/) (for the web client)
+- [Node.js 22+](https://nodejs.org/) (for the web client)
 
 ## Quick Start (no AI credentials needed)
 
@@ -25,10 +25,80 @@ Dedicated .NET Aspire orchestrator for the self-hosted scenario. Starts everythi
 cd src/knowz-selfhosted-web && npm install && cd ../..
 
 # 2. Start everything
-dotnet run --project src/Knowz.SelfHosted.AppHost
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
 ```
 
 This starts the full stack immediately. Auth, admin, CRUD, import/export, and the web UI all work without any AI credentials. Search and AI features (Q&A, embeddings, summarization) return "not configured" responses until you add credentials.
+
+## AI Services Configuration
+
+The selfhosted API uses a **three-tier fallback** for AI services:
+
+| Tier | Name | What it provides | Config needed |
+|------|------|-----------------|---------------|
+| 1 | **Knowz Platform Proxy** | AI via platform API, local keyword search | 3 values |
+| 2 | **Direct Azure** | Full AI + vector search via your own Azure resources | 7 values |
+| 3 | **NoOp** (default) | AI disabled, auth/admin/CRUD still work | None |
+
+### Tier 1: Knowz Platform Proxy (simplest)
+
+Delegates AI operations (completions, embeddings, summarization, enrichment) to the Knowz Platform API. Search uses local keyword matching. Best for quick setup without managing Azure resources.
+
+```bash
+cd src/Knowz.SelfHosted.AppHost
+dotnet user-secrets set "KnowzPlatform:Enabled" "true"
+dotnet user-secrets set "KnowzPlatform:BaseUrl" "https://api.dev.knowz.io"
+dotnet user-secrets set "KnowzPlatform:ApiKey" "ukz_your_api_key"
+```
+
+### Tier 2: Direct Azure OpenAI + Azure AI Search (full-featured)
+
+Uses your own Azure resources for AI and vector search. Provides the best search quality (hybrid vector + keyword) and full enrichment pipeline.
+
+```bash
+cd src/Knowz.SelfHosted.AppHost
+
+# Azure OpenAI (completions, embeddings, summarization)
+dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-openai.openai.azure.com/"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
+dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
+dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
+
+# Azure AI Search (hybrid vector + keyword search)
+dotnet user-secrets set "AzureAISearch:Endpoint" "https://your-search.search.windows.net/"
+dotnet user-secrets set "AzureAISearch:ApiKey" "your-key"
+dotnet user-secrets set "AzureAISearch:IndexName" "knowledge"
+```
+
+### Tier comparison
+
+| Feature | Tier 1 (Platform) | Tier 2 (Azure) | Tier 3 (NoOp) |
+|---------|-------------------|----------------|----------------|
+| Completions/Chat | Via platform API | Direct Azure OpenAI | Disabled |
+| Embeddings | Via platform API | Direct Azure OpenAI | Disabled |
+| Summarization | Via platform API | Local with Azure OpenAI | Disabled |
+| Entity extraction | Via platform API | Local with Azure OpenAI | Disabled |
+| Enrichment pipeline | Full (via platform) | Full (direct) | Disabled |
+| Search | Keyword (SQL LIKE) | **Vector + keyword hybrid** | Disabled |
+| Setup complexity | 3 config values | 7 config values | None |
+
+### Alternative: appsettings.Local.json
+
+Instead of user-secrets, you can create `appsettings.Local.json` in the API project (gitignored):
+
+```bash
+cp src/Knowz.SelfHosted.API/appsettings.Local.json.example \
+   src/Knowz.SelfHosted.API/appsettings.Local.json
+# Edit with your credentials
+```
+
+Both approaches work. User-secrets are managed by the AppHost and injected as environment variables (highest priority). `appsettings.Local.json` is read directly by the API project.
+
+### Verify secrets are set
+
+```bash
+dotnet user-secrets list --project src/Knowz.SelfHosted.AppHost
+```
 
 ## Setup
 
@@ -40,48 +110,47 @@ npm install
 cd ../..
 ```
 
-### 2. (Optional) Configure AI credentials via user-secrets
+### 2. (Optional) Configure AI credentials
 
-AI credentials enable search and AI features. Without them, the API runs with NoOp services — all non-AI features work normally.
-
-```bash
-# Azure OpenAI (enables Q&A, embeddings, summarization)
-dotnet user-secrets set "Parameters:azure-openai-endpoint" "https://your-openai.openai.azure.com/" --project src/Knowz.SelfHosted.AppHost
-dotnet user-secrets set "Parameters:azure-openai-apikey" "<your-openai-key>" --project src/Knowz.SelfHosted.AppHost
-
-# Azure AI Search (enables hybrid search, indexing)
-dotnet user-secrets set "Parameters:azure-ai-search-endpoint" "https://your-search.search.windows.net" --project src/Knowz.SelfHosted.AppHost
-dotnet user-secrets set "Parameters:azure-ai-search-apikey" "<your-search-key>" --project src/Knowz.SelfHosted.AppHost
-dotnet user-secrets set "Parameters:azure-ai-search-indexname" "knowledge" --project src/Knowz.SelfHosted.AppHost
-```
-
-You can configure OpenAI and Search independently — each service falls back to NoOp when its credentials are missing.
-
-### 3. Verify secrets are set
-
-```bash
-dotnet user-secrets list --project src/Knowz.SelfHosted.AppHost
-```
+See [AI Services Configuration](#ai-services-configuration) above.
 
 ## Run
 
 ```bash
-dotnet run --project src/Knowz.SelfHosted.AppHost
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
 ```
 
 This starts:
-1. **SQL Server container** — with `McpDb` database (auto-created by Aspire)
-2. **Self-Hosted API** — applies EF Core migrations automatically (`Database__AutoMigrate=true`), seeds SuperAdmin user. AI credentials injected only if configured.
-3. **Self-Hosted Web Client** — Vite dev server with hot reload, proxies `/api` requests to the API
-4. **Aspire Dashboard** — opens in browser automatically (traces, logs, metrics for all resources)
+1. **SQL Server container** -- with `McpDb` database (auto-created by Aspire)
+2. **Self-Hosted API** -- applies EF Core migrations automatically (`Database__AutoMigrate=true`), seeds SuperAdmin user. AI credentials injected only if configured.
+3. **Self-Hosted Web Client** -- Vite dev server with hot reload, proxies `/api` requests to the API
+4. **Aspire Dashboard** -- opens in browser automatically (traces, logs, metrics for all resources)
 
 ## How it works
 
 - **SQL Server**: Aspire starts a containerized SQL Server and creates `McpDb`. The connection string is injected into the API automatically via `ConnectionStrings:McpDb`.
 - **Auto-migration**: On startup, the API runs `Database.MigrateAsync()` to apply all pending EF Core migrations. If migration fails (e.g., SQL still starting), it logs a warning and continues.
 - **SuperAdmin seeding**: After migration, the API seeds the SuperAdmin user from `appsettings.json` config.
-- **AI credentials**: Read from user-secrets and conditionally injected into the API as environment variables. If not configured, no AI env vars are set, the API reads empty values from `appsettings.json`, and NoOp service implementations are used (search and AI features gracefully disabled). OpenAI and Search can be configured independently.
+- **AI services**: The AppHost reads AI config from user-secrets and conditionally injects environment variables into the API. The API's three-tier fallback (Platform > Azure > NoOp) determines which services are registered. OpenAI and Search can be configured independently.
 - **Web client**: The Vite dev server proxies `/api` requests to `localhost:5000` (the API's fixed port).
+
+## Modes
+
+### Local Mode (default, recommended for development)
+
+Spins up a SQL Server container. AI features require either Platform proxy or Azure credentials.
+
+```bash
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
+```
+
+### Azure Mode (requires deployed Azure resources)
+
+No containers -- reads all connection strings from config. Use after running the [deploy script](../../README.md#azure-deployment).
+
+```bash
+dotnet run --project src/Knowz.SelfHosted.AppHost
+```
 
 ## Ports
 

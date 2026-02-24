@@ -44,8 +44,6 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <h1 className="text-2xl font-bold">Settings</h1>
-
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">API URL</label>
@@ -54,9 +52,9 @@ export default function SettingsPage() {
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
             placeholder={window.location.origin}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm"
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Leave empty to use the current origin ({window.location.origin})
           </p>
         </div>
@@ -69,18 +67,18 @@ export default function SettingsPage() {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter API key..."
-              className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm"
+              className="w-full px-3 py-2 pr-10 border border-input rounded-md bg-card text-sm"
             />
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
               aria-label={showKey ? "Hide API key" : "Show API key"}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
             >
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Required if the API has authentication enabled. Sent as X-Api-Key header.
           </p>
         </div>
@@ -88,14 +86,14 @@ export default function SettingsPage() {
         <div className="flex gap-3">
           <button
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
           >
             <Save size={16} /> {saved ? 'Saved!' : 'Save'}
           </button>
           <button
             onClick={handleTest}
             disabled={testStatus === 'testing'}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-md text-sm font-medium disabled:opacity-50 transition-colors"
           >
             {testStatus === 'testing' && <Loader2 size={16} className="animate-spin" />}
             {testStatus === 'success' && <CheckCircle size={16} className="text-green-600" />}

@@ -64,18 +64,18 @@ function CommentItem({
   const isReplying = replyingTo === comment.id
 
   return (
-    <div className={isReply ? 'ml-8 border-l-2 border-gray-200 dark:border-gray-700 pl-4' : ''}>
+    <div className={isReply ? 'ml-8 border-l-2 border-border pl-4' : ''}>
       <div className="py-3">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium">{comment.authorName}</span>
-          <span className="text-xs text-gray-400">{timeAgo(comment.createdAt)}</span>
+          <span className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</span>
           {comment.sentiment && (
-            <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
+            <span className="text-xs px-1.5 py-0.5 bg-muted rounded">
               {comment.sentiment}
             </span>
           )}
           {comment.attachmentCount > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-xs text-gray-400">
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
               <Paperclip size={10} />
               <span>{comment.attachmentCount}</span>
             </span>
@@ -87,21 +87,21 @@ function CommentItem({
             <textarea
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
               rows={3}
             />
             <div className="flex gap-2">
               <button
                 onClick={onEditSave}
                 disabled={!editBody.trim() || isMutating}
-                className="px-3 py-1 text-xs bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded disabled:opacity-50"
+                className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
                 aria-label="Save"
               >
                 Save
               </button>
               <button
                 onClick={() => setEditingId(null)}
-                className="px-3 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded"
+                className="px-3 py-1 text-xs border border-input rounded-lg hover:bg-muted transition-colors"
                 aria-label="Cancel edit"
               >
                 Cancel
@@ -109,24 +109,24 @@ function CommentItem({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-700 dark:text-gray-300">{comment.body}</p>
+          <p className="text-sm">{comment.body}</p>
         )}
 
         {isDeleting && (
-          <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm">
+          <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm">
             <p className="text-red-700 dark:text-red-300">Are you sure you want to delete this contribution?</p>
             <div className="flex gap-2 mt-2">
               <button
                 onClick={onDeleteConfirm}
                 disabled={isMutating}
-                className="px-3 py-1 text-xs bg-red-600 text-white rounded disabled:opacity-50"
+                className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg disabled:opacity-50"
                 aria-label="Confirm"
               >
                 Confirm
               </button>
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-3 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded"
+                className="px-3 py-1 text-xs border border-input rounded-lg hover:bg-muted transition-colors"
                 aria-label="Cancel"
               >
                 Cancel
@@ -143,7 +143,7 @@ function CommentItem({
                   setReplyingTo(isReplying ? null : comment.id)
                   setReplyBody('')
                 }}
-                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Reply"
               >
                 Reply
@@ -154,14 +154,14 @@ function CommentItem({
                 setEditingId(comment.id)
                 setEditBody(comment.body)
               }}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Edit"
             >
               Edit
             </button>
             <button
               onClick={() => setDeleteConfirmId(comment.id)}
-              className="text-xs text-gray-400 hover:text-red-500"
+              className="text-xs text-muted-foreground hover:text-red-500 transition-colors"
               aria-label="Delete"
             >
               Delete
@@ -175,21 +175,21 @@ function CommentItem({
               value={replyBody}
               onChange={(e) => setReplyBody(e.target.value)}
               placeholder="Write a reply..."
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
               rows={2}
             />
             <div className="flex gap-2">
               <button
                 onClick={onReplySubmit}
                 disabled={!replyBody.trim() || isMutating}
-                className="px-3 py-1 text-xs bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded disabled:opacity-50"
+                className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
                 aria-label="Submit"
               >
                 Submit
               </button>
               <button
                 onClick={() => setReplyingTo(null)}
-                className="px-3 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded"
+                className="px-3 py-1 text-xs border border-input rounded-lg hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
@@ -296,12 +296,12 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   }
 
   return (
-    <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-3">
+    <div className="bg-card border border-border/60 rounded-xl p-4 space-y-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <MessageSquare size={16} className="text-gray-500" />
+        <MessageSquare size={16} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold">Contributions</h2>
         {comments && comments.length > 0 && (
-          <span className="text-xs text-gray-400">({comments.length})</span>
+          <span className="text-xs text-muted-foreground">({comments.length})</span>
         )}
       </div>
 
@@ -311,13 +311,13 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
           value={newBody}
           onChange={(e) => setNewBody(e.target.value)}
           placeholder="Add a contribution..."
-          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
+          className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
           rows={3}
         />
         <button
           onClick={handleAddComment}
           disabled={!newBody.trim() || addMut.isPending}
-          className="px-4 py-1.5 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md font-medium disabled:opacity-50"
+          className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {addMut.isPending ? 'Adding...' : 'Add Contribution'}
         </button>
@@ -332,10 +332,10 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
       {/* Comments list */}
       {isLoading ? (
         <div className="flex items-center justify-center py-4">
-          <Loader2 size={16} className="animate-spin text-gray-400" />
+          <Loader2 size={16} className="animate-spin text-muted-foreground" />
         </div>
       ) : comments && comments.length > 0 ? (
-        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        <div className="divide-y divide-border">
           {comments.map((comment) => (
             <CommentItem
               key={comment.id}
@@ -360,7 +360,7 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-gray-400 py-2">No contributions yet. Be the first to add one.</p>
+        <p className="text-xs text-muted-foreground py-2">No contributions yet. Be the first to add one.</p>
       )}
     </div>
   )

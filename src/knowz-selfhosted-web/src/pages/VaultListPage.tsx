@@ -53,7 +53,7 @@ export default function VaultListPage() {
         </p>
         <button
           onClick={() => refetch()}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
         >
           <RefreshCw size={16} /> Retry
         </button>
@@ -67,7 +67,7 @@ export default function VaultListPage() {
         <h1 className="text-2xl font-bold">Vaults</h1>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
         >
           <Plus size={16} /> Create Vault
         </button>
@@ -76,15 +76,15 @@ export default function VaultListPage() {
       {/* Create Vault Modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
               <h2 className="text-lg font-semibold">Create Vault</h2>
               <button
                 onClick={() => {
                   setShowCreate(false)
                   setCreateError('')
                 }}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="p-1 rounded hover:bg-muted transition-colors"
               >
                 <X size={20} />
               </button>
@@ -97,7 +97,7 @@ export default function VaultListPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="My Vault"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   autoFocus
                   required
                 />
@@ -109,7 +109,7 @@ export default function VaultListPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Optional description..."
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white resize-none"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>
               <div>
@@ -117,7 +117,7 @@ export default function VaultListPage() {
                 <select
                   value={vaultType}
                   onChange={(e) => setVaultType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="">General Knowledge</option>
                   <option value="Business">Business</option>
@@ -139,14 +139,14 @@ export default function VaultListPage() {
                     setShowCreate(false)
                     setCreateError('')
                   }}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted rounded-md transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!name.trim() || createMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
                   {createMutation.isPending ? 'Creating...' : 'Create'}
                 </button>
@@ -159,7 +159,7 @@ export default function VaultListPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+            <div key={i} className="h-32 bg-muted rounded-xl animate-pulse" />
           ))}
         </div>
       ) : (
@@ -168,10 +168,10 @@ export default function VaultListPage() {
             <Link
               key={vault.id}
               to={`/vaults/${vault.id}`}
-              className="block p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-gray-400 dark:hover:border-gray-600 transition-colors"
+              className="block p-5 bg-card border border-border/60 rounded-xl hover:shadow-md transition-all"
             >
               <div className="flex items-center gap-3 mb-2">
-                <Archive size={18} className="text-gray-400" />
+                <Archive size={18} className="text-muted-foreground" />
                 <h3 className="font-semibold">{vault.name}</h3>
                 {vault.isDefault && (
                   <span className="px-1.5 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
@@ -180,22 +180,22 @@ export default function VaultListPage() {
                 )}
               </div>
               {vault.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
                   {vault.description}
                 </p>
               )}
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {vault.knowledgeCount ?? 0} items
               </p>
               {vault.vaultType && (
-                <span className="inline-block mt-2 px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 rounded">
+                <span className="inline-block mt-2 px-2 py-0.5 text-xs bg-muted rounded">
                   {vault.vaultType}
                 </span>
               )}
             </Link>
           ))}
           {data?.vaults.length === 0 && (
-            <p className="text-gray-500 dark:text-gray-400 col-span-full text-center py-8">
+            <p className="text-muted-foreground col-span-full text-center py-8">
               No vaults found. Create one to get started.
             </p>
           )}

@@ -18,7 +18,7 @@ export default function DashboardPage() {
         </p>
         <button
           onClick={() => { stats.refetch(); vaults.refetch() }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
         >
           <RefreshCw size={16} /> Retry
         </button>
@@ -34,7 +34,7 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+            <div key={i} className="h-28 bg-muted rounded-xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -49,27 +49,33 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
-          <div className="flex items-center gap-3 mb-2 text-gray-500 dark:text-gray-400">
-            <BookOpen size={18} />
-            <span className="text-sm font-medium">Knowledge Items</span>
+        <div className="p-5 bg-card border border-border/60 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <BookOpen size={18} className="text-primary" />
+            </div>
+            <span className="text-sm font-medium text-muted-foreground">Knowledge Items</span>
           </div>
           <p className="text-3xl font-bold">{s?.totalKnowledgeItems ?? 0}</p>
         </div>
 
-        <div className="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
-          <div className="flex items-center gap-3 mb-2 text-gray-500 dark:text-gray-400">
-            <Archive size={18} />
-            <span className="text-sm font-medium">Vaults</span>
+        <div className="p-5 bg-card border border-border/60 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Archive size={18} className="text-primary" />
+            </div>
+            <span className="text-sm font-medium text-muted-foreground">Vaults</span>
           </div>
           <p className="text-3xl font-bold">{v.length}</p>
         </div>
 
         {s?.dateRange && (
-          <div className="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
-            <div className="flex items-center gap-3 mb-2 text-gray-500 dark:text-gray-400">
-              <Calendar size={18} />
-              <span className="text-sm font-medium">Date Range</span>
+          <div className="p-5 bg-card border border-border/60 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Calendar size={18} className="text-primary" />
+              </div>
+              <span className="text-sm font-medium text-muted-foreground">Date Range</span>
             </div>
             <p className="text-sm">
               {new Date(s.dateRange.earliest).toLocaleDateString()} &mdash;{' '}
@@ -86,9 +92,9 @@ export default function DashboardPage() {
             {s.byType.map(({ type, count }) => (
               <div
                 key={type}
-                className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"
+                className="p-3 bg-card border border-border/60 rounded-xl shadow-sm"
               >
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{type}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{type}</p>
                 <p className="text-xl font-bold mt-1">{count}</p>
               </div>
             ))}
@@ -103,15 +109,15 @@ export default function DashboardPage() {
             {v.map((vault) => (
               <div
                 key={vault.id}
-                className="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg"
+                className="p-4 bg-card border border-border/60 rounded-xl shadow-sm hover:shadow-md transition-shadow"
               >
                 <p className="font-medium">{vault.name}</p>
                 {vault.description && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                     {vault.description}
                   </p>
                 )}
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   {vault.knowledgeCount ?? 0} items
                 </p>
               </div>

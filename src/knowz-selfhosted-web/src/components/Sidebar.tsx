@@ -5,54 +5,64 @@ import {
   BookOpen,
   Archive,
   Search,
-  MessageCircleQuestion,
   MessagesSquare,
   Inbox,
   FileText,
-  Tags,
-  Tag,
-  Contact,
-  UserCircle,
+  Layers,
   Settings,
-  Key,
-  Database,
-  Plug,
   X,
   Shield,
   Building2,
   Users,
   LogOut,
   ArrowLeftRight,
+  Wrench,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api-client'
 import { UserRole } from '../lib/types'
+import { useTheme } from '../lib/theme'
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/knowledge', label: 'Knowledge', icon: BookOpen },
-  { path: '/vaults', label: 'Vaults', icon: Archive },
-  { path: '/search', label: 'Search', icon: Search },
-  { path: '/ask', label: 'Ask', icon: MessageCircleQuestion },
-  { path: '/chat', label: 'Chat', icon: MessagesSquare },
-  { path: '/inbox', label: 'Inbox', icon: Inbox },
-  { path: '/files', label: 'Files', icon: FileText },
-  { path: '/topics', label: 'Topics', icon: Tags },
-  { path: '/tags', label: 'Tags', icon: Tag },
-  { path: '/entities', label: 'Entities', icon: Contact },
-  { path: '/account', label: 'Account', icon: UserCircle },
-  { path: '/settings', label: 'Settings', icon: Settings },
-  { path: '/api-keys', label: 'API Keys', icon: Key },
-  { path: '/data', label: 'Data', icon: Database },
-  { path: '/mcp-setup', label: 'MCP Setup', icon: Plug },
+interface NavSection {
+  label?: string
+  items: { path: string; label: string; icon: React.ComponentType<{ size?: number }> }[]
+}
+
+const navSections: NavSection[] = [
+  {
+    items: [
+      { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/chat', label: 'Chat', icon: MessagesSquare },
+    ],
+  },
+  {
+    label: 'Knowledge',
+    items: [
+      { path: '/knowledge', label: 'Knowledge', icon: BookOpen },
+      { path: '/vaults', label: 'Vaults', icon: Archive },
+      { path: '/files', label: 'Files', icon: FileText },
+      { path: '/inbox', label: 'Inbox', icon: Inbox },
+    ],
+  },
+  {
+    label: 'Discover',
+    items: [
+      { path: '/search', label: 'Search', icon: Search },
+      { path: '/organize', label: 'Organize', icon: Layers },
+    ],
+  },
 ]
 
+const settingsItem = { path: '/settings', label: 'Settings', icon: Settings }
+
 const adminItems = [
-  { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/admin', label: 'Overview', icon: LayoutDashboard },
   { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
   { path: '/admin/users', label: 'Users', icon: Users },
   { path: '/admin/sso', label: 'SSO', icon: Shield },
-  { path: '/admin/settings', label: 'Settings', icon: Settings },
+  { path: '/admin/settings', label: 'Configuration', icon: Wrench },
 ]
 
 const roleLabels: Record<number, string> = {
@@ -64,7 +74,7 @@ const roleLabels: Record<number, string> = {
 const roleBadgeStyles: Record<number, string> = {
   [UserRole.SuperAdmin]: 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400',
   [UserRole.Admin]: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400',
-  [UserRole.User]: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+  [UserRole.User]: 'bg-muted text-muted-foreground',
 }
 
 interface SidebarProps {
@@ -75,7 +85,10 @@ interface SidebarProps {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const { user, isAuthenticated, logout, activeTenantId, setActiveTenantId } = useAuth()
   const isSuperAdmin = user?.role === UserRole.SuperAdmin
+  const isAdmin = user?.role === UserRole.Admin
+  const showAdmin = isSuperAdmin || isAdmin
   const queryClient = useQueryClient()
+  const { theme, toggle: toggleTheme } = useTheme()
 
   const { data: tenants } = useQuery({
     queryKey: ['admin', 'tenants-sidebar'],
@@ -95,6 +108,13 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     queryClient.invalidateQueries()
   }
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
+      isActive
+        ? 'bg-primary/10 text-primary'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+    }`
+
   return (
     <>
       {open && (
@@ -105,19 +125,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
       <aside
         className={`
-          fixed top-0 left-0 z-40 h-full w-60 bg-gray-50 dark:bg-gray-900
-          border-r border-gray-200 dark:border-gray-800
+          fixed top-0 left-0 z-40 h-full w-60 bg-card shadow-sm
+          border-r
           transform transition-transform duration-200
           lg:translate-x-0 lg:static lg:z-auto
           ${open ? 'translate-x-0' : '-translate-x-full'}
           flex flex-col
         `}
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between h-14 px-4 border-b">
           <span className="text-lg font-semibold">Knowz</span>
           <button
             onClick={onClose}
-            className="lg:hidden p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="lg:hidden p-1 rounded hover:bg-muted transition-colors"
             aria-label="Close sidebar"
           >
             <X size={20} />
@@ -125,8 +145,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         {/* SuperAdmin Tenant Selector */}
-        {isSuperAdmin && tenants && tenants.length > 1 && (
-          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800">
+        {isSuperAdmin && tenants && tenants.length > 0 && (
+          <div className="px-3 py-2 border-b">
             <div className="flex items-center gap-1.5 mb-1">
               <ArrowLeftRight size={12} className="text-purple-500" />
               <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">
@@ -136,7 +156,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <select
               value={activeTenantId ?? ''}
               onChange={handleTenantChange}
-              className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+              className="w-full px-2 py-1.5 text-xs border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">My Tenant ({user?.tenantName ?? 'Default'})</option>
               {tenants.map((t) => (
@@ -154,59 +174,79 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         )}
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end={path === '/'}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
-                }`
-              }
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
-          ))}
-
-          {/* Admin Section */}
-          {isSuperAdmin && (
-            <>
-              <div className="pt-4 pb-1 px-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  <Shield size={12} />
-                  Administration
+          {navSections.map((section, si) => (
+            <div key={si}>
+              {section.label && (
+                <div className="pt-4 pb-1 px-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {section.label}
+                  </span>
                 </div>
-              </div>
-              {adminItems.map(({ path, label, icon: Icon }) => (
+              )}
+              {section.items.map(({ path, label, icon: Icon }) => (
                 <NavLink
                   key={path}
                   to={path}
-                  end={path === '/admin'}
+                  end={path === '/'}
                   onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
-                    }`
-                  }
+                  className={navLinkClass}
                 >
                   <Icon size={18} />
                   {label}
                 </NavLink>
               ))}
-            </>
-          )}
+            </div>
+          ))}
+
+          {/* Settings - positioned before admin */}
+          <div className="pt-4 pb-1 px-3">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Settings
+            </span>
+          </div>
+          <NavLink
+            to={settingsItem.path}
+            onClick={onClose}
+            className={navLinkClass}
+          >
+            <settingsItem.icon size={18} />
+            {settingsItem.label}
+          </NavLink>
+
+          {/* Admin Section */}
+          {showAdmin && (() => {
+            const superAdminOnlyPaths = new Set(['/admin/tenants', '/admin/sso', '/admin/settings'])
+            const visibleAdminItems = isSuperAdmin
+              ? adminItems
+              : adminItems.filter(item => !superAdminOnlyPaths.has(item.path))
+            return (
+              <>
+                <div className="pt-4 pb-1 px-3">
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <Shield size={12} />
+                    Administration
+                  </div>
+                </div>
+                {visibleAdminItems.map(({ path, label, icon: Icon }) => (
+                  <NavLink
+                    key={path}
+                    to={path}
+                    end={path === '/admin'}
+                    onClick={onClose}
+                    className={navLinkClass}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </NavLink>
+                ))}
+              </>
+            )
+          })()}
         </nav>
 
         {/* User Info & Logout */}
         {isAuthenticated && user && (
-          <div className="border-t border-gray-200 dark:border-gray-800 p-3">
+          <div className="border-t p-3">
             <div className="flex items-center gap-3 px-2 py-2">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
@@ -221,8 +261,15 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 </span>
               </div>
               <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button
                 onClick={logout}
-                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 title="Sign out"
               >
                 <LogOut size={16} />

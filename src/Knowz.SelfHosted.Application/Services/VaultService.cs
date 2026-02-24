@@ -182,7 +182,8 @@ public class VaultService
                 k.Id, k.Title,
                 k.Summary ?? (k.Content.Length > 200 ? k.Content.Substring(0, 200) : k.Content),
                 k.Type.ToString(),
-                k.FilePath, k.CreatedAt, k.UpdatedAt,
+                k.FilePath, null, null, k.CreatedByUserId, null,
+                k.CreatedAt, k.UpdatedAt,
                 k.IsIndexed))
             .ToListAsync(ct);
 

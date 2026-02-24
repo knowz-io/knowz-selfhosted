@@ -1,6 +1,7 @@
 # Knowz Self-Hosted
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2FcreateUiDefinition.json)
 
 Knowz is a self-hosted knowledge management platform with AI-powered search, chat, and a Model Context Protocol (MCP) server for AI tool integration.
 
@@ -103,31 +104,41 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all environment variabl
 
 ### Option A: Aspire AppHost (Recommended)
 
-The Aspire AppHost orchestrates all services with a dashboard UI. Two modes are available:
-
-#### Local Mode (SQL container, no Azure required)
-
-Spins up a SQL Server container automatically. AI features (search, chat, enrichment) require Azure OpenAI/Search config in `appsettings.Local.json`.
+The Aspire AppHost orchestrates all services with a dashboard UI.
 
 ```bash
-cd selfhosted/src/Knowz.SelfHosted.AppHost
-ASPIRE_MODE=local dotnet run
+# 1. Install web client dependencies (one-time)
+cd src/knowz-selfhosted-web && npm install && cd ../..
+
+# 2. Start everything (SQL container + API + Web + Dashboard)
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
 ```
 
-Or use the `local` launch profile in your IDE.
-
-#### Azure Mode (default, requires deployed Azure resources)
-
-Reads all connection strings from `appsettings.Local.json`. Run the [deploy script](#azure-deployment) first to provision resources and generate the config file.
+The stack works immediately without AI credentials (auth, CRUD, import/export all functional). To enable AI features, configure via user-secrets:
 
 ```bash
-cd selfhosted/src/Knowz.SelfHosted.AppHost
-dotnet run
+cd src/Knowz.SelfHosted.AppHost
+
+# Option 1: Knowz Platform Proxy (simplest -- just an API key)
+dotnet user-secrets set "KnowzPlatform:Enabled" "true"
+dotnet user-secrets set "KnowzPlatform:BaseUrl" "https://api.knowz.io"
+dotnet user-secrets set "KnowzPlatform:ApiKey" "ukz_your_key"
+
+# Option 2: Direct Azure (full-featured -- your own Azure resources)
+dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-openai.openai.azure.com/"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
+dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
+dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
+dotnet user-secrets set "AzureAISearch:Endpoint" "https://your-search.search.windows.net/"
+dotnet user-secrets set "AzureAISearch:ApiKey" "your-key"
+dotnet user-secrets set "AzureAISearch:IndexName" "knowledge"
 ```
+
+See [AppHost README](src/Knowz.SelfHosted.AppHost/README.md) for full details, modes, and tier comparison.
 
 #### Aspire Dashboard
 
-Both modes open the Aspire dashboard at `https://localhost:17200` showing all services, logs, traces, and metrics.
+Opens automatically at `https://localhost:17200` showing all services, logs, traces, and metrics.
 
 ### Option B: Manual (without Aspire)
 
@@ -156,6 +167,16 @@ docker compose up --build
 ```
 
 ## Azure Deployment
+
+### One-Click Deploy
+
+Deploy the full Knowz stack to Azure with a single click:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2FcreateUiDefinition.json)
+
+This deploys: SQL Server, Azure OpenAI (optional), Azure AI Search, Storage, Key Vault, Application Insights, and 3 Container Apps (API, MCP, Web). Estimated cost: ~$90-100/month at basic SKUs.
+
+After deployment, access the Web UI at the URL shown in the deployment outputs. Default login: `admin` / your chosen password.
 
 ### Infrastructure Only (local dev against Azure resources)
 
@@ -359,18 +380,29 @@ selfhosted/
 
 ## AI Features (Optional)
 
-Knowz runs as a fully functional knowledge management platform without any AI services. To enable AI-powered search, chat, and automatic enrichment, configure Azure OpenAI and Azure AI Search credentials.
+Knowz runs as a fully functional knowledge management platform without any AI services. To enable AI-powered search, chat, and automatic enrichment, configure one of two AI tiers:
+
+| Tier | Name | Setup | Search Quality |
+|------|------|-------|----------------|
+| 1 | **Knowz Platform Proxy** | 3 config values (API key) | Keyword search |
+| 2 | **Direct Azure** | 7 config values (your Azure resources) | Vector + keyword hybrid |
+
+**Tier 1 (Platform Proxy)** delegates AI operations to the Knowz Platform API -- no Azure subscription needed. All AI features (chat, summarization, embeddings, enrichment) work via the platform. Search uses local keyword matching.
+
+**Tier 2 (Direct Azure)** uses your own Azure OpenAI and Azure AI Search resources. Provides the best search quality with hybrid vector + keyword search.
+
+See [Configuration Reference](docs/CONFIGURATION.md) for setup instructions.
 
 ### Enrichment Pipeline
 
-When AI services are configured, the enrichment pipeline automatically processes new knowledge items:
+When AI services are configured (either tier), the enrichment pipeline automatically processes new knowledge items:
 
 1. **Content Extraction** -- PDF, DOCX, and text files parsed to plain text
 2. **Chunking** -- Content split into overlapping chunks for embedding
 3. **Entity Extraction** -- AI identifies people, places, organizations, concepts
 4. **Summarization** -- AI generates concise summaries
-5. **Vector Embedding** -- Content embedded via Azure OpenAI for semantic search
-6. **Search Indexing** -- Chunks indexed in Azure AI Search
+5. **Vector Embedding** -- Content embedded for semantic search
+6. **Search Indexing** -- Chunks indexed for retrieval (Azure AI Search in Tier 2, local DB in Tier 1)
 
 Without AI configured, knowledge items are stored and accessible via exact-match search, tags, and manual organization.
 

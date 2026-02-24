@@ -2,6 +2,7 @@ namespace Knowz.SelfHosted.API.Endpoints;
 
 using Knowz.Core.Portability;
 using Knowz.Core.Schema;
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Services;
@@ -18,10 +19,14 @@ public static class PortabilityEndpoints
 
         // GET /api/portability/export
         group.MapGet("/export", async (
+            HttpContext context,
             IPortableExportService exportService,
             ILogger<PortableExportService> logger,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
+
             try
             {
                 var package = await exportService.ExportAsync(ct);
@@ -39,11 +44,15 @@ public static class PortabilityEndpoints
 
         // POST /api/portability/import/validate
         group.MapPost("/import/validate", async (
+            HttpContext context,
             IPortableImportService importService,
             ILogger<PortableImportService> logger,
             PortableExportPackage package,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
+
             try
             {
                 var result = await importService.ValidateAsync(package, ct);
@@ -64,12 +73,16 @@ public static class PortabilityEndpoints
 
         // POST /api/portability/import
         group.MapPost("/import", async (
+            HttpContext context,
             IPortableImportService importService,
             ILogger<PortableImportService> logger,
             PortableExportPackage package,
             string strategy = "skip",
             CancellationToken ct = default) =>
         {
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
+
             if (!Enum.TryParse<ImportConflictStrategy>(strategy, true, out var conflictStrategy))
                 return Results.BadRequest(new { error = $"Invalid strategy: {strategy}. Use: skip, overwrite, merge" });
 
@@ -92,8 +105,11 @@ public static class PortabilityEndpoints
           .Produces<PortableImportResult>(422);
 
         // GET /api/portability/schema
-        group.MapGet("/schema", () =>
+        group.MapGet("/schema", (HttpContext context) =>
         {
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+                return AuthorizationHelpers.Forbidden();
+
             return Results.Ok(new
             {
                 version = CoreSchema.Version,

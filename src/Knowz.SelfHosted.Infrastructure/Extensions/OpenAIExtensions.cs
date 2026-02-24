@@ -11,37 +11,64 @@ namespace Knowz.SelfHosted.Infrastructure.Extensions;
 public static class OpenAIExtensions
 {
     /// <summary>
-    /// Registers AzureOpenAIService with Azure OpenAI SDK client.
-    /// If credentials are not configured, registers NoOpOpenAIService instead.
+    /// Registers AI services with three-tier priority:
+    /// 1. KnowzPlatform:Enabled → PlatformAIService + PlatformTextEnrichmentService
+    /// 2. AzureOpenAI configured → AzureOpenAIService + TextEnrichmentService
+    /// 3. Neither → NoOpOpenAIService + NoOpTextEnrichmentService
     /// </summary>
     public static IServiceCollection AddSelfHostedOpenAI(
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Tier 1: Knowz Platform AI Proxy
+        var platformEnabled = string.Equals(
+            configuration["KnowzPlatform:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+
+        if (platformEnabled)
+        {
+            var baseUrl = configuration["KnowzPlatform:BaseUrl"];
+            var platformApiKey = configuration["KnowzPlatform:ApiKey"];
+
+            if (!string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(platformApiKey))
+            {
+                // Register named HttpClient for platform API calls
+                services.AddHttpClient("KnowzPlatformClient", client =>
+                {
+                    client.BaseAddress = new Uri(baseUrl);
+                    client.DefaultRequestHeaders.Add("X-Api-Key", platformApiKey);
+                    client.Timeout = TimeSpan.FromSeconds(120);
+                });
+
+                services.AddScoped<IOpenAIService, PlatformAIService>();
+                services.AddScoped<IContentAmendmentService, PlatformAIService>();
+                services.AddScoped<IStreamingOpenAIService, PlatformAIService>();
+                services.AddScoped<ITextEnrichmentService, PlatformTextEnrichmentService>();
+                return services;
+            }
+        }
+
+        // Tier 2: Azure OpenAI
         var endpoint = configuration["AzureOpenAI:Endpoint"];
         var apiKey = configuration["AzureOpenAI:ApiKey"];
 
-        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey))
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(apiKey))
         {
-            // Register no-op services — AI features disabled, auth/admin still work
-            services.AddScoped<IOpenAIService, NoOpOpenAIService>();
-            services.AddScoped<IContentAmendmentService, NoOpOpenAIService>();
-            services.AddScoped<ITextEnrichmentService, NoOpTextEnrichmentService>();
+            services.AddSingleton(_ => new AzureOpenAIClient(
+                new Uri(endpoint),
+                new AzureKeyCredential(apiKey)));
+
+            services.AddScoped<IOpenAIService, AzureOpenAIService>();
+            services.AddScoped<IContentAmendmentService, AzureOpenAIService>();
+            services.AddScoped<IStreamingOpenAIService, AzureOpenAIService>();
+            services.AddScoped<ITextEnrichmentService, TextEnrichmentService>();
             return services;
         }
 
-        // Register AzureOpenAIClient as singleton (thread-safe, connection pooled)
-        services.AddSingleton(_ => new AzureOpenAIClient(
-            new Uri(endpoint),
-            new AzureKeyCredential(apiKey)));
-
-        // Register AzureOpenAIService as scoped (implements both IOpenAIService and IContentAmendmentService)
-        services.AddScoped<IOpenAIService, AzureOpenAIService>();
-        services.AddScoped<IContentAmendmentService, AzureOpenAIService>();
-
-        // Register TextEnrichmentService as scoped
-        services.AddScoped<ITextEnrichmentService, TextEnrichmentService>();
-
+        // Tier 3: NoOp — AI features disabled, auth/admin still work
+        services.AddScoped<IOpenAIService, NoOpOpenAIService>();
+        services.AddScoped<IContentAmendmentService, NoOpOpenAIService>();
+        services.AddScoped<IStreamingOpenAIService, NoOpOpenAIService>();
+        services.AddScoped<ITextEnrichmentService, NoOpTextEnrichmentService>();
         return services;
     }
 }

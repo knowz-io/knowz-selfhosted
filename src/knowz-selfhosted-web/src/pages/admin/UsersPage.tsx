@@ -19,6 +19,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { api } from '../../lib/api-client'
+import { useAuth } from '../../lib/auth'
 import { UserRole } from '../../lib/types'
 import type {
   UserDto,
@@ -36,10 +37,12 @@ const roleLabels: Record<number, string> = {
 const roleStyles: Record<number, string> = {
   [UserRole.SuperAdmin]: 'bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400',
   [UserRole.Admin]: 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400',
-  [UserRole.User]: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400',
+  [UserRole.User]: 'bg-muted text-muted-foreground',
 }
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth()
+  const isSuperAdmin = currentUser?.role === UserRole.SuperAdmin
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTenantId, setFilterTenantId] = useState('')
@@ -64,6 +67,7 @@ export default function UsersPage() {
   const tenantsQuery = useQuery({
     queryKey: ['admin', 'tenants'],
     queryFn: () => api.listTenants(),
+    enabled: isSuperAdmin,
   })
 
   const createMutation = useMutation({
@@ -136,7 +140,7 @@ export default function UsersPage() {
         <h1 className="text-2xl font-bold">Users</h1>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
         >
           <Plus size={16} /> Create User
         </button>
@@ -145,83 +149,87 @@ export default function UsersPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by username, email, or name..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+            className="w-full pl-9 pr-3 py-2 border border-input rounded-md bg-card text-sm placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
           />
         </div>
-        <select
-          value={filterTenantId}
-          onChange={(e) => setFilterTenantId(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
-        >
-          <option value="">All tenants</option>
-          {tenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        {isSuperAdmin && (
+          <select
+            value={filterTenantId}
+            onChange={(e) => setFilterTenantId(e.target.value)}
+            className="px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+          >
+            <option value="">All tenants</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Table */}
       {usersQuery.isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+            <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
           ))}
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
-          <Users size={40} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <div className="text-center py-16 bg-card border border-border/60 rounded-xl shadow-sm">
+          <Users size={40} className="mx-auto text-muted-foreground/30 mb-3" />
+          <p className="text-muted-foreground text-sm">
             {searchTerm || filterTenantId
               ? 'No users match your filters.'
               : 'No users yet. Create your first user to get started.'}
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Username</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Email</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Tenant</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Role</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">API Key</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Created</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Actions</th>
+                <tr className="border-b border-border/60 bg-muted">
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Username</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Email</th>
+                  {isSuperAdmin && <th className="text-left px-5 py-3 font-medium text-muted-foreground">Tenant</th>}
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Role</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">API Key</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Created</th>
+                  <th className="text-right px-5 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {filteredUsers.map((user, idx) => (
                   <tr
                     key={user.id}
-                    className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                      idx % 2 === 1 ? 'bg-gray-50/50 dark:bg-gray-900/30' : ''
+                    className={`hover:bg-muted transition-colors ${
+                      idx % 2 === 1 ? 'bg-muted/50' : ''
                     }`}
                   >
                     <td className="px-5 py-3">
                       <div>
                         <p className="font-medium">{user.username}</p>
                         {user.displayName && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{user.displayName}</p>
+                          <p className="text-xs text-muted-foreground">{user.displayName}</p>
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
+                    <td className="px-5 py-3 text-muted-foreground">
                       {user.email || '-'}
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
-                      {user.tenantName || '-'}
-                    </td>
+                    {isSuperAdmin && (
+                      <td className="px-5 py-3 text-muted-foreground">
+                        {user.tenantName || '-'}
+                      </td>
+                    )}
                     <td className="px-5 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${roleStyles[user.role] ?? roleStyles[UserRole.User]}`}>
                         {roleLabels[user.role] ?? 'User'}
@@ -240,55 +248,57 @@ export default function UsersPage() {
                     </td>
                     <td className="px-5 py-3">
                       {user.apiKey ? (
-                        <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-500 dark:text-gray-400">
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
                           {user.apiKey.slice(0, 8)}...
                         </code>
                       ) : (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">None</span>
+                        <span className="text-xs text-muted-foreground">None</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
+                    <td className="px-5 py-3 text-muted-foreground">
                       {new Date(user.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setVaultAccessModal({ userId: user.id, username: user.username })}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                          title="Vault Access"
-                          aria-label="Manage vault access"
-                        >
-                          <Shield size={14} />
-                        </button>
-                        <button
-                          onClick={() => setApiKeyModal({ userId: user.id, username: user.username })}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                          title="Generate API Key"
-                        >
-                          <Key size={14} />
-                        </button>
-                        <button
-                          onClick={() => setResetPasswordModal({ userId: user.id, username: user.username })}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                          title="Reset Password"
-                        >
-                          <Lock size={14} />
-                        </button>
-                        <button
-                          onClick={() => setEditUser(user)}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                          title="Edit user"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteUser(user)}
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="Delete user"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {(isSuperAdmin || user.role < UserRole.Admin) && (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setVaultAccessModal({ userId: user.id, username: user.username })}
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Vault Access"
+                            aria-label="Manage vault access"
+                          >
+                            <Shield size={14} />
+                          </button>
+                          <button
+                            onClick={() => setApiKeyModal({ userId: user.id, username: user.username })}
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Generate API Key"
+                          >
+                            <Key size={14} />
+                          </button>
+                          <button
+                            onClick={() => setResetPasswordModal({ userId: user.id, username: user.username })}
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Reset Password"
+                          >
+                            <Lock size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditUser(user)}
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Edit user"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteUser(user)}
+                            className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            title="Delete user"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -302,6 +312,8 @@ export default function UsersPage() {
       {showCreateModal && (
         <CreateUserModal
           tenants={tenants}
+          isSuperAdmin={isSuperAdmin}
+          callerTenantId={currentUser?.tenantId ?? ''}
           isSubmitting={createMutation.isPending}
           onClose={() => setShowCreateModal(false)}
           onSubmit={(data) => createMutation.mutate(data)}
@@ -312,6 +324,7 @@ export default function UsersPage() {
       {editUser && (
         <EditUserModal
           user={editUser}
+          isSuperAdmin={isSuperAdmin}
           isSubmitting={updateMutation.isPending}
           onClose={() => setEditUser(null)}
           onSubmit={(data) => updateMutation.mutate({ id: editUser.id, data })}
@@ -366,13 +379,15 @@ export default function UsersPage() {
 
 interface CreateUserModalProps {
   tenants: TenantDto[]
+  isSuperAdmin: boolean
+  callerTenantId: string
   isSubmitting: boolean
   onClose: () => void
   onSubmit: (data: CreateUserData) => void
 }
 
-function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUserModalProps) {
-  const [tenantId, setTenantId] = useState(tenants[0]?.id ?? '')
+function CreateUserModal({ tenants, isSuperAdmin, callerTenantId, isSubmitting, onClose, onSubmit }: CreateUserModalProps) {
+  const [tenantId, setTenantId] = useState(isSuperAdmin ? (tenants[0]?.id ?? '') : callerTenantId)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
@@ -395,38 +410,40 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Create User</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Tenant <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
-            >
-              {tenants.length === 0 && <option value="">No tenants available</option>}
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {isSuperAdmin && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Tenant <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+              >
+                {tenants.length === 0 && <option value="">No tenants available</option>}
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Username <span className="text-red-500">*</span>
             </label>
             <input
@@ -435,13 +452,13 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
               onChange={(e) => setUsername(e.target.value)}
               placeholder="e.g. john.doe"
               autoComplete="off"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               autoFocus
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Password <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -451,12 +468,12 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Minimum 8 characters"
                 autoComplete="new-password"
-                className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+                className="w-full px-3 py-2 pr-10 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -464,7 +481,7 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Email
             </label>
             <input
@@ -472,12 +489,12 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@example.com"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Display Name
             </label>
             <input
@@ -485,20 +502,20 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="John Doe"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Role <span className="text-red-500">*</span>
             </label>
             <select
               value={role}
               onChange={(e) => setRole(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             >
-              <option value={UserRole.Admin}>Admin</option>
+              {isSuperAdmin && <option value={UserRole.Admin}>Admin</option>}
               <option value={UserRole.User}>User</option>
             </select>
           </div>
@@ -508,14 +525,14 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || !tenantId || !username.trim() || !password.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting && <Loader2 size={14} className="animate-spin" />}
             Create User
@@ -530,12 +547,13 @@ function CreateUserModal({ tenants, isSubmitting, onClose, onSubmit }: CreateUse
 
 interface EditUserModalProps {
   user: UserDto
+  isSuperAdmin: boolean
   isSubmitting: boolean
   onClose: () => void
   onSubmit: (data: UpdateUserData) => void
 }
 
-function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalProps) {
+function EditUserModal({ user, isSuperAdmin, isSubmitting, onClose, onSubmit }: EditUserModalProps) {
   const [email, setEmail] = useState(user.email ?? '')
   const [displayName, setDisplayName] = useState(user.displayName ?? '')
   const [role, setRole] = useState<number>(user.role)
@@ -553,12 +571,12 @@ function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalP
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Edit User: {user.username}</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={18} />
           </button>
@@ -566,7 +584,7 @@ function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalP
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Email
             </label>
             <input
@@ -574,12 +592,12 @@ function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalP
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@example.com"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Display Name
             </label>
             <input
@@ -587,32 +605,32 @@ function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalP
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="John Doe"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Role
             </label>
             <select
               value={role}
               onChange={(e) => setRole(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             >
-              <option value={UserRole.SuperAdmin}>SuperAdmin</option>
-              <option value={UserRole.Admin}>Admin</option>
+              {isSuperAdmin && <option value={UserRole.SuperAdmin}>SuperAdmin</option>}
+              {isSuperAdmin && <option value={UserRole.Admin}>Admin</option>}
               <option value={UserRole.User}>User</option>
             </select>
           </div>
 
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Active</label>
+            <label className="text-sm font-medium text-foreground">Active</label>
             <button
               type="button"
               onClick={() => setIsActive(!isActive)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                isActive ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
+                isActive ? 'bg-green-600' : 'bg-muted-foreground/30'
               }`}
             >
               <span
@@ -628,14 +646,14 @@ function EditUserModal({ user, isSubmitting, onClose, onSubmit }: EditUserModalP
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50"
           >
             {isSubmitting && <Loader2 size={14} className="animate-spin" />}
             Save Changes
@@ -659,7 +677,7 @@ function ConfirmDeleteUserModal({ username, isDeleting, onClose, onConfirm }: Co
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
             <Trash2 size={18} className="text-red-600 dark:text-red-400" />
@@ -667,7 +685,7 @@ function ConfirmDeleteUserModal({ username, isDeleting, onClose, onConfirm }: Co
           <h2 className="text-lg font-semibold">Delete User</h2>
         </div>
 
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+        <p className="text-sm text-muted-foreground mb-6">
           Are you sure you want to delete user <strong>{username}</strong>? This action cannot be undone.
         </p>
 
@@ -675,7 +693,7 @@ function ConfirmDeleteUserModal({ username, isDeleting, onClose, onConfirm }: Co
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
@@ -722,12 +740,12 @@ function GenerateApiKeyModal({ userId, username, onClose }: GenerateApiKeyModalP
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">API Key: {username}</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={18} />
           </button>
@@ -742,12 +760,12 @@ function GenerateApiKeyModal({ userId, username, onClose }: GenerateApiKeyModalP
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <code className="flex-1 p-3 bg-gray-100 dark:bg-gray-800 rounded-md text-sm font-mono break-all">
+              <code className="flex-1 p-3 bg-muted rounded-md text-sm font-mono break-all">
                 {generatedKey}
               </code>
               <button
                 onClick={handleCopy}
-                className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors shrink-0"
+                className="p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 title="Copy to clipboard"
               >
                 {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
@@ -756,7 +774,7 @@ function GenerateApiKeyModal({ userId, username, onClose }: GenerateApiKeyModalP
             <div className="flex justify-end">
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
               >
                 Done
               </button>
@@ -764,7 +782,7 @@ function GenerateApiKeyModal({ userId, username, onClose }: GenerateApiKeyModalP
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Generate a new API key for <strong>{username}</strong>. This will replace any existing API key.
             </p>
 
@@ -781,14 +799,14 @@ function GenerateApiKeyModal({ userId, username, onClose }: GenerateApiKeyModalP
               <button
                 onClick={onClose}
                 disabled={generateMutation.isPending}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => generateMutation.mutate()}
                 disabled={generateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50"
               >
                 {generateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                 Generate Key
@@ -825,18 +843,18 @@ function ResetPasswordModal({ userId, username, onClose }: ResetPasswordModalPro
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-        <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
           <div className="text-center space-y-3">
             <div className="inline-flex p-3 bg-green-50 dark:bg-green-950/30 rounded-full">
               <CheckCircle size={24} className="text-green-600 dark:text-green-400" />
             </div>
             <h2 className="text-lg font-semibold">Password Reset</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Password for <strong>{username}</strong> has been updated successfully.
             </p>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
             >
               Done
             </button>
@@ -849,19 +867,19 @@ function ResetPasswordModal({ userId, username, onClose }: ResetPasswordModalPro
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Reset Password</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Set a new password for <strong>{username}</strong>.
           </p>
 
@@ -875,7 +893,7 @@ function ResetPasswordModal({ userId, username, onClose }: ResetPasswordModalPro
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               New Password
             </label>
             <div className="relative">
@@ -885,13 +903,13 @@ function ResetPasswordModal({ userId, username, onClose }: ResetPasswordModalPro
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Minimum 8 characters"
                 autoComplete="new-password"
-                className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+                className="w-full px-3 py-2 pr-10 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -903,14 +921,14 @@ function ResetPasswordModal({ userId, username, onClose }: ResetPasswordModalPro
           <button
             onClick={onClose}
             disabled={resetMutation.isPending}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={() => resetMutation.mutate()}
             disabled={resetMutation.isPending || !newPassword.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {resetMutation.isPending && <Loader2 size={14} className="animate-spin" />}
             Reset Password
@@ -992,15 +1010,15 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <Shield size={18} className="text-gray-600 dark:text-gray-400" />
+            <Shield size={18} className="text-muted-foreground" />
             <h2 className="text-lg font-semibold">Vault Access: {username}</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
             aria-label="Close"
           >
             <X size={18} />
@@ -1010,19 +1028,19 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-10 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+              <div key={i} className="h-10 bg-muted rounded animate-pulse" />
             ))}
           </div>
         ) : (
           <div className="space-y-6">
             {/* Global Permissions */}
             <div className="space-y-3">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Global Permissions</h3>
+              <h3 className="text-sm font-medium text-foreground">Global Permissions</h3>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <p className="text-sm font-medium">Access All Vaults</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     User can access all vaults without specific grants
                   </p>
                 </div>
@@ -1039,7 +1057,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                   }
                   disabled={setPermissionsMutation.isPending}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    permissions.hasAllVaultsAccess ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
+                    permissions.hasAllVaultsAccess ? 'bg-green-600' : 'bg-muted-foreground/30'
                   }`}
                 >
                   <span
@@ -1050,10 +1068,10 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                 </button>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <p className="text-sm font-medium">Can Create Vaults</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     User can create new vaults
                   </p>
                 </div>
@@ -1070,7 +1088,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                   }
                   disabled={setPermissionsMutation.isPending}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    permissions.canCreateVaults ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
+                    permissions.canCreateVaults ? 'bg-green-600' : 'bg-muted-foreground/30'
                   }`}
                 >
                   <span
@@ -1085,7 +1103,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
             {/* Vault-Specific Access (only shown when not "access all") */}
             {!permissions.hasAllVaultsAccess && (
               <div className="space-y-3">
-                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <h3 className="text-sm font-medium text-foreground">
                   Vault-Specific Access
                 </h3>
 
@@ -1094,7 +1112,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                   <select
                     value={addVaultId}
                     onChange={(e) => setAddVaultId(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                   >
                     <option value="">Select a vault to grant access...</option>
                     {availableVaults.map((v) => (
@@ -1106,7 +1124,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                   <button
                     onClick={() => addVaultId && grantMutation.mutate(addVaultId)}
                     disabled={!addVaultId || grantMutation.isPending}
-                    className="inline-flex items-center gap-1 px-3 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {grantMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                     Grant
@@ -1115,38 +1133,38 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
 
                 {/* Access list */}
                 {accessList.length === 0 ? (
-                  <div className="text-center py-6 bg-gray-50 dark:bg-gray-800/30 rounded-lg">
-                    <Shield size={24} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="text-center py-6 bg-muted rounded-lg">
+                    <Shield size={24} className="mx-auto text-muted-foreground/30 mb-2" />
+                    <p className="text-sm text-muted-foreground">
                       No vault access granted. This user cannot access any vaults.
                     </p>
                   </div>
                 ) : (
-                  <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                  <div className="border border-border/60 rounded-xl shadow-sm overflow-hidden">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
-                          <th className="text-left px-3 py-2 font-medium text-gray-500 dark:text-gray-400">
+                        <tr className="border-b border-border/60 bg-muted">
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">
                             Vault
                           </th>
-                          <th className="text-center px-2 py-2 font-medium text-gray-500 dark:text-gray-400">
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground">
                             Read
                           </th>
-                          <th className="text-center px-2 py-2 font-medium text-gray-500 dark:text-gray-400">
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground">
                             Write
                           </th>
-                          <th className="text-center px-2 py-2 font-medium text-gray-500 dark:text-gray-400">
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground">
                             Delete
                           </th>
-                          <th className="text-center px-2 py-2 font-medium text-gray-500 dark:text-gray-400">
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground">
                             Manage
                           </th>
                           <th className="px-2 py-2"></th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      <tbody className="divide-y divide-border">
                         {accessList.map((access) => (
-                          <tr key={access.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          <tr key={access.id} className="hover:bg-muted">
                             <td className="px-3 py-2 font-medium">{access.vaultName}</td>
                             <td className="text-center px-2 py-2">
                               <PermBadge value={access.canRead} />
@@ -1164,7 +1182,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                               <button
                                 onClick={() => revokeMutation.mutate(access.vaultId)}
                                 disabled={revokeMutation.isPending}
-                                className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
                                 title="Revoke access"
                               >
                                 <Trash2 size={14} />
@@ -1193,7 +1211,7 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
         <div className="flex justify-end mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
           >
             Done
           </button>
@@ -1209,8 +1227,8 @@ function PermBadge({ value }: { value: boolean }) {
       <Check size={12} className="text-green-600 dark:text-green-400" />
     </span>
   ) : (
-    <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-      <X size={12} className="text-gray-400 dark:text-gray-500" />
+    <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-muted">
+      <X size={12} className="text-muted-foreground" />
     </span>
   )
 }

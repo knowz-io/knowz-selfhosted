@@ -48,4 +48,5 @@ Uses `SelfHostedToolBackend` with a static `ToolMappings` dictionary. All 22 MCP
 |-----|---------|
 | `Knowz:BaseUrl` | Base URL of the target API (required) |
 | `MCP:BackendMode` | `"proxy"` (Platform) or `"selfhosted"` |
+| `MCP:ServiceKey` | Shared secret for MCP→API internal calls (password login + SSO resolve). Must match the API's `MCP:ServiceKey` value. |
 | `Redis__ConnectionString` | Session store (falls back to in-memory) |

@@ -21,9 +21,18 @@ export interface KnowledgeListItem {
   summary: string
   type: string
   filePath?: string
+  vaultId?: string
+  vaultName?: string
+  createdByUserId?: string
+  createdByUserName?: string
   createdAt: string
   updatedAt: string
   isIndexed: boolean
+}
+
+export interface CreatorRef {
+  id: string
+  name: string
 }
 
 export interface KnowledgeListResponse {
@@ -116,9 +125,28 @@ export interface UpdateKnowledgeData {
 // --- Auth & Admin Types ---
 
 export enum UserRole {
-  SuperAdmin = 0,
+  User = 0,
   Admin = 1,
-  User = 2,
+  SuperAdmin = 2,
+}
+
+const roleStringToNumber: Record<string, UserRole> = {
+  SuperAdmin: UserRole.SuperAdmin,
+  Admin: UserRole.Admin,
+  User: UserRole.User,
+}
+
+/** Normalize role from API (may be string "SuperAdmin" or number 0) to numeric enum */
+export function normalizeRole(role: number | string): UserRole {
+  if (typeof role === 'string') {
+    return roleStringToNumber[role] ?? UserRole.User
+  }
+  return role
+}
+
+/** Normalize a UserDto's role field from API response */
+export function normalizeUser(u: UserDto): UserDto {
+  return { ...u, role: normalizeRole(u.role) }
 }
 
 export interface UserDto {
@@ -231,6 +259,7 @@ export interface InboxItemDto {
   id: string
   body: string
   type: string
+  createdByUserId?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -241,6 +270,7 @@ export interface InboxListResponse {
   pageSize: number
   totalItems: number
   totalPages: number
+  inboxVisibilityScope: string
 }
 
 export interface ConvertResult {
@@ -460,3 +490,27 @@ export interface SSOCallbackResultDto {
   displayName: string | null
   wasAutoProvisioned: boolean
 }
+
+// --- SSE Streaming Types ---
+
+export interface SSESourcesEvent {
+  type: 'sources'
+  sources: { knowledgeId: string }[]
+  confidence: number
+}
+
+export interface SSETokenEvent {
+  type: 'token'
+  content: string
+}
+
+export interface SSEDoneEvent {
+  type: 'done'
+}
+
+export interface SSEErrorEvent {
+  type: 'error'
+  message: string
+}
+
+export type SSEEvent = SSESourcesEvent | SSETokenEvent | SSEDoneEvent | SSEErrorEvent

@@ -1,0 +1,67 @@
+{
+  // ==========================================================================
+  // Knowz Selfhosted - Local Configuration Template
+  // ==========================================================================
+  // Copy this file to appsettings.Local.json and fill in your credentials.
+  // appsettings.Local.json is gitignored and will not be committed.
+  //
+  // AI SERVICE TIERS (pick ONE):
+  //   Tier 1: KnowzPlatform — proxy AI through api.knowz.io (simplest)
+  //   Tier 2: Azure OpenAI + Azure AI Search — direct Azure resources (full-featured)
+  //   Tier 3: (default) NoOp — AI features disabled, auth/admin still work
+  // ==========================================================================
+
+  // ---------------------------------------------------------------------------
+  // OPTION A: Knowz Platform Proxy (Tier 1)
+  // Delegates AI operations to the Knowz Platform API. Search is local (keyword).
+  // Requires a valid API key from your Knowz Platform account.
+  // ---------------------------------------------------------------------------
+  // "KnowzPlatform": {
+  //   "Enabled": "true",
+  //   "BaseUrl": "https://api.dev.knowz.io",
+  //   "ApiKey": "ukz_your_platform_api_key"
+  // },
+
+  // ---------------------------------------------------------------------------
+  // OPTION B: Direct Azure OpenAI + Azure AI Search (Tier 2)
+  // Full-featured: vector search, embeddings, completions, enrichment.
+  // Requires your own Azure OpenAI and Azure AI Search resources.
+  // ---------------------------------------------------------------------------
+  "AzureOpenAI": {
+    "Endpoint": "https://your-openai-resource.openai.azure.com/",
+    "ApiKey": "your-azure-openai-api-key",
+    "DeploymentName": "gpt-4o",
+    "EmbeddingDeploymentName": "text-embedding-3-small"
+  },
+  "AzureAISearch": {
+    "Endpoint": "https://your-search-service.search.windows.net/",
+    "ApiKey": "your-azure-search-admin-key",
+    "IndexName": "knowledge"
+  },
+
+  // ---------------------------------------------------------------------------
+  // Database (required if not using Aspire local mode with SQL container)
+  // ---------------------------------------------------------------------------
+  // "ConnectionStrings": {
+  //   "McpDb": "Server=tcp:your-server.database.windows.net,1433;Initial Catalog=McpDb;User ID=sqladmin;Password=your-password;Encrypt=True;TrustServerCertificate=False"
+  // },
+
+  // ---------------------------------------------------------------------------
+  // Storage (optional override — Aspire local mode sets LocalFileSystem)
+  // ---------------------------------------------------------------------------
+  // "Storage": {
+  //   "Provider": "Azure",
+  //   "Azure": {
+  //     "ConnectionString": "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net",
+  //     "ContainerName": "selfhosted-files"
+  //   }
+  // },
+
+  // ---------------------------------------------------------------------------
+  // Authentication (optional override)
+  // ---------------------------------------------------------------------------
+  "SelfHosted": {
+    "ApiKey": "dev-api-key-for-testing",
+    "JwtSecret": "your-secret-key-at-least-32-characters-long-change-in-production"
+  }
+}

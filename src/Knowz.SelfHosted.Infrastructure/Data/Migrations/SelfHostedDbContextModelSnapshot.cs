@@ -17,7 +17,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.5")
+                .HasAnnotation("ProductVersion", "10.0.3")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -221,6 +221,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -240,6 +243,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("TenantId", "CreatedByUserId", "CreatedAt")
+                        .HasDatabaseName("IX_InboxItems_TenantId_CreatedByUserId_CreatedAt");
+
                     b.ToTable("InboxItems");
                 });
 
@@ -255,6 +261,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("FilePath")
                         .HasColumnType("nvarchar(450)");
@@ -300,6 +309,8 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("TopicId");
 
                     b.HasIndex("TenantId", "CreatedAt");
+
+                    b.HasIndex("TenantId", "CreatedByUserId");
 
                     b.HasIndex("TenantId", "FilePath");
 

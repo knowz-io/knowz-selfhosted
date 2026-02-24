@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Azure;
 using Azure.AI.OpenAI;
 using Knowz.Core.Interfaces;
@@ -14,7 +15,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 /// Azure OpenAI implementation of IOpenAIService and IContentAmendmentService.
 /// Three operations: embedding generation, context-based Q&A, and AI content editing.
 /// </summary>
-public class AzureOpenAIService : IOpenAIService, IContentAmendmentService
+public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStreamingOpenAIService
 {
     private readonly AzureOpenAIClient _client;
     private readonly string _chatDeployment;
@@ -126,6 +127,63 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService
                 ? Math.Min(1.0, searchResults.Average(r => r.Score))
                 : 0
         };
+    }
+
+    /// <inheritdoc />
+    public virtual async IAsyncEnumerable<string> AnswerQuestionStreamingAsync(
+        string question,
+        List<SearchResultItem> searchResults,
+        string? vaultSystemPrompt = null,
+        bool researchMode = false,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var tokenBudget = researchMode ? ResearchTokenBudget : DefaultTokenBudget;
+        var contextText = BuildContext(searchResults, tokenBudget);
+
+        if (string.IsNullOrWhiteSpace(contextText))
+        {
+            yield return "I don't have enough information in the knowledge base to answer this question.";
+            yield break;
+        }
+
+        var systemPrompt = vaultSystemPrompt ?? _defaultSystemPrompt;
+
+        var chatClient = _client.GetChatClient(_chatDeployment);
+
+        var messages = new List<ChatMessage>
+        {
+            ChatMessage.CreateSystemMessage(systemPrompt),
+            ChatMessage.CreateUserMessage(
+                $"Context from knowledge base:\n\n{contextText}\n\n---\n\nQuestion: {question}")
+        };
+
+        var options = new ChatCompletionOptions();
+        var isUnsupportedMaxTokens = _chatDeployment.Contains("o1", StringComparison.OrdinalIgnoreCase) ||
+                                     _chatDeployment.Contains("o3", StringComparison.OrdinalIgnoreCase) ||
+                                     _chatDeployment.Contains("o4-mini", StringComparison.OrdinalIgnoreCase) ||
+                                     _chatDeployment.Contains("gpt-5", StringComparison.OrdinalIgnoreCase);
+        if (!isUnsupportedMaxTokens)
+        {
+            options.MaxOutputTokenCount = researchMode ? 4000 : 2000;
+        }
+
+        _logger.LogInformation(
+            "Streaming answer for question: '{Question}' with {SourceCount} sources, research={Research}",
+            question.Length > 50 ? question[..50] + "..." : question,
+            searchResults.Count, researchMode);
+
+        var result = chatClient.CompleteChatStreamingAsync(messages, options, cancellationToken);
+
+        await foreach (var update in result.WithCancellation(cancellationToken))
+        {
+            foreach (var part in update.ContentUpdate)
+            {
+                if (!string.IsNullOrEmpty(part.Text))
+                {
+                    yield return part.Text;
+                }
+            }
+        }
     }
 
     /// <inheritdoc />

@@ -53,6 +53,9 @@ services:
       # Security: Rate limiting (enabled by default)
       SelfHosted__RateLimiting__Enabled: "true"
 
+      # MCP service-to-service key (must match MCP container's MCP__ServiceKey)
+      MCP__ServiceKey: "${MCP_SERVICE_KEY:-knowz-mcp-dev-service-key}"
+
       # Storage: Local filesystem with volume mount
       Storage__Provider: "LocalFileSystem"
       Storage__Local__RootPath: "/data/files"
@@ -99,6 +102,7 @@ services:
       Knowz__BaseUrl: "${MCP_API_URL:-http://api:8080}"
       MCP__BackendMode: "${MCP_BACKEND_MODE:-selfhosted}"
       MCP__ApiKeyValidationEndpoint: "${MCP_API_KEY_VALIDATION_ENDPOINT:-/api/vaults}"
+      MCP__ServiceKey: "${MCP_SERVICE_KEY:-knowz-mcp-dev-service-key}"
       Authentication__ValidateApiKey: "${MCP_VALIDATE_API_KEY:-true}"
     healthcheck:
       test: curl -f http://localhost:8080/.well-known/oauth-authorization-server || exit 1

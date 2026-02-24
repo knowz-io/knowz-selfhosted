@@ -104,7 +104,7 @@ export default function TenantsPage() {
         <h1 className="text-2xl font-bold">Tenants</h1>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
         >
           <Plus size={16} /> Create Tenant
         </button>
@@ -112,13 +112,13 @@ export default function TenantsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search tenants by name or slug..."
-          className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+          className="w-full pl-9 pr-3 py-2 border border-input rounded-md bg-card text-sm placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
         />
       </div>
 
@@ -126,45 +126,45 @@ export default function TenantsPage() {
       {tenantsQuery.isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+            <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
           ))}
         </div>
       ) : filteredTenants.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
-          <Building2 size={40} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <div className="text-center py-16 bg-card border border-border/60 rounded-xl shadow-sm">
+          <Building2 size={40} className="mx-auto text-muted-foreground/30 mb-3" />
+          <p className="text-muted-foreground text-sm">
             {searchTerm ? 'No tenants match your search.' : 'No tenants yet. Create your first tenant to get started.'}
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Name</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Slug</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Users</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Status</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Created</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Actions</th>
+                <tr className="border-b border-border/60 bg-muted">
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Name</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Slug</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Users</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left px-5 py-3 font-medium text-muted-foreground">Created</th>
+                  <th className="text-right px-5 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {filteredTenants.map((tenant, idx) => (
                   <tr
                     key={tenant.id}
-                    className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                      idx % 2 === 1 ? 'bg-gray-50/50 dark:bg-gray-900/30' : ''
+                    className={`hover:bg-muted transition-colors ${
+                      idx % 2 === 1 ? 'bg-muted/50' : ''
                     }`}
                   >
                     <td className="px-5 py-3 font-medium">{tenant.name}</td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
-                      <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                    <td className="px-5 py-3 text-muted-foreground">
+                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                         {tenant.slug}
                       </code>
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">{tenant.userCount}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{tenant.userCount}</td>
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -176,21 +176,21 @@ export default function TenantsPage() {
                         {tenant.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
+                    <td className="px-5 py-3 text-muted-foreground">
                       {new Date(tenant.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setEditTenant(tenant)}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                           title="Edit tenant"
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => setDeleteTenant(tenant)}
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
                           title="Delete tenant"
                         >
                           <Trash2 size={14} />
@@ -281,12 +281,12 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={18} />
           </button>
@@ -294,7 +294,7 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -302,13 +302,13 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. Acme Corporation"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               autoFocus
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Slug <span className="text-red-500">*</span>
             </label>
             <input
@@ -316,15 +316,15 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
               value={slug}
               onChange={(e) => handleSlugChange(e.target.value)}
               placeholder="e.g. acme-corporation"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               URL-safe identifier. Auto-generated from name.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Description
             </label>
             <textarea
@@ -332,20 +332,20 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description..."
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           {tenant && (
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="text-sm font-medium text-foreground">
                 Active
               </label>
               <button
                 type="button"
                 onClick={() => setIsActive(!isActive)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isActive ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
+                  isActive ? 'bg-green-600' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
@@ -362,14 +362,14 @@ function TenantFormModal({ title, tenant, isSubmitting, onClose, onSubmit }: Ten
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || !name.trim() || !slug.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting && <Loader2 size={14} className="animate-spin" />}
             {tenant ? 'Save Changes' : 'Create Tenant'}
@@ -393,7 +393,7 @@ function ConfirmDeleteModal({ tenantName, isDeleting, onClose, onConfirm }: Conf
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
             <Trash2 size={18} className="text-red-600 dark:text-red-400" />
@@ -401,7 +401,7 @@ function ConfirmDeleteModal({ tenantName, isDeleting, onClose, onConfirm }: Conf
           <h2 className="text-lg font-semibold">Delete Tenant</h2>
         </div>
 
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+        <p className="text-sm text-muted-foreground mb-6">
           Are you sure you want to delete <strong>{tenantName}</strong>? This action cannot be undone and will remove all associated data.
         </p>
 
@@ -409,7 +409,7 @@ function ConfirmDeleteModal({ tenantName, isDeleting, onClose, onConfirm }: Conf
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All configuration is done through environment variables in your `.env` file. This document covers every configurable option organized by category.
+All configuration is done through environment variables in your `.env` file (Docker Compose), user-secrets (Aspire), or `appsettings.Local.json`. This document covers every configurable option organized by category.
 
 ## Required
 
@@ -13,40 +13,55 @@ These variables must be set for the application to function. The defaults work f
 | `ADMIN_USERNAME` | `admin` | SuperAdmin username created on first startup. |
 | `ADMIN_PASSWORD` | `changeme` | SuperAdmin password created on first startup. Change immediately after first login. |
 
-## Azure OpenAI (Optional)
+## AI Services (Three-Tier Fallback)
 
-Enable AI-powered chat, summarization, and embedding generation. Without these, the application runs with basic CRUD and full-text search only.
+The selfhosted API uses a three-tier fallback for AI services. Configure **one** of the following:
 
-| Variable | Default | Description | Example |
-|----------|---------|-------------|---------|
-| `AZURE_OPENAI_ENDPOINT` | -- | Azure OpenAI resource endpoint URL | `https://your-openai.openai.azure.com/` |
-| `AZURE_OPENAI_API_KEY` | -- | Azure OpenAI API key | `your-api-key` |
+| Tier | Trigger | AI Operations | Search | Best for |
+|------|---------|---------------|--------|----------|
+| 1 | `KnowzPlatform:Enabled=true` + BaseUrl + ApiKey | Proxied to Knowz Platform API | Local keyword (SQL LIKE) | Quick setup, no Azure resources |
+| 2 | `AzureOpenAI` + `AzureAISearch` configured | Direct Azure OpenAI calls | Vector + keyword hybrid | Full-featured, best search quality |
+| 3 | Neither configured (default) | Disabled (NoOp) | Disabled | Auth/admin/CRUD only |
 
-These environment variables map to the following application configuration keys used in `docker-compose.yml`:
+### Tier 1: Knowz Platform Proxy
 
-| Compose Environment Key | Description | Example |
-|--------------------------|-------------|---------|
-| `AzureOpenAI__Endpoint` | OpenAI endpoint | `https://your-openai.openai.azure.com/` |
-| `AzureOpenAI__ApiKey` | OpenAI API key | `your-api-key` |
-| `AzureOpenAI__DeploymentName` | Chat/completion model deployment name | `gpt-4o` |
-| `AzureOpenAI__EmbeddingDeploymentName` | Embedding model deployment name | `text-embedding-3-small` |
+Delegates AI operations (completions, embeddings, summarization, entity extraction, enrichment) to the Knowz Platform API. No Azure subscription required -- just an API key from your Knowz account.
 
-## Azure AI Search (Optional)
+| Variable | Config Key | Description | Example |
+|----------|-----------|-------------|---------|
+| -- | `KnowzPlatform__Enabled` | Enable platform proxy | `true` |
+| -- | `KnowzPlatform__BaseUrl` | Platform API base URL | `https://api.knowz.io` |
+| -- | `KnowzPlatform__ApiKey` | Platform API key | `ukz_...` |
+
+**What works:** All AI operations (chat, summarization, embeddings, entity extraction, enrichment) are fully functional via the platform API. Search uses local keyword matching (SQL LIKE).
+
+**Aspire user-secrets:**
+```bash
+dotnet user-secrets set "KnowzPlatform:Enabled" "true" --project src/Knowz.SelfHosted.AppHost
+dotnet user-secrets set "KnowzPlatform:BaseUrl" "https://api.knowz.io" --project src/Knowz.SelfHosted.AppHost
+dotnet user-secrets set "KnowzPlatform:ApiKey" "ukz_your_key" --project src/Knowz.SelfHosted.AppHost
+```
+
+### Tier 2: Azure OpenAI (Optional)
+
+Enable AI-powered chat, summarization, and embedding generation with your own Azure OpenAI resource.
+
+| Variable | Config Key | Description | Example |
+|----------|-----------|-------------|---------|
+| `AZURE_OPENAI_ENDPOINT` | `AzureOpenAI__Endpoint` | Azure OpenAI resource endpoint URL | `https://your-openai.openai.azure.com/` |
+| `AZURE_OPENAI_API_KEY` | `AzureOpenAI__ApiKey` | Azure OpenAI API key | `your-api-key` |
+| -- | `AzureOpenAI__DeploymentName` | Chat/completion model deployment name | `gpt-4o` |
+| -- | `AzureOpenAI__EmbeddingDeploymentName` | Embedding model deployment name | `text-embedding-3-small` |
+
+### Tier 2: Azure AI Search (Optional)
 
 Enable semantic vector search across your knowledge base. Requires Azure OpenAI to also be configured (for generating embeddings).
 
-| Variable | Default | Description | Example |
-|----------|---------|-------------|---------|
-| `AZURE_AI_SEARCH_ENDPOINT` | -- | Azure AI Search service endpoint | `https://your-search.search.windows.net` |
-| `AZURE_AI_SEARCH_API_KEY` | -- | Azure AI Search admin API key | `your-api-key` |
-
-Application configuration keys in compose:
-
-| Compose Environment Key | Description | Example |
-|--------------------------|-------------|---------|
-| `AzureAISearch__Endpoint` | Search service endpoint | `https://your-search.search.windows.net` |
-| `AzureAISearch__ApiKey` | Search admin API key | `your-api-key` |
-| `AzureAISearch__IndexName` | Search index name | `knowledge` |
+| Variable | Config Key | Description | Example |
+|----------|-----------|-------------|---------|
+| `AZURE_AI_SEARCH_ENDPOINT` | `AzureAISearch__Endpoint` | Azure AI Search service endpoint | `https://your-search.search.windows.net` |
+| `AZURE_AI_SEARCH_API_KEY` | `AzureAISearch__ApiKey` | Azure AI Search admin API key | `your-api-key` |
+| -- | `AzureAISearch__IndexName` | Search index name | `knowledge` |
 
 ## Storage
 
@@ -95,6 +110,7 @@ The MCP server acts as a proxy, allowing AI tools (Claude, Cursor, etc.) to quer
 |----------|---------|-------------|
 | `MCP_PORT` | `3001` | Host port for the MCP server |
 | `MCP_API_URL` | `http://api:8080` | Internal API URL that MCP proxies to. Change only if using a custom network setup. |
+| `MCP_SERVICE_KEY` | `knowz-mcp-dev-service-key` | Shared secret between MCP server and API for internal service-to-service calls (email/password login, SSO resolve). Must be the same value on both the MCP server and the API. Change to a random string in production. |
 | `MCP_VALIDATE_API_KEY` | `true` | Whether MCP validates API keys on incoming requests |
 
 These map to the following compose-level configuration keys:
@@ -104,6 +120,7 @@ These map to the following compose-level configuration keys:
 | `Knowz__BaseUrl` | `http://api:8080` | Internal API URL for proxying |
 | `Authentication__ValidateApiKey` | `true` | API key validation toggle |
 | `MCP__BackendMode` | `selfhosted` | Backend mode (set automatically in compose) |
+| `MCP__ServiceKey` | `knowz-mcp-dev-service-key` | Shared secret for MCP→API internal calls |
 | `MCP__ApiKeyValidationEndpoint` | `/api/vaults` | Endpoint used to validate API keys (set automatically in compose) |
 
 ## Advanced
@@ -155,6 +172,7 @@ Before deploying to production:
 - [ ] Change `SA_PASSWORD` to a strong, unique password
 - [ ] Change `JWT_SECRET` to a random 64+ character string
 - [ ] Change `ADMIN_PASSWORD` (or change it immediately after first login)
+- [ ] Change `MCP_SERVICE_KEY` to a random string (shared secret between MCP and API)
 - [ ] Set `SelfHosted__AllowedOrigins__0` to your actual domain
 - [ ] Place the stack behind a reverse proxy with TLS (HTTPS)
 - [ ] Consider setting `SelfHosted__EnableSwagger` to `false`

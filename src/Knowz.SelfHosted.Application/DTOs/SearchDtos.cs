@@ -25,3 +25,7 @@ public record FilePatternItem(Guid Id, string Title, string? FilePath, string Ty
 // Chat with History DTOs
 public record ChatMessageDto(string Role, string Content);
 public record ChatResponse(string Answer, IEnumerable<SourceRef> Sources, double Confidence);
+
+// Streaming DTOs
+public record StreamingAskResult(IEnumerable<SourceRef> Sources, double Confidence, IAsyncEnumerable<string> TokenStream);
+public record StreamingChatResult(IEnumerable<SourceRef> Sources, double Confidence, IAsyncEnumerable<string> TokenStream);

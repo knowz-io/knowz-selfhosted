@@ -25,6 +25,8 @@ public static class KnowledgeEndpoints
             string? fileName = null,
             string? startDate = null,
             string? endDate = null,
+            string? vaultId = null,
+            string? createdByUserId = null,
             CancellationToken ct = default) =>
         {
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -32,10 +34,22 @@ public static class KnowledgeEndpoints
 
             var accessibleVaultIds = await VaultEndpoints.ResolveAccessibleVaultIdsAsync(context, vaultAccessService, ct);
 
+            Guid? filterVaultId = !string.IsNullOrEmpty(vaultId) && Guid.TryParse(vaultId, out var vid) ? vid : null;
+            Guid? filterCreatedByUserId = !string.IsNullOrEmpty(createdByUserId) && Guid.TryParse(createdByUserId, out var cid) ? cid : null;
+
             var result = await svc.ListKnowledgeItemsAsync(
-                page, pageSize, sort, sortDir, type, title, fileName, startDate, endDate, ct, accessibleVaultIds);
+                page, pageSize, sort, sortDir, type, title, fileName, startDate, endDate, ct,
+                accessibleVaultIds, filterVaultId, filterCreatedByUserId);
             return Results.Ok(result);
         }).Produces<KnowledgeListResponse>();
+
+        group.MapGet("/creators", async (
+            KnowledgeService svc,
+            CancellationToken ct) =>
+        {
+            var creators = await svc.GetKnowledgeCreatorsAsync(ct);
+            return Results.Ok(creators);
+        }).Produces<List<CreatorRef>>();
 
         group.MapGet("/{id:guid}", async (
             KnowledgeService svc,
@@ -81,6 +95,8 @@ public static class KnowledgeEndpoints
                     return Results.Json(new { error = "Access denied to the target vault." }, statusCode: 403);
             }
 
+            var userId = VaultEndpoints.GetUserIdFromContext(context);
+
             var result = await svc.CreateKnowledgeAsync(
                 req.Content,
                 req.Title ?? (req.Content.Length > 100 ? req.Content[..100] : req.Content),
@@ -88,7 +104,8 @@ public static class KnowledgeEndpoints
                 req.VaultId,
                 req.Tags ?? new List<string>(),
                 req.Source,
-                ct);
+                ct,
+                userId);
             return Results.Created($"/api/v1/knowledge/{result.Id}", result);
         }).Produces<CreateKnowledgeResult>(201).Produces(400);
 

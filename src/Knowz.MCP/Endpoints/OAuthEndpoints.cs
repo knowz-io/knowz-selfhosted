@@ -99,7 +99,8 @@ public static class OAuthEndpoints
                     access_token = tokenResult.AccessToken,
                     token_type = tokenResult.TokenType,
                     expires_in = tokenResult.ExpiresIn,
-                    scope = tokenResult.Scope
+                    scope = tokenResult.Scope,
+                    refresh_token = tokenResult.RefreshToken
                 });
             }
 
@@ -156,19 +157,43 @@ public static class OAuthEndpoints
                     return Results.Unauthorized();
                 }
 
+                var refreshToken = oauthService.CreateRefreshToken(clientSecret, "mcp:read mcp:write");
+
                 return Results.Json(new
                 {
                     access_token = clientSecret,
                     token_type = "Bearer",
-                    expires_in = 3600,
-                    scope = "mcp:read mcp:write"
+                    expires_in = OAuthService.TokenExpirySeconds,
+                    scope = "mcp:read mcp:write",
+                    refresh_token = refreshToken
+                });
+            }
+
+            if (grantType == "refresh_token")
+            {
+                var refreshToken = form["refresh_token"].FirstOrDefault();
+
+                if (string.IsNullOrEmpty(refreshToken))
+                    return Results.BadRequest(new { error = "invalid_request", error_description = "Missing refresh_token" });
+
+                var tokenResult = oauthService.ExchangeRefreshToken(refreshToken);
+                if (tokenResult == null)
+                    return Results.BadRequest(new { error = "invalid_grant", error_description = "Invalid or expired refresh token" });
+
+                return Results.Json(new
+                {
+                    access_token = tokenResult.AccessToken,
+                    token_type = tokenResult.TokenType,
+                    expires_in = tokenResult.ExpiresIn,
+                    scope = tokenResult.Scope,
+                    refresh_token = tokenResult.RefreshToken
                 });
             }
 
             return Results.BadRequest(new
             {
                 error = "unsupported_grant_type",
-                error_description = "Supported grant types: authorization_code, client_credentials"
+                error_description = "Supported grant types: authorization_code, client_credentials, refresh_token"
             });
         });
 
@@ -218,7 +243,7 @@ public static class OAuthEndpoints
             var form = await context.Request.ReadFormAsync();
             var requestId = form["request_id"].FirstOrDefault();
             var apiKey = form["api_key"].FirstOrDefault();
-            var username = form["username"].FirstOrDefault();
+            var email = form["email"].FirstOrDefault();
             var password = form["password"].FirstOrDefault();
 
             if (string.IsNullOrEmpty(requestId))
@@ -245,8 +270,8 @@ public static class OAuthEndpoints
                 return Results.Content(errorHtml, "text/html");
             }
 
-            // Username/password authentication (self-hosted mode)
-            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+            // Username/password authentication (all modes — platform and self-hosted)
+            if (!string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(password))
             {
                 var serviceKey = configuration["MCP:ServiceKey"];
                 if (string.IsNullOrEmpty(serviceKey))
@@ -256,7 +281,7 @@ public static class OAuthEndpoints
                 {
                     var request = new HttpRequestMessage(HttpMethod.Post, $"{apiBaseUrl}/api/v1/internal/mcp/authenticate")
                     {
-                        Content = JsonContent.Create(new { username, password })
+                        Content = JsonContent.Create(new { email, password })
                     };
                     request.Headers.Add("X-Service-Key", serviceKey);
 
@@ -289,13 +314,27 @@ public static class OAuthEndpoints
                 var validationEndpoint = configuration["MCP:ApiKeyValidationEndpoint"]
                     ?? (backendMode.Equals("selfhosted", StringComparison.OrdinalIgnoreCase)
                         ? "/api/v1/auth/me"
-                        : "/api/v1/users/me");
+                        : "/api/v1/auth/validate-key");
 
                 try
                 {
-                    var request = new HttpRequestMessage(HttpMethod.Get, $"{apiBaseUrl}{validationEndpoint}");
-                    request.Headers.Add("X-Api-Key", apiKey);
-                    var response = await client.SendAsync(request);
+                    HttpResponseMessage response;
+
+                    if (validationEndpoint == "/api/v1/auth/validate-key")
+                    {
+                        // Platform mode: use dedicated validation endpoint (POST with body)
+                        // This endpoint checks all key sources including TenantApiKeys table
+                        var request = new HttpRequestMessage(HttpMethod.Post, $"{apiBaseUrl}{validationEndpoint}");
+                        request.Content = JsonContent.Create(new { apiKey });
+                        response = await client.SendAsync(request);
+                    }
+                    else
+                    {
+                        // Self-hosted or custom endpoint: use GET with X-Api-Key header (existing behavior)
+                        var request = new HttpRequestMessage(HttpMethod.Get, $"{apiBaseUrl}{validationEndpoint}");
+                        request.Headers.Add("X-Api-Key", apiKey);
+                        response = await client.SendAsync(request);
+                    }
 
                     if (!response.IsSuccessStatusCode)
                         return RenderError("Invalid or expired API key. Please check your key and try again.");

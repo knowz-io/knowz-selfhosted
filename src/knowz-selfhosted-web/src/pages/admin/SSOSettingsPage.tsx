@@ -12,7 +12,7 @@ const MODE_LABELS: Record<string, string> = {
 const MODE_STYLES: Record<string, string> = {
   PkcePublicClient: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400',
   ConfidentialClient: 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400',
-  Disabled: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+  Disabled: 'bg-muted text-muted-foreground',
 }
 
 export default function SSOSettingsPage() {
@@ -125,7 +125,7 @@ export default function SSOSettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 size={24} className="animate-spin text-gray-400" />
+        <Loader2 size={24} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -135,10 +135,10 @@ export default function SSOSettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield size={24} className="text-gray-600 dark:text-gray-400" />
+          <Shield size={24} className="text-muted-foreground" />
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Single Sign-On (SSO)</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Configure Microsoft Entra ID login</p>
+            <h1 className="text-xl font-semibold text-foreground">Single Sign-On (SSO)</h1>
+            <p className="text-sm text-muted-foreground">Configure Microsoft Entra ID login</p>
           </div>
         </div>
         <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${MODE_STYLES[detectedMode] ?? MODE_STYLES.Disabled}`}>
@@ -162,27 +162,27 @@ export default function SSOSettingsPage() {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Enable Toggle */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm p-5">
           <label className="flex items-center justify-between cursor-pointer">
             <div>
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Enable SSO</span>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Show SSO login button on the sign-in page</p>
+              <span className="text-sm font-medium text-foreground">Enable SSO</span>
+              <p className="text-xs text-muted-foreground mt-0.5">Show SSO login button on the sign-in page</p>
             </div>
             <input
               type="checkbox"
               checked={isEnabled}
               onChange={(e) => setIsEnabled(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-white"
+              className="w-5 h-5 rounded border-input text-primary focus:ring-ring"
             />
           </label>
         </div>
 
         {/* Connection Details */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Connection Details</h2>
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-foreground">Connection Details</h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Application (Client) ID
             </label>
             <input
@@ -190,28 +190,28 @@ export default function SSOSettingsPage() {
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder="00000000-0000-0000-0000-000000000000"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Client Secret <span className="text-gray-400 font-normal">(optional for PKCE mode)</span>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Client Secret <span className="text-muted-foreground font-normal">(optional for PKCE mode)</span>
             </label>
             <input
               type="password"
               value={clientSecret}
               onChange={(e) => { setClientSecret(e.target.value); setSecretChanged(true) }}
               placeholder={config?.hasClientSecret ? '(secret configured - leave empty to keep)' : 'Enter client secret or leave empty for PKCE mode'}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Without a client secret, SSO uses PKCE public client flow. Directory Tenant ID is required in this mode.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Directory (Tenant) ID(s)
             </label>
             <textarea
@@ -219,9 +219,9 @@ export default function SSOSettingsPage() {
               onChange={(e) => setDirectoryTenantId(e.target.value)}
               placeholder="e.g., 11111111-1111-1111-1111-111111111111"
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Single GUID or comma-separated GUIDs for multi-org access. Required for PKCE mode.
             </p>
           </div>
@@ -232,7 +232,7 @@ export default function SSOSettingsPage() {
               type="button"
               onClick={handleTest}
               disabled={testing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-1.5 border border-input rounded-md text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
               {testing ? <Loader2 size={14} className="animate-spin" /> : null}
               Test Connection
@@ -256,30 +256,30 @@ export default function SSOSettingsPage() {
         </div>
 
         {/* Access Control */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Access Control</h2>
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-foreground">Access Control</h2>
 
           <label className="flex items-center justify-between cursor-pointer">
             <div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-Provision Users</span>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Automatically create accounts for new SSO users</p>
+              <span className="text-sm font-medium text-foreground">Auto-Provision Users</span>
+              <p className="text-xs text-muted-foreground mt-0.5">Automatically create accounts for new SSO users</p>
             </div>
             <input
               type="checkbox"
               checked={autoProvisionUsers}
               onChange={(e) => setAutoProvisionUsers(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-white"
+              className="w-5 h-5 rounded border-input text-primary focus:ring-ring"
             />
           </label>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Default Role for New Users
             </label>
             <select
               value={defaultRole}
               onChange={(e) => setDefaultRole(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent"
+              className="w-full px-3 py-2 border border-input rounded-md bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             >
               <option value="User">User</option>
               <option value="Admin">Admin</option>
@@ -289,24 +289,24 @@ export default function SSOSettingsPage() {
         </div>
 
         {/* Setup Instructions */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+        <div className="bg-card border border-border/60 rounded-xl shadow-sm">
           <button
             type="button"
             onClick={() => setShowInstructions(!showInstructions)}
             className="w-full flex items-center justify-between p-5 text-left"
           >
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Azure Portal Setup Instructions</h2>
-            {showInstructions ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+            <h2 className="text-sm font-semibold text-foreground">Azure Portal Setup Instructions</h2>
+            {showInstructions ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
           </button>
           {showInstructions && (
-            <div className="px-5 pb-5 space-y-4 text-sm text-gray-600 dark:text-gray-400">
+            <div className="px-5 pb-5 space-y-4 text-sm text-muted-foreground">
               <div>
-                <h3 className="font-medium text-gray-900 dark:text-white mb-2">PKCE Public Client Mode (simpler, no secret needed)</h3>
+                <h3 className="font-medium text-foreground mb-2">PKCE Public Client Mode (simpler, no secret needed)</h3>
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Go to Azure Portal &gt; Entra ID &gt; App registrations &gt; New registration</li>
                   <li>Name: "Knowz Self-Hosted SSO"</li>
                   <li>Supported account types: "Accounts in this organizational directory only"</li>
-                  <li>Redirect URI: Select "Single-page application (SPA)" and enter <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{window.location.origin}/auth/sso/callback</code></li>
+                  <li>Redirect URI: Select "Single-page application (SPA)" and enter <code className="bg-muted px-1 rounded">{window.location.origin}/auth/sso/callback</code></li>
                   <li>After creation: Copy the Application (client) ID</li>
                   <li>Go to Authentication &gt; Under "Advanced settings" &gt; Enable "Allow public client flows" = Yes</li>
                   <li>Enter the Client ID and your Entra Tenant ID in the form above</li>
@@ -314,12 +314,12 @@ export default function SSOSettingsPage() {
                 </ol>
               </div>
               <div>
-                <h3 className="font-medium text-gray-900 dark:text-white mb-2">Confidential Client Mode (full app registration)</h3>
+                <h3 className="font-medium text-foreground mb-2">Confidential Client Mode (full app registration)</h3>
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Go to Azure Portal &gt; Entra ID &gt; App registrations &gt; New registration</li>
                   <li>Name: "Knowz Self-Hosted SSO"</li>
                   <li>Supported account types: "Accounts in this organizational directory only"</li>
-                  <li>Redirect URI: Select "Web" and enter <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{window.location.origin}/auth/sso/callback</code></li>
+                  <li>Redirect URI: Select "Web" and enter <code className="bg-muted px-1 rounded">{window.location.origin}/auth/sso/callback</code></li>
                   <li>After creation: Copy the Application (client) ID</li>
                   <li>Go to Certificates &amp; secrets &gt; New client secret &gt; Copy the secret value</li>
                   <li>Enter the Client ID, Client Secret, and your Entra Tenant ID in the form above</li>
@@ -343,7 +343,7 @@ export default function SSOSettingsPage() {
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : null}
             Save Configuration

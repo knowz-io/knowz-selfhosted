@@ -426,16 +426,17 @@ public class EnrichmentBackgroundService : BackgroundService
             contentForChunking, knowledge.Title, knowledge.Summary,
             currentTags, strategy);
 
-        var chunkHashes = new Dictionary<int, string>();
+        var chunkData = new Dictionary<int, (string Hash, string? EmbeddingJson)>();
 
         foreach (var chunk in chunks)
         {
             var hash = ContentHasher.Hash(chunk.Content);
-            chunkHashes[chunk.Position] = hash;
             float[]? embedding;
+            string? embeddingJson;
 
             if (existingHashMap.TryGetValue(hash, out var cachedVector))
             {
+                embeddingJson = cachedVector;
                 try
                 {
                     embedding = JsonSerializer.Deserialize<float[]>(cachedVector);
@@ -443,12 +444,16 @@ public class EnrichmentBackgroundService : BackgroundService
                 catch (JsonException)
                 {
                     embedding = await openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                    embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
                 }
             }
             else
             {
                 embedding = await openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
             }
+
+            chunkData[chunk.Position] = (hash, embeddingJson);
 
             await searchService.IndexDocumentAsync(
                 knowledge.Id, knowledge.Title, chunk.Content, knowledge.Summary,
@@ -459,13 +464,13 @@ public class EnrichmentBackgroundService : BackgroundService
                 cancellationToken: ct);
         }
 
-        // Replace persisted chunks
+        // Replace persisted chunks (now includes freshly generated embeddings)
         try
         {
             db.ContentChunks.RemoveRange(existingChunks);
             foreach (var chunk in chunks)
             {
-                var hash = chunkHashes[chunk.Position];
+                var (hash, embeddingJson) = chunkData[chunk.Position];
                 db.ContentChunks.Add(new ContentChunk
                 {
                     TenantId = knowledge.TenantId,
@@ -473,8 +478,8 @@ public class EnrichmentBackgroundService : BackgroundService
                     Position = chunk.Position,
                     Content = chunk.Content,
                     ContentHash = hash,
-                    EmbeddingVectorJson = existingHashMap.TryGetValue(hash, out var cv) ? cv : null,
-                    EmbeddedAt = existingHashMap.ContainsKey(hash) ? DateTime.UtcNow : null
+                    EmbeddingVectorJson = embeddingJson,
+                    EmbeddedAt = embeddingJson != null ? DateTime.UtcNow : null
                 });
             }
             await db.SaveChangesAsync(ct);

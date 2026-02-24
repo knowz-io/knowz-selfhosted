@@ -11,42 +11,51 @@ namespace Knowz.SelfHosted.Infrastructure.Extensions;
 public static class SearchExtensions
 {
     /// <summary>
-    /// Registers AzureSearchService with Azure AI Search SDK client.
-    /// If credentials are not configured, registers NoOpSearchService instead.
+    /// Registers search services with three-tier priority:
+    /// 1. KnowzPlatform:Enabled → LocalVectorSearchService (cosine similarity on stored embeddings)
+    /// 2. AzureAISearch configured → AzureSearchService (vector + keyword)
+    /// 3. Neither → NoOpSearchService
     /// </summary>
     public static IServiceCollection AddSelfHostedSearch(
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Tier 1: Knowz Platform mode → local vector search using embeddings from ContentChunks
+        var platformEnabled = string.Equals(
+            configuration["KnowzPlatform:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+
+        if (platformEnabled)
+        {
+            services.AddScoped<ISearchService, LocalVectorSearchService>();
+            return services;
+        }
+
+        // Tier 2: Azure AI Search
         var endpoint = configuration["AzureAISearch:Endpoint"];
         var apiKey = configuration["AzureAISearch:ApiKey"];
         var indexName = configuration["AzureAISearch:IndexName"];
 
-        if (string.IsNullOrWhiteSpace(endpoint) ||
-            string.IsNullOrWhiteSpace(apiKey) ||
-            string.IsNullOrWhiteSpace(indexName))
+        if (!string.IsNullOrWhiteSpace(endpoint) &&
+            !string.IsNullOrWhiteSpace(apiKey) &&
+            !string.IsNullOrWhiteSpace(indexName))
         {
-            // Register no-op service — search features disabled, auth/admin still work
-            services.AddScoped<ISearchService, NoOpSearchService>();
+            var credential = new AzureKeyCredential(apiKey);
+
+            services.AddSingleton(_ => new SearchClient(
+                new Uri(endpoint),
+                indexName,
+                credential));
+
+            services.AddSingleton(_ => new SearchIndexClient(
+                new Uri(endpoint),
+                credential));
+
+            services.AddScoped<ISearchService, AzureSearchService>();
             return services;
         }
 
-        var credential = new AzureKeyCredential(apiKey);
-
-        // Register SearchClient as singleton (thread-safe, connection pooled)
-        services.AddSingleton(_ => new SearchClient(
-            new Uri(endpoint),
-            indexName,
-            credential));
-
-        // Register SearchIndexClient for index management (create/update schema)
-        services.AddSingleton(_ => new SearchIndexClient(
-            new Uri(endpoint),
-            credential));
-
-        // Register AzureSearchService as scoped (uses ITenantProvider for per-request tenant)
-        services.AddScoped<ISearchService, AzureSearchService>();
-
+        // Tier 3: NoOp — search features disabled, auth/admin still work
+        services.AddScoped<ISearchService, NoOpSearchService>();
         return services;
     }
 }

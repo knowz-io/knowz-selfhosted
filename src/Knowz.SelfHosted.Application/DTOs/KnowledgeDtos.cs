@@ -22,9 +22,15 @@ public record KnowledgeListItem(
     string Summary,
     string Type,
     string? FilePath,
+    Guid? VaultId,
+    string? VaultName,
+    Guid? CreatedByUserId,
+    string? CreatedByUserName,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     bool IsIndexed);
+
+public record CreatorRef(Guid Id, string Name);
 
 public record KnowledgeListResponse(
     List<KnowledgeListItem> Items,

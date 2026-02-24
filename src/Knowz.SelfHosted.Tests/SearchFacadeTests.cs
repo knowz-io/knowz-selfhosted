@@ -6,6 +6,7 @@ using Knowz.Core.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Services;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -37,9 +38,10 @@ public class SearchFacadeTests : IDisposable
         _openAIService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
+        var streamingOpenAIService = Substitute.For<IStreamingOpenAIService>();
         var logger = Substitute.For<ILogger<SearchFacade>>();
 
-        _svc = new SearchFacade(_db, _searchService, _openAIService, logger);
+        _svc = new SearchFacade(_db, _searchService, _openAIService, streamingOpenAIService, logger);
     }
 
     public void Dispose()

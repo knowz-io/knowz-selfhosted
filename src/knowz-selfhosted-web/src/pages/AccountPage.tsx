@@ -77,10 +77,8 @@ export default function AccountPage() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <h1 className="text-2xl font-bold">Account</h1>
-
       {/* Profile Section */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6 space-y-4">
+      <div className="bg-card border border-border/60 rounded-xl shadow-sm p-6 space-y-4">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <UserCircle size={20} />
           Profile
@@ -88,20 +86,20 @@ export default function AccountPage() {
 
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Username
             </label>
             <input
               type="text"
               value={user?.username ?? ''}
               disabled
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-500 cursor-not-allowed"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-muted text-muted-foreground cursor-not-allowed"
             />
-            <p className="text-xs text-gray-500 mt-1">Username cannot be changed.</p>
+            <p className="text-xs text-muted-foreground mt-1">Username cannot be changed.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Display Name
             </label>
             <input
@@ -109,12 +107,12 @@ export default function AccountPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Your display name"
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Email
             </label>
             <input
@@ -122,7 +120,7 @@ export default function AccountPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
         </div>
@@ -142,7 +140,7 @@ export default function AccountPage() {
         <button
           onClick={handleProfileSave}
           disabled={profileMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-80 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-colors disabled:opacity-50"
         >
           <Save size={16} />
           {profileMutation.isPending ? 'Saving...' : 'Save Profile'}
@@ -150,7 +148,7 @@ export default function AccountPage() {
       </div>
 
       {/* Password Section */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6 space-y-4">
+      <div className="bg-card border border-border/60 rounded-xl shadow-sm p-6 space-y-4">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <Lock size={20} />
           Change Password
@@ -158,38 +156,38 @@ export default function AccountPage() {
 
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Current Password
             </label>
             <input
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               New Password
             </label>
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Confirm New Password
             </label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
         </div>
@@ -209,7 +207,7 @@ export default function AccountPage() {
         <button
           onClick={handlePasswordChange}
           disabled={passwordMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-md hover:opacity-80 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-colors disabled:opacity-50"
         >
           <Lock size={16} />
           {passwordMutation.isPending ? 'Changing...' : 'Change Password'}

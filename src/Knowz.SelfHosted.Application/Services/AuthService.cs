@@ -102,6 +102,19 @@ public class AuthService : IAuthService
             return;
         }
 
+        // Check if admin exists with wrong role (legacy enum values from before SwapUserRoleValues)
+        var existingAdmin = await _db.Users
+            .FirstOrDefaultAsync(u => u.Username == _options.SuperAdminUsername);
+        if (existingAdmin != null)
+        {
+            _logger.LogWarning(
+                "User '{Username}' exists with Role={Role} but no SuperAdmin found. Fixing role.",
+                existingAdmin.Username, existingAdmin.Role);
+            existingAdmin.Role = UserRole.SuperAdmin;
+            await _db.SaveChangesAsync();
+            return;
+        }
+
         _logger.LogInformation("No SuperAdmin found. Creating default SuperAdmin user.");
 
         // Create or find default tenant

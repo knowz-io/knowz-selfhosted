@@ -1,10 +1,13 @@
-# Base stage: ASP.NET 9.0 runtime
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+# Base stage: ASP.NET 10.0 runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 
 # Build stage: .NET SDK for compilation
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
+
+# Copy NuGet config for restore
+COPY ["nuget.config", "."]
 
 # Copy project files for NuGet restore caching
 COPY ["src/Knowz.SelfHosted.Infrastructure/Knowz.SelfHosted.Infrastructure.csproj", "src/Knowz.SelfHosted.Infrastructure/"]
@@ -31,15 +34,11 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_EnableDiagnostics=0
 
-# Create non-root user for security
-RUN adduser --disabled-password --gecos '' appuser && \
-    chown -R appuser:appuser /app
+# Create local file storage directory writable by non-root user
+RUN mkdir -p /data/files && chown -R $APP_UID:$APP_UID /data/files
 
-# Create local file storage directory
-RUN mkdir -p /data/files && chown -R appuser:appuser /data/files
-
-# Switch to non-root user
-USER appuser
+# Switch to built-in non-root user (APP_UID=1654 in .NET 10 base image)
+USER $APP_UID
 
 EXPOSE 8080
 

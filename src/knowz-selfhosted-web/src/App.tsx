@@ -1,5 +1,9 @@
-import { Routes, Route } from 'react-router-dom'
-import { AuthProvider, ProtectedRoute, AdminRoute } from './lib/auth'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, ProtectedRoute, AdminRoute, SuperAdminRoute } from './lib/auth'
+import ErrorBoundary from './components/ErrorBoundary'
+import { initTheme } from './lib/theme'
+
+initTheme()
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -9,18 +13,11 @@ import KnowledgeCreatePage from './pages/KnowledgeCreatePage'
 import VaultListPage from './pages/VaultListPage'
 import VaultDetailPage from './pages/VaultDetailPage'
 import SearchPage from './pages/SearchPage'
-import AskPage from './pages/AskPage'
-import TopicsPage from './pages/TopicsPage'
-import SettingsPage from './pages/SettingsPage'
-import ApiKeysPage from './pages/ApiKeysPage'
-import DataPortabilityPage from './pages/DataPortabilityPage'
-import McpSetupPage from './pages/McpSetupPage'
-import TagsPage from './pages/TagsPage'
-import EntitiesPage from './pages/EntitiesPage'
-import AccountPage from './pages/AccountPage'
 import InboxPage from './pages/InboxPage'
 import FilesPage from './pages/FilesPage'
 import ChatPage from './pages/ChatPage'
+import UnifiedSettingsPage from './pages/UnifiedSettingsPage'
+import OrganizePage from './pages/OrganizePage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import TenantsPage from './pages/admin/TenantsPage'
 import UsersPage from './pages/admin/UsersPage'
@@ -30,6 +27,7 @@ import SSOCallbackPage from './pages/SSOCallbackPage'
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <Routes>
         {/* Public routes: no auth required */}
@@ -50,20 +48,23 @@ export default function App() {
                   <Route path="/vaults" element={<VaultListPage />} />
                   <Route path="/vaults/:id" element={<VaultDetailPage />} />
                   <Route path="/search" element={<SearchPage />} />
-                  <Route path="/ask" element={<AskPage />} />
                   <Route path="/chat" element={<ChatPage />} />
                   <Route path="/inbox" element={<InboxPage />} />
                   <Route path="/files" element={<FilesPage />} />
-                  <Route path="/topics" element={<TopicsPage />} />
-                  <Route path="/tags" element={<TagsPage />} />
-                  <Route path="/entities" element={<EntitiesPage />} />
-                  <Route path="/account" element={<AccountPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/api-keys" element={<ApiKeysPage />} />
-                  <Route path="/data" element={<DataPortabilityPage />} />
-                  <Route path="/mcp-setup" element={<McpSetupPage />} />
+                  <Route path="/settings" element={<UnifiedSettingsPage />} />
+                  <Route path="/organize" element={<OrganizePage />} />
 
-                  {/* Admin routes: require SuperAdmin role */}
+                  {/* Backward-compatible redirects */}
+                  <Route path="/ask" element={<Navigate to="/search?mode=ask" replace />} />
+                  <Route path="/account" element={<Navigate to="/settings?tab=account" replace />} />
+                  <Route path="/api-keys" element={<Navigate to="/settings?tab=api-keys" replace />} />
+                  <Route path="/data" element={<Navigate to="/settings?tab=data" replace />} />
+                  <Route path="/mcp-setup" element={<Navigate to="/settings?tab=mcp" replace />} />
+                  <Route path="/topics" element={<Navigate to="/organize" replace />} />
+                  <Route path="/tags" element={<Navigate to="/organize" replace />} />
+                  <Route path="/entities" element={<Navigate to="/organize" replace />} />
+
+                  {/* Admin routes: require SuperAdmin or Admin role */}
                   <Route
                     path="/admin"
                     element={
@@ -75,9 +76,9 @@ export default function App() {
                   <Route
                     path="/admin/tenants"
                     element={
-                      <AdminRoute>
+                      <SuperAdminRoute>
                         <TenantsPage />
-                      </AdminRoute>
+                      </SuperAdminRoute>
                     }
                   />
                   <Route
@@ -91,17 +92,17 @@ export default function App() {
                   <Route
                     path="/admin/settings"
                     element={
-                      <AdminRoute>
+                      <SuperAdminRoute>
                         <AdminSettingsPage />
-                      </AdminRoute>
+                      </SuperAdminRoute>
                     }
                   />
                   <Route
                     path="/admin/sso"
                     element={
-                      <AdminRoute>
+                      <SuperAdminRoute>
                         <SSOSettingsPage />
-                      </AdminRoute>
+                      </SuperAdminRoute>
                     }
                   />
 
@@ -114,5 +115,6 @@ export default function App() {
         />
       </Routes>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }

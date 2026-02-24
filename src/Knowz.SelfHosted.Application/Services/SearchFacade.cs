@@ -2,6 +2,7 @@ using Knowz.Core.Interfaces;
 using Knowz.Core.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -16,17 +17,20 @@ public class SearchFacade
     private readonly SelfHostedDbContext _db;
     private readonly ISearchService _searchService;
     private readonly IOpenAIService _openAIService;
+    private readonly IStreamingOpenAIService _streamingOpenAIService;
     private readonly ILogger<SearchFacade> _logger;
 
     public SearchFacade(
         SelfHostedDbContext db,
         ISearchService searchService,
         IOpenAIService openAIService,
+        IStreamingOpenAIService streamingOpenAIService,
         ILogger<SearchFacade> logger)
     {
         _db = db;
         _searchService = searchService;
         _openAIService = openAIService;
+        _streamingOpenAIService = streamingOpenAIService;
         _logger = logger;
     }
 
@@ -136,6 +140,73 @@ public class SearchFacade
             .ToListAsync(ct);
 
         return new FilePatternResponse(pattern, items, items.Count);
+    }
+
+    public async Task<StreamingAskResult> AskQuestionStreamingAsync(
+        string question, Guid? vaultId, bool researchMode, CancellationToken ct,
+        List<Guid>? accessibleVaultIds = null)
+    {
+        var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
+
+        var searchResults = await _searchService.HybridSearchAsync(
+            question, embedding, vaultId, includeDescendants: true,
+            maxResults: researchMode ? 15 : 10,
+            cancellationToken: ct);
+
+        if (accessibleVaultIds != null)
+            searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+
+        var sources = searchResults
+            .Where(r => r.KnowledgeId != Guid.Empty)
+            .Select(r => r.KnowledgeId)
+            .Distinct()
+            .Select(id => new SourceRef(id));
+
+        var confidence = searchResults.Count > 0
+            ? Math.Min(1.0, searchResults.Average(r => r.Score))
+            : 0;
+
+        var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
+            question, searchResults, null, researchMode, ct);
+
+        return new StreamingAskResult(sources, confidence, tokenStream);
+    }
+
+    public async Task<StreamingChatResult> ChatWithHistoryStreamingAsync(
+        string question,
+        List<ChatMessageDto>? conversationHistory,
+        Guid? vaultId,
+        bool researchMode,
+        int maxTurns,
+        CancellationToken ct,
+        List<Guid>? accessibleVaultIds = null)
+    {
+        var compositeQuestion = BuildCompositeQuestion(question, conversationHistory, maxTurns);
+
+        var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
+
+        var searchResults = await _searchService.HybridSearchAsync(
+            question, embedding, vaultId, includeDescendants: true,
+            maxResults: researchMode ? 15 : 10,
+            cancellationToken: ct);
+
+        if (accessibleVaultIds != null)
+            searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+
+        var sources = searchResults
+            .Where(r => r.KnowledgeId != Guid.Empty)
+            .Select(r => r.KnowledgeId)
+            .Distinct()
+            .Select(id => new SourceRef(id));
+
+        var confidence = searchResults.Count > 0
+            ? Math.Min(1.0, searchResults.Average(r => r.Score))
+            : 0;
+
+        var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
+            compositeQuestion, searchResults, null, researchMode, ct);
+
+        return new StreamingChatResult(sources, confidence, tokenStream);
     }
 
     public async Task<ChatResponse> ChatWithHistoryAsync(
