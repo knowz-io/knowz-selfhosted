@@ -13,16 +13,11 @@ public class RedisMcpSessionStore : IMcpSessionStore
     private readonly IDistributedCache _cache;
     private readonly ILogger<RedisMcpSessionStore> _logger;
     private readonly TimeSpan _sessionTimeout;
-    private readonly TimeSpan _lastAuthKeyTimeout = TimeSpan.FromHours(24);
     private readonly ConcurrentDictionary<string, SessionData> _fallbackStore = new();
     private bool _redisAvailable = true;
 
-    private string? _lastAuthenticatedApiKey;
-    private DateTime _lastAuthenticatedAt;
-
     private const string KeyPrefix = "session:";
     private const string FingerprintPrefix = "fingerprint:";
-    private const string LastAuthKey = "mcp:last-auth-key";
 
     public RedisMcpSessionStore(IDistributedCache cache, ILogger<RedisMcpSessionStore> logger, IConfiguration configuration)
     {
@@ -53,23 +48,6 @@ public class RedisMcpSessionStore : IMcpSessionStore
             _cache.SetString(KeyPrefix + sessionId, json, options);
             _redisAvailable = true;
 
-            _lastAuthenticatedApiKey = apiKey;
-            _lastAuthenticatedAt = DateTime.UtcNow;
-
-            // Persist last-auth fallback in Redis so it survives deployments
-            try
-            {
-                var lastAuthJson = JsonSerializer.Serialize(new LastAuthData { ApiKey = apiKey, StoredAt = DateTime.UtcNow });
-                _cache.SetString(LastAuthKey, lastAuthJson, new DistributedCacheEntryOptions
-                {
-                    SlidingExpiration = _lastAuthKeyTimeout
-                });
-            }
-            catch (Exception lastAuthEx)
-            {
-                _logger.LogWarning(lastAuthEx, "Failed to persist last-auth key to Redis");
-            }
-
             _logger.LogDebug("Stored API key for MCP session {SessionId} in Redis", sessionId);
         }
         catch (Exception ex)
@@ -81,9 +59,6 @@ public class RedisMcpSessionStore : IMcpSessionStore
                 sessionId,
                 _ => data,
                 (_, _) => data);
-
-            _lastAuthenticatedApiKey = apiKey;
-            _lastAuthenticatedAt = DateTime.UtcNow;
         }
     }
 
@@ -162,47 +137,6 @@ public class RedisMcpSessionStore : IMcpSessionStore
         }
     }
 
-    public string? GetLastAuthenticatedApiKey()
-    {
-        // Check in-memory first (fast path)
-        if (_lastAuthenticatedApiKey is not null &&
-            DateTime.UtcNow - _lastAuthenticatedAt <= _lastAuthKeyTimeout)
-        {
-            return _lastAuthenticatedApiKey;
-        }
-
-        // Fall back to Redis (survives deployments)
-        try
-        {
-            var json = _cache.GetString(LastAuthKey);
-            if (json != null)
-            {
-                var data = JsonSerializer.Deserialize<LastAuthData>(json);
-                if (data?.ApiKey != null && DateTime.UtcNow - data.StoredAt <= _lastAuthKeyTimeout)
-                {
-                    // Repopulate in-memory cache
-                    _lastAuthenticatedApiKey = data.ApiKey;
-                    _lastAuthenticatedAt = data.StoredAt;
-                    _logger.LogInformation("Recovered last-auth key from Redis (stored {Age} ago)",
-                        DateTime.UtcNow - data.StoredAt);
-                    return data.ApiKey;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to read last-auth key from Redis");
-        }
-
-        if (_lastAuthenticatedApiKey is not null)
-        {
-            _logger.LogDebug("Last authenticated API key is stale ({Age} old), ignoring",
-                DateTime.UtcNow - _lastAuthenticatedAt);
-        }
-
-        return null;
-    }
-
     public void StoreFingerprint(string fingerprint, string sessionId)
     {
         if (string.IsNullOrWhiteSpace(fingerprint) || string.IsNullOrWhiteSpace(sessionId))
@@ -260,9 +194,4 @@ public class RedisMcpSessionStore : IMcpSessionStore
         public DateTime LastActivity { get; set; }
     }
 
-    private class LastAuthData
-    {
-        public string? ApiKey { get; set; }
-        public DateTime StoredAt { get; set; }
-    }
 }

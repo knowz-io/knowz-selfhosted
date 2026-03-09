@@ -13,13 +13,6 @@ public interface IMcpSessionStore
     void CleanupExpiredSessions();
 
     /// <summary>
-    /// Returns the most recently authenticated API key from this instance,
-    /// or null if no key was stored or the key is stale (>30 minutes).
-    /// Used as a fallback when clients drop both Authorization and Mcp-Session-Id headers.
-    /// </summary>
-    string? GetLastAuthenticatedApiKey();
-
-    /// <summary>
     /// Stores a mapping from client fingerprint (IP+User-Agent) to session ID.
     /// Used to recover sessions when clients send neither Mcp-Session-Id nor cookies.
     /// </summary>
@@ -37,11 +30,7 @@ public class McpSessionStore : IMcpSessionStore
     private readonly ConcurrentDictionary<string, SessionData> _sessions = new();
     private readonly ConcurrentDictionary<string, FingerprintData> _fingerprints = new();
     private readonly TimeSpan _sessionTimeout = TimeSpan.FromHours(24);
-    private readonly TimeSpan _lastAuthKeyTimeout = TimeSpan.FromHours(24);
     private readonly ILogger<McpSessionStore> _logger;
-
-    private string? _lastAuthenticatedApiKey;
-    private DateTime _lastAuthenticatedAt;
 
     public McpSessionStore(ILogger<McpSessionStore> logger)
     {
@@ -62,9 +51,6 @@ public class McpSessionStore : IMcpSessionStore
                 existing.LastActivity = DateTime.UtcNow;
                 return existing;
             });
-
-        _lastAuthenticatedApiKey = apiKey;
-        _lastAuthenticatedAt = DateTime.UtcNow;
 
         _logger.LogDebug("Stored API key for MCP session {SessionId}", sessionId);
     }
@@ -108,21 +94,6 @@ public class McpSessionStore : IMcpSessionStore
         {
             _logger.LogInformation("Cleaned up {Count} expired MCP sessions", expiredSessions.Count);
         }
-    }
-
-    public string? GetLastAuthenticatedApiKey()
-    {
-        if (_lastAuthenticatedApiKey is null)
-            return null;
-
-        if (DateTime.UtcNow - _lastAuthenticatedAt > _lastAuthKeyTimeout)
-        {
-            _logger.LogDebug("Last authenticated API key is stale ({Age} old), ignoring",
-                DateTime.UtcNow - _lastAuthenticatedAt);
-            return null;
-        }
-
-        return _lastAuthenticatedApiKey;
     }
 
     public void StoreFingerprint(string fingerprint, string sessionId)

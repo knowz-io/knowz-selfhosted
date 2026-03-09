@@ -6,38 +6,39 @@
   // appsettings.Local.json is gitignored and will not be committed.
   //
   // AI SERVICE TIERS (pick ONE):
-  //   Tier 1: KnowzPlatform — proxy AI through api.knowz.io (simplest)
+  //   Tier 1: KnowzPlatform — proxy AI through an external platform API (simplest)
   //   Tier 2: Azure OpenAI + Azure AI Search — direct Azure resources (full-featured)
   //   Tier 3: (default) NoOp — AI features disabled, auth/admin still work
   // ==========================================================================
 
   // ---------------------------------------------------------------------------
   // OPTION A: Knowz Platform Proxy (Tier 1)
-  // Delegates AI operations to the Knowz Platform API. Search is local (keyword).
-  // Requires a valid API key from your Knowz Platform account.
+  // Delegates AI operations to an external platform API. Search is local (keyword).
+  // Requires a valid API key from your platform account.
   // ---------------------------------------------------------------------------
   // "KnowzPlatform": {
   //   "Enabled": "true",
-  //   "BaseUrl": "https://api.dev.knowz.io",
-  //   "ApiKey": "ukz_your_platform_api_key"
+  //   "BaseUrl": "https://your-platform-api.example.com",
+  //   "ApiKey": "your_platform_api_key"
   // },
 
   // ---------------------------------------------------------------------------
   // OPTION B: Direct Azure OpenAI + Azure AI Search (Tier 2)
   // Full-featured: vector search, embeddings, completions, enrichment.
   // Requires your own Azure OpenAI and Azure AI Search resources.
+  // Uncomment and fill in to enable.
   // ---------------------------------------------------------------------------
-  "AzureOpenAI": {
-    "Endpoint": "https://your-openai-resource.openai.azure.com/",
-    "ApiKey": "your-azure-openai-api-key",
-    "DeploymentName": "gpt-4o",
-    "EmbeddingDeploymentName": "text-embedding-3-small"
-  },
-  "AzureAISearch": {
-    "Endpoint": "https://your-search-service.search.windows.net/",
-    "ApiKey": "your-azure-search-admin-key",
-    "IndexName": "knowledge"
-  },
+  // "AzureOpenAI": {
+  //   "Endpoint": "https://your-openai-resource.openai.azure.com/",
+  //   "ApiKey": "your-azure-openai-api-key",
+  //   "DeploymentName": "gpt-5.2-chat",
+  //   "EmbeddingDeploymentName": "text-embedding-3-small"
+  // },
+  // "AzureAISearch": {
+  //   "Endpoint": "https://your-search-service.search.windows.net/",
+  //   "ApiKey": "your-azure-search-admin-key",
+  //   "IndexName": "knowledge"
+  // },
 
   // ---------------------------------------------------------------------------
   // Database (required if not using Aspire local mode with SQL container)

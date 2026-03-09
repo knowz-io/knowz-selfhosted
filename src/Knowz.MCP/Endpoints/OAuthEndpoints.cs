@@ -34,7 +34,7 @@ public static class OAuthEndpoints
             var baseUrl = ApiKeyValidator.GetBaseUrl(context);
             return Results.Json(new
             {
-                resource = baseUrl,
+                resource = $"{baseUrl}/mcp",
                 authorization_servers = new[] { baseUrl },
                 scopes_supported = new[] { "mcp:read", "mcp:write" },
                 bearer_methods_supported = new[] { "header", "query" },

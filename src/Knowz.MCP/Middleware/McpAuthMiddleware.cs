@@ -268,20 +268,6 @@ public class McpAuthMiddleware
             }
         }
 
-        // Final fallback: when client sends no auth headers AND no session ID,
-        // use the most recently authenticated API key from this instance.
-        // Handles Claude Code MCP client bug where headers are dropped after handshake.
-        if (string.IsNullOrWhiteSpace(apiKey) && string.IsNullOrWhiteSpace(sessionId))
-        {
-            apiKey = sessionStore.GetLastAuthenticatedApiKey();
-            if (!string.IsNullOrWhiteSpace(apiKey))
-            {
-                _logger.LogWarning(
-                    "Using last authenticated API key as fallback — client not sending session headers on path {Path}",
-                    context.Request.Path);
-            }
-        }
-
         if (!string.IsNullOrWhiteSpace(apiKey) && IsValidKnowzKeyFormat(apiKey))
         {
             context.Items["ApiKey"] = apiKey;

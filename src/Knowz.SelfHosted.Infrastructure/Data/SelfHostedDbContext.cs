@@ -54,6 +54,9 @@ public class SelfHostedDbContext : DbContext
     public DbSet<UserPermissions> UserPermissions => Set<UserPermissions>();
     public DbSet<UserVaultAccess> UserVaultAccess => Set<UserVaultAccess>();
 
+    // Prompt templates (no tenant query filter — scoping done in PromptResolutionService)
+    public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
+
     // Infrastructure entities (no query filters)
     public DbSet<EnrichmentOutboxItem> EnrichmentOutbox => Set<EnrichmentOutboxItem>();
 
@@ -241,6 +244,24 @@ public class SelfHostedDbContext : DbContext
             entity.HasIndex(e => new { e.Status, e.NextRetryAt });
             entity.HasIndex(e => new { e.TenantId, e.Status });
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+        });
+
+        // --- PromptTemplate entity configuration (NO query filter — scoping in service) ---
+        modelBuilder.Entity<PromptTemplate>(entity =>
+        {
+            entity.HasKey(pt => pt.Id);
+            entity.Property(pt => pt.PromptKey).IsRequired().HasMaxLength(100);
+            entity.Property(pt => pt.TemplateText).IsRequired();
+            entity.Property(pt => pt.Description).HasMaxLength(500);
+            entity.Property(pt => pt.LastModifiedBy).HasMaxLength(100);
+            entity.HasIndex(pt => new { pt.PromptKey, pt.Scope, pt.TenantId, pt.UserId })
+                .IsUnique()
+                .HasFilter("[TenantId] IS NOT NULL AND [UserId] IS NOT NULL")
+                .HasDatabaseName("IX_PromptTemplates_Key_Scope_Tenant_User");
+            entity.HasIndex(pt => new { pt.TenantId, pt.PromptKey })
+                .HasDatabaseName("IX_PromptTemplates_TenantId_PromptKey");
+            entity.HasIndex(pt => new { pt.UserId, pt.PromptKey })
+                .HasDatabaseName("IX_PromptTemplates_UserId_PromptKey");
         });
 
         // --- SystemConfiguration entity configuration (NO query filter) ---
