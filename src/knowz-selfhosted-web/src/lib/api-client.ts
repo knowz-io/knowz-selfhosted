@@ -48,6 +48,7 @@ import type {
   SelfHostedSSOConfigRequest,
   SelfHostedSSOTestResultDto,
   SSOProviderInfo,
+  PromptTemplateDto,
 } from './types'
 
 const getApiUrl = (): string =>
@@ -739,4 +740,33 @@ export const api = {
       '/api/v1/auth/sso/callback',
       { method: 'POST', body: JSON.stringify({ code, state }) },
     ),
+
+  // --- Prompts ---
+  getUserPrompts: () =>
+    request<PromptTemplateDto[]>('/api/v1/prompts/user'),
+
+  upsertUserPrompt: (key: string, templateText: string) =>
+    request<PromptTemplateDto>(`/api/v1/prompts/user/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ templateText }),
+    }),
+
+  deleteUserPrompt: (key: string) =>
+    request<void>(`/api/v1/prompts/user/${key}`, {
+      method: 'DELETE',
+    }),
+
+  getPlatformPrompts: () =>
+    request<PromptTemplateDto[]>('/api/v1/prompts/platform'),
+
+  updatePlatformPrompt: (key: string, templateText: string) =>
+    request<PromptTemplateDto>(`/api/v1/prompts/platform/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ templateText }),
+    }),
+
+  resetPlatformPrompt: (key: string) =>
+    request<PromptTemplateDto>(`/api/v1/prompts/platform/${key}/reset`, {
+      method: 'POST',
+    }),
 }

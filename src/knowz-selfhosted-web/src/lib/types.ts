@@ -491,6 +491,20 @@ export interface SSOCallbackResultDto {
   wasAutoProvisioned: boolean
 }
 
+// --- Prompt Template Types ---
+
+export interface PromptTemplateDto {
+  id: string
+  promptKey: string
+  scope: string
+  templateText: string
+  mergeStrategy: string
+  description: string | null
+  isSystemSeeded: boolean
+  updatedAt: string
+  lastModifiedBy: string | null
+}
+
 // --- SSE Streaming Types ---
 
 export interface SSESourcesEvent {
