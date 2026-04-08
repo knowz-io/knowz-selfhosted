@@ -24,8 +24,10 @@ FROM nginx:alpine
 
 # Default API upstream (Docker Compose: api:8080, Container Apps: override via env var)
 ENV API_UPSTREAM=api:8080
+# Protocol for upstream (http for Docker Compose, https for Container Apps with external FQDN)
+ENV API_PROTOCOL=http
 
-# Write nginx config template (envsubst processes ${API_UPSTREAM} on container start)
+# Write nginx config template (envsubst processes ${API_UPSTREAM} and ${API_PROTOCOL} on container start)
 COPY <<'EOF' /etc/nginx/templates/default.conf.template
 server {
     listen 8080;
@@ -33,19 +35,25 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # DNS resolver for dynamic upstreams (Container Apps internal DNS)
+    resolver 127.0.0.11 valid=30s;
+
     # API reverse proxy to backend container
     location /api/ {
-        proxy_pass http://${API_UPSTREAM}/api/;
-        proxy_set_header Host $host;
+        proxy_pass ${API_PROTOCOL}://${API_UPSTREAM}/api/;
+        proxy_set_header Host ${API_UPSTREAM};
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
+        proxy_ssl_server_name on;
     }
 
     # Health check proxy
     location /healthz {
-        proxy_pass http://${API_UPSTREAM}/healthz;
+        proxy_pass ${API_PROTOCOL}://${API_UPSTREAM}/healthz;
+        proxy_set_header Host ${API_UPSTREAM};
+        proxy_ssl_server_name on;
     }
 
     # SPA routing - serve index.html for all non-file routes

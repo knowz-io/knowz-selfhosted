@@ -855,6 +855,10 @@ resource webContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
               name: 'API_UPSTREAM'
               value: apiContainerApp.properties.configuration.ingress.fqdn
             }
+            {
+              name: 'API_PROTOCOL'
+              value: 'https'
+            }
           ]
         }
       ]
