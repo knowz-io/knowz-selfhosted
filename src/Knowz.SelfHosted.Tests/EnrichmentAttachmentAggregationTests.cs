@@ -407,9 +407,9 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns("Summary with attachments");
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
@@ -417,7 +417,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
         // Verify SummarizeAsync was called with content that includes attachment text
         await _enrichmentService.Received(1).SummarizeAsync(
             Arg.Is<string>(s => s.Contains("Main knowledge content") && s.Contains("quantum computing")),
-            Arg.Any<int>(), Arg.Any<CancellationToken>());
+            Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
     [Fact]
@@ -432,7 +432,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             db.KnowledgeItems.Add(new Knowledge
             {
                 Id = knowledgeId, TenantId = TenantId,
-                Title = "Good Title", Content = "Only this content"
+                Title = "Good Title", Content = "Only this content that needs summarization by the enrichment service"
             });
             db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
             {
@@ -443,17 +443,17 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns("Summary");
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
 
         // Verify SummarizeAsync was called with just knowledge content
         await _enrichmentService.Received(1).SummarizeAsync(
-            "Only this content",
-            Arg.Any<int>(), Arg.Any<CancellationToken>());
+            "Only this content that needs summarization by the enrichment service",
+            Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
     [Fact]
@@ -491,9 +491,9 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns((string?)null);
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
@@ -502,6 +502,6 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
         await _enrichmentService.Received(1).ExtractTagsAsync(
             Arg.Any<string>(),
             Arg.Is<string>(s => s.Contains("Main content") && s.Contains("artificial intelligence")),
-            Arg.Any<int>(), Arg.Any<CancellationToken>());
+            Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 }

@@ -40,11 +40,17 @@ public interface IOAuthService
 public class OAuthService : IOAuthService
 {
     /// <summary>
-    /// Token expiry reported to MCP clients (7 days).
+    /// Token expiry reported to MCP clients (30 days).
     /// The access_token (API key) never truly expires, but clients use this
     /// value to schedule silent refresh via refresh_token grant.
     /// </summary>
-    public const int TokenExpirySeconds = 604800;
+    public const int TokenExpirySeconds = 2592000;
+
+    /// <summary>
+    /// Session cookie lifetime. Derived from TokenExpirySeconds to stay in sync.
+    /// Used by Program.cs (initial cookie) and McpAuthMiddleware (sliding refresh).
+    /// </summary>
+    public static readonly TimeSpan SessionCookieMaxAge = TimeSpan.FromSeconds(TokenExpirySeconds);
 
     private readonly IDistributedCache _cache;
     private readonly ILogger<OAuthService> _logger;
@@ -56,7 +62,7 @@ public class OAuthService : IOAuthService
     private const string PendingRequestPrefix = "oauth:req:";
     private const string AuthCodePrefix = "oauth:code:";
     private const string RefreshTokenPrefix = "oauth:refresh:";
-    private static readonly TimeSpan RefreshTokenTtl = TimeSpan.FromDays(30);
+    private static readonly TimeSpan RefreshTokenTtl = TimeSpan.FromDays(90);
 
     public OAuthService(IDistributedCache cache, ILogger<OAuthService> logger)
     {
@@ -289,6 +295,8 @@ public class OAuthService : IOAuthService
         RefreshTokenData? data = null;
 
         // Try Redis first (get + remove for rotation)
+        // DEBT-2: Non-atomic get-then-delete. Two concurrent refresh requests could both
+        // succeed. Acceptable for single-client MCP sessions; use GETDEL if multi-client.
         try
         {
             var json = _cache.GetString(RefreshTokenPrefix + refreshToken);
@@ -349,6 +357,12 @@ public class OAuthService : IOAuthService
         {
             if (kvp.Value.ExpiresAt < now)
                 _fallbackCodes.TryRemove(kvp.Key, out _);
+        }
+
+        foreach (var kvp in _fallbackRefreshTokens)
+        {
+            if (kvp.Value.ExpiresAt < now)
+                _fallbackRefreshTokens.TryRemove(kvp.Key, out _);
         }
     }
 

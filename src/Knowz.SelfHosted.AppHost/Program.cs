@@ -48,6 +48,16 @@ var searchEndpoint = builder.Configuration["AzureAISearch:Endpoint"];
 var searchApiKey = builder.Configuration["AzureAISearch:ApiKey"];
 var searchIndexName = builder.Configuration["AzureAISearch:IndexName"];
 
+// --- Core Settings (DB, auth, storage) ---
+var dbConnection = builder.Configuration["ConnectionStrings:McpDb"];
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+var adminUsername = builder.Configuration["Admin:Username"];
+var adminPassword = builder.Configuration["Admin:Password"];
+var mcpServiceKey = builder.Configuration["Mcp:ServiceKey"];
+var storageProvider = builder.Configuration["Storage:Provider"];
+var azureStorageConn = builder.Configuration["AzureStorage:ConnectionString"];
+var azureStorageContainer = builder.Configuration["AzureStorage:ContainerName"];
+
 // ===== SELF-HOSTED API =====
 var api = builder.AddProject<Projects.Knowz_SelfHosted_API>("selfhosted-api")
     .WithHttpEndpoint(port: 5000, name: "http")
@@ -61,6 +71,28 @@ if (isLocal)
         .WithEnvironment("Storage__Provider", "LocalFileSystem")
         .WithEnvironment("Storage__Local__RootPath", "/tmp/knowz-files");
 }
+else
+{
+    // Azure mode: inject DB connection and storage from AppHost config
+    if (!string.IsNullOrWhiteSpace(dbConnection))
+        api.WithEnvironment("ConnectionStrings__McpDb", dbConnection);
+    if (!string.IsNullOrWhiteSpace(storageProvider))
+        api.WithEnvironment("Storage__Provider", storageProvider);
+    if (!string.IsNullOrWhiteSpace(azureStorageConn))
+        api.WithEnvironment("Storage__Azure__ConnectionString", azureStorageConn);
+    if (!string.IsNullOrWhiteSpace(azureStorageContainer))
+        api.WithEnvironment("Storage__Azure__ContainerName", azureStorageContainer);
+}
+
+// Core auth settings (both modes)
+if (!string.IsNullOrWhiteSpace(jwtSecret))
+    api.WithEnvironment("SelfHosted__JwtSecret", jwtSecret);
+if (!string.IsNullOrWhiteSpace(adminUsername))
+    api.WithEnvironment("SelfHosted__SuperAdminUsername", adminUsername);
+if (!string.IsNullOrWhiteSpace(adminPassword))
+    api.WithEnvironment("SelfHosted__SuperAdminPassword", adminPassword);
+if (!string.IsNullOrWhiteSpace(mcpServiceKey))
+    api.WithEnvironment("MCP__ServiceKey", mcpServiceKey);
 
 // Inject AI config from AppHost configuration (if present).
 // These env vars override the API's own appsettings, so AppHost config wins.
@@ -94,6 +126,9 @@ var mcp = builder.AddProject<Projects.Knowz_MCP>("mcp")
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithEnvironment("Knowz__BaseUrl", api.GetEndpoint("http"))
     .WithEnvironment("MCP__ApiKeyValidationEndpoint", "/api/vaults");
+
+if (!string.IsNullOrWhiteSpace(mcpServiceKey))
+    mcp.WithEnvironment("MCP__ServiceKey", mcpServiceKey);
 
 // ===== SELF-HOSTED WEB CLIENT (React + Vite) =====
 builder.AddNpmApp("selfhosted-web", "../knowz-selfhosted-web", "dev")

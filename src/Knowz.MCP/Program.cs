@@ -55,6 +55,7 @@ else
     builder.Services.AddSingleton<IMcpSessionStore, RedisMcpSessionStore>();
 }
 
+builder.Services.AddSingleton<IActiveSessionTracker, ActiveSessionTracker>();
 builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 
 // Register proxy backend services
@@ -75,20 +76,25 @@ builder.Services
     })
     .WithHttpTransport(options =>
     {
-        // Increase idle timeout to 24 hours (sessions persist via Redis across deployments)
-        options.IdleTimeout = TimeSpan.FromHours(24);
+        // Idle timeout before MCP SDK closes the session (7 days — survives weekends)
+        options.IdleTimeout = TimeSpan.FromDays(7);
 
         // Session handler - stores API key in session store for access during tool invocations
         options.RunSessionHandler = async (context, server, cancellationToken) =>
         {
             var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
             var sessionStore = context.RequestServices.GetRequiredService<IMcpSessionStore>();
+            var sessionTracker = context.RequestServices.GetRequiredService<IActiveSessionTracker>();
             var apiKey = context.Items["ApiKey"] as string;
 
             // Get or generate session ID
             var sessionId = context.Request.Headers["Mcp-Session-Id"].FirstOrDefault()
                            ?? context.Response.Headers["Mcp-Session-Id"].FirstOrDefault()
                            ?? Guid.NewGuid().ToString();
+
+            // Track this session so the middleware knows the SDK recognizes it
+            // (prevents 404 after container deployments)
+            sessionTracker.Track(sessionId);
 
             // Store session ID in HttpContext for tool access
             context.Items["McpSessionId"] = sessionId;
@@ -104,7 +110,7 @@ builder.Services
                     HttpOnly = true,
                     Secure = true,
                     SameSite = SameSiteMode.None, // Required for cross-origin MCP clients
-                    MaxAge = TimeSpan.FromDays(7)
+                    MaxAge = OAuthService.SessionCookieMaxAge
                 });
 
                 logger.LogInformation("MCP session {SessionId} started with authenticated user", sessionId);
@@ -120,8 +126,7 @@ builder.Services
             }
             finally
             {
-                // Cleanup session on disconnect (commented out - sessions may reconnect)
-                // sessionStore.RemoveSession(sessionId);
+                sessionTracker.Remove(sessionId);
                 logger.LogInformation("MCP session {SessionId} ended", sessionId);
             }
         };

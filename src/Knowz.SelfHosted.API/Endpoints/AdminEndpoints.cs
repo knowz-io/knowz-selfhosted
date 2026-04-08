@@ -283,5 +283,108 @@ public static class AdminEndpoints
                 return Results.NotFound(new { error = "User not found." });
             }
         }).Produces(200).Produces(400).Produces(403).Produces(404);
+
+        // --- User Tenant Memberships ---
+
+        group.MapGet("/users/{userId:guid}/tenants", async (HttpContext context, IUserManagementService svc, Guid userId) =>
+        {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: validate target user is in same tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                var targetUser = await svc.GetUserAsync(userId);
+                if (targetUser is null || targetUser.TenantId != callerTenantId)
+                    return Results.NotFound(new { error = "User not found." });
+            }
+
+            var memberships = await svc.GetUserTenantsAsync(userId);
+            return Results.Ok(memberships);
+        }).Produces<List<TenantMembershipDto>>().Produces(403).Produces(404);
+
+        group.MapPost("/users/{userId:guid}/tenants", async (HttpContext context, IUserManagementService svc, Guid userId, AddUserToTenantRequest request) =>
+        {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin can only add users to their own tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (!callerTenantId.HasValue || request.TenantId != callerTenantId.Value)
+                    return AuthorizationHelpers.Forbidden("Can only add users to your own tenant.");
+            }
+
+            // Role-cap validation
+            if (!AuthorizationHelpers.CanAssignRole(context, request.Role))
+                return AuthorizationHelpers.Forbidden($"Cannot assign role '{request.Role}'.");
+
+            try
+            {
+                var result = await svc.AddUserToTenantAsync(userId, request.TenantId, request.Role);
+                return Results.Created($"/api/v1/admin/users/{userId}/tenants", result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        }).Produces<TenantMembershipDto>(201).Produces(400).Produces(403).Produces(409);
+
+        group.MapPut("/users/{userId:guid}/tenants/{tenantId:guid}", async (HttpContext context, IUserManagementService svc, Guid userId, Guid tenantId, UpdateUserTenantRoleRequest request) =>
+        {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: can only manage memberships in own tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (tenantId != callerTenantId)
+                    return AuthorizationHelpers.Forbidden("Can only manage memberships in your own tenant.");
+            }
+
+            if (!AuthorizationHelpers.CanAssignRole(context, request.Role))
+                return AuthorizationHelpers.Forbidden($"Cannot assign role '{request.Role}'.");
+
+            try
+            {
+                var result = await svc.UpdateUserTenantRoleAsync(userId, tenantId, request.Role);
+                return Results.Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound(new { error = "Membership not found." });
+            }
+        }).Produces<TenantMembershipDto>().Produces(403).Produces(404);
+
+        group.MapDelete("/users/{userId:guid}/tenants/{tenantId:guid}", async (HttpContext context, IUserManagementService svc, Guid userId, Guid tenantId) =>
+        {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden();
+
+            // Admin: can only remove memberships from own tenant
+            if (!AuthorizationHelpers.IsSuperAdmin(context))
+            {
+                var callerTenantId = AuthorizationHelpers.GetCallerTenantId(context);
+                if (tenantId != callerTenantId)
+                    return AuthorizationHelpers.Forbidden("Can only manage memberships in your own tenant.");
+            }
+
+            try
+            {
+                await svc.RemoveUserFromTenantAsync(userId, tenantId);
+                return Results.Ok(new { message = "User removed from tenant." });
+            }
+            catch (KeyNotFoundException)
+            {
+                return Results.NotFound(new { error = "Membership not found." });
+            }
+        }).Produces(200).Produces(403).Produces(404);
     }
 }

@@ -242,17 +242,20 @@ export default function KnowledgeListPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Knowledge</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Knowledge</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage your knowledge items</p>
+        </div>
         <Link
           to="/knowledge/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-sm shadow-primary/20"
         >
           <Plus size={16} /> New
         </Link>
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-card border border-border/40 rounded-xl">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -260,13 +263,13 @@ export default function KnowledgeListPage() {
             placeholder="Search by title..."
             value={titleInput}
             onChange={(e) => setTitleInput(e.target.value)}
-            className="pl-9 pr-3 py-1.5 border border-input rounded-md bg-card text-sm w-56"
+            className="pl-9 pr-3 py-1.5 border border-input rounded-lg bg-background text-sm w-56 focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
           />
         </div>
         <select
           value={type}
           onChange={(e) => updateParam('type', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
+          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
         >
           <option value="">All types</option>
           {KNOWLEDGE_TYPES.map((t) => (
@@ -276,7 +279,7 @@ export default function KnowledgeListPage() {
         <select
           value={vaultId}
           onChange={(e) => updateParam('vaultId', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
+          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
         >
           <option value="">All vaults</option>
           {vaultsQuery.data?.vaults.map((v) => (
@@ -286,7 +289,7 @@ export default function KnowledgeListPage() {
         <select
           value={createdByUserId}
           onChange={(e) => updateParam('createdByUserId', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-md bg-card text-sm"
+          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
         >
           <option value="">All creators</option>
           {creatorsQuery.data?.map((c) => (
@@ -297,7 +300,7 @@ export default function KnowledgeListPage() {
         {activeFilterCount > 0 && (
           <button
             onClick={clearFilters}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-md transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-muted/50 transition-all duration-200"
           >
             <Filter size={14} />
             <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-primary text-primary-foreground rounded-full">
@@ -350,10 +353,10 @@ export default function KnowledgeListPage() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto bg-card border border-border/40 rounded-xl">
             <table className="w-full text-sm text-left">
               <thead>
-                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
                   <th className="py-2.5 px-3 w-10">
                     <input
                       type="checkbox"
@@ -387,8 +390,8 @@ export default function KnowledgeListPage() {
                   return (
                     <tr
                       key={item.id}
-                      className={`border-b border-border/40 hover:bg-muted cursor-pointer transition-colors ${
-                        selectedIds.has(item.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                      className={`border-b border-border/30 hover:bg-muted/50 cursor-pointer transition-colors duration-150 ${
+                        selectedIds.has(item.id) ? 'bg-primary/5 dark:bg-primary/10' : ''
                       }`}
                     >
                       <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>

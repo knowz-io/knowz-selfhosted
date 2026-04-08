@@ -104,7 +104,7 @@ param jwtSecret string = ''
 param adminPassword string = 'changeme'
 
 @description('Chat model deployment name for Container Apps config')
-param caDeploymentName string = 'gpt-4o'
+param caDeploymentName string = chatDeploymentName
 
 @description('Embedding deployment name for Container Apps config')
 param caEmbeddingDeploymentName string = 'text-embedding-3-small'
@@ -708,6 +708,10 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             {
               name: 'Storage__Azure__ConnectionString'
               secretRef: 'storage-connection'
+            }
+            {
+              name: 'Storage__Azure__ContainerName'
+              value: 'selfhosted-files'
             }
             {
               name: 'SelfHosted__ApiKey'

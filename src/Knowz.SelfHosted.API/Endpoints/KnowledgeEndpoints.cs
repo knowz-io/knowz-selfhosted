@@ -1,3 +1,4 @@
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.API.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
@@ -314,5 +315,116 @@ public static class KnowledgeEndpoints
             var accessibleVaultIds = await VaultEndpoints.ResolveAccessibleVaultIdsAsync(context, vaultAccessService, ct);
             return Results.Ok(await svc.GetStatisticsAsync(ct, accessibleVaultIds));
         }).Produces<KnowledgeStatsResponse>();
+
+        // CLI-compatible statistics endpoint: returns shape expected by KnowzApiClient
+        group.MapGet("/statistics", async (
+            KnowledgeService svc,
+            VaultService vaultSvc,
+            IVaultAccessService vaultAccessService,
+            HttpContext context,
+            CancellationToken ct) =>
+        {
+            var accessibleVaultIds = await VaultEndpoints.ResolveAccessibleVaultIdsAsync(context, vaultAccessService, ct);
+            var stats = await svc.GetStatisticsAsync(ct, accessibleVaultIds);
+            var vaults = await vaultSvc.ListVaultsAsync(false, ct);
+
+            // Return in the shape the CLI's KnowzApiClient expects (wrapped in ApiResponse)
+            var totalVaults = accessibleVaultIds != null
+                ? vaults.Vaults.Count(v => accessibleVaultIds.Contains(v.Id))
+                : vaults.Vaults.Count;
+
+            var typeCounts = stats.ByType.ToDictionary(t => t.Type, t => t.Count);
+
+            return Results.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    totalKnowledge = stats.TotalKnowledgeItems,
+                    totalVaults = totalVaults,
+                    totalPersons = 0,
+                    totalLocations = 0,
+                    totalEvents = 0,
+                    storageUsed = (long?)null,
+                    typeCounts = typeCounts
+                }
+            });
+        });
+
+        // Quick knowledge creation: simplified endpoint for CLI
+        group.MapPost("/quick", async (
+            KnowledgeService svc,
+            IVaultAccessService vaultAccessService,
+            HttpContext context,
+            CreateKnowledgeRequest req,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Content))
+                return Results.BadRequest(new { error = "content is required" });
+
+            if (req.Content.Length > 1_048_576)
+                return Results.BadRequest(new { error = "Content exceeds maximum allowed size of 1MB" });
+
+            // Check write access to target vault
+            if (!string.IsNullOrWhiteSpace(req.VaultId) && Guid.TryParse(req.VaultId, out var targetVaultId))
+            {
+                var hasAccess = await VaultEndpoints.HasVaultAccessAsync(
+                    context, vaultAccessService, targetVaultId, requireWrite: true, ct: ct);
+                if (!hasAccess)
+                    return Results.Json(new { error = "Access denied to the target vault." }, statusCode: 403);
+            }
+
+            var userId = VaultEndpoints.GetUserIdFromContext(context);
+
+            // Auto-generate title from content if not provided
+            var title = req.Title ?? (req.Content.Length > 100
+                ? req.Content[..100].TrimEnd() + "..."
+                : req.Content);
+
+            var result = await svc.CreateKnowledgeAsync(
+                req.Content,
+                title,
+                req.Type ?? "Note",
+                req.VaultId,
+                req.Tags ?? new List<string>(),
+                req.Source,
+                ct,
+                userId);
+
+            // Return in ApiResponse<KnowledgeDto> shape for CLI compatibility
+            return Results.Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    id = result.Id,
+                    title = title,
+                    content = req.Content,
+                    type = req.Type ?? "Note",
+                    vaultId = req.VaultId,
+                    tags = string.Join(", ", req.Tags ?? new List<string>()),
+                    createdAt = DateTime.UtcNow,
+                    summary = (string?)null
+                }
+            });
+        }).Produces<object>(200).Produces(400);
+    }
+
+    /// <summary>
+    /// Maps the knowledge-item-types endpoint at the root API group level.
+    /// Call this from Program.cs: app.MapKnowledgeItemTypesEndpoints();
+    /// </summary>
+    public static void MapKnowledgeItemTypesEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/api/v1").WithTags("Knowledge");
+
+        group.MapGet("/knowledge-item-types", () =>
+        {
+            var types = Enum.GetValues<KnowledgeType>()
+                .Select(t => new { name = t.ToString(), value = (int)t })
+                .ToList();
+
+            return Results.Ok(new { success = true, data = types });
+        });
     }
 }

@@ -19,11 +19,13 @@ import {
   Wrench,
   Sun,
   Moon,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api-client'
 import { UserRole } from '../lib/types'
 import { useTheme } from '../lib/theme'
+import TenantSwitcher from './TenantSwitcher'
 
 interface NavSection {
   label?: string
@@ -61,6 +63,7 @@ const adminItems = [
   { path: '/admin', label: 'Overview', icon: LayoutDashboard },
   { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
   { path: '/admin/users', label: 'Users', icon: Users },
+  { path: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
   { path: '/admin/sso', label: 'SSO', icon: Shield },
   { path: '/admin/settings', label: 'Configuration', icon: Wrench },
 ]
@@ -109,10 +112,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
       isActive
-        ? 'bg-primary/10 text-primary'
-        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
+        : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground hover:translate-x-0.5'
     }`
 
   return (
@@ -125,24 +128,32 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
       <aside
         className={`
-          fixed top-0 left-0 z-40 h-full w-60 bg-card shadow-sm
-          border-r
+          fixed top-0 left-0 z-40 h-full w-60 bg-card shadow-lg
+          border-r border-border/50
           transform transition-transform duration-200
           lg:translate-x-0 lg:static lg:z-auto
           ${open ? 'translate-x-0' : '-translate-x-full'}
           flex flex-col
         `}
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b">
-          <span className="text-lg font-semibold">Knowz</span>
+        <div className="flex items-center justify-between h-14 px-4 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 bg-primary rounded-lg shadow-sm">
+              <BookOpen className="text-primary-foreground" size={16} />
+            </div>
+            <span className="text-lg font-bold tracking-tight">Knowz</span>
+          </div>
           <button
             onClick={onClose}
-            className="lg:hidden p-1 rounded hover:bg-muted transition-colors"
+            className="lg:hidden p-1.5 rounded-lg hover:bg-muted transition-colors"
             aria-label="Close sidebar"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
+
+        {/* Multi-tenant User Switcher */}
+        <TenantSwitcher />
 
         {/* SuperAdmin Tenant Selector */}
         {isSuperAdmin && tenants && tenants.length > 0 && (
@@ -246,8 +257,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* User Info & Logout */}
         {isAuthenticated && user && (
-          <div className="border-t p-3">
+          <div className="border-t border-border/50 p-3 bg-gradient-to-t from-muted/30 to-transparent">
             <div className="flex items-center gap-3 px-2 py-2">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">
+                {(user.displayName || user.username || '?').charAt(0).toUpperCase()}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
                   {user.displayName || user.username}
@@ -262,14 +276,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               </div>
               <button
                 onClick={toggleTheme}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200 hover:scale-105"
                 title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               <button
                 onClick={logout}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200 hover:scale-105"
                 title="Sign out"
               >
                 <LogOut size={16} />

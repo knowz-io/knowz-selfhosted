@@ -29,6 +29,7 @@ public class KnowledgeService
     private readonly ITenantProvider _tenantProvider;
     private readonly ILogger<KnowledgeService> _logger;
     private readonly IEnrichmentOutboxWriter? _enrichmentWriter;
+    private readonly IVersioningService? _versioningService;
 
     public KnowledgeService(
         ISelfHostedRepository<Knowledge> knowledgeRepo,
@@ -39,7 +40,8 @@ public class KnowledgeService
         ISelfHostedChunkingService chunkingService,
         ITenantProvider tenantProvider,
         ILogger<KnowledgeService> logger,
-        IEnrichmentOutboxWriter? enrichmentWriter = null)
+        IEnrichmentOutboxWriter? enrichmentWriter = null,
+        IVersioningService? versioningService = null)
     {
         _knowledgeRepo = knowledgeRepo;
         _tagRepo = tagRepo;
@@ -50,6 +52,7 @@ public class KnowledgeService
         _tenantProvider = tenantProvider;
         _logger = logger;
         _enrichmentWriter = enrichmentWriter;
+        _versioningService = versioningService;
     }
 
     public async Task<CreateKnowledgeResult> CreateKnowledgeAsync(
@@ -179,12 +182,26 @@ public class KnowledgeService
 
     public async Task<UpdateKnowledgeResult?> UpdateKnowledgeAsync(
         Guid id, string? title, string? content, string? source,
-        List<string>? tagNames, string? vaultIdStr, CancellationToken ct)
+        List<string>? tagNames, string? vaultIdStr, CancellationToken ct,
+        Guid? updatedByUserId = null)
     {
         var item = await _knowledgeRepo.FirstOrDefaultAsync(new KnowledgeByIdWithRelationsSpec(id), ct);
 
         if (item == null)
             return null;
+
+        // Create version snapshot before applying changes
+        if (_versioningService != null)
+        {
+            try
+            {
+                await _versioningService.CreateVersionAsync(id, updatedByUserId, "Pre-update snapshot", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create version snapshot for knowledge {Id}", id);
+            }
+        }
 
         if (title != null) item.Title = title;
         if (content != null) item.Content = content;
@@ -645,7 +662,13 @@ public class KnowledgeService
             query = query.Where(k => k.Type == kt);
 
         if (!string.IsNullOrEmpty(titlePattern))
-            query = query.Where(k => EF.Functions.Like(k.Title, ConvertWildcardToLike(titlePattern)));
+        {
+            // Auto-wrap plain text with wildcards for substring matching
+            var likePattern = titlePattern.Contains('*') || titlePattern.Contains('?')
+                ? ConvertWildcardToLike(titlePattern)
+                : $"%{titlePattern}%";
+            query = query.Where(k => EF.Functions.Like(k.Title, likePattern));
+        }
 
         if (!string.IsNullOrEmpty(fileNamePattern))
             query = query.Where(k => k.FilePath != null && EF.Functions.Like(k.FilePath, ConvertWildcardToLike(fileNamePattern)));

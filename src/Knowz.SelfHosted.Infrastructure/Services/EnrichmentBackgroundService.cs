@@ -112,7 +112,7 @@ public class EnrichmentBackgroundService : BackgroundService
                 // 1. Title generation (if placeholder)
                 if (IsPlaceholderTitle(knowledge.Title, knowledge.Content))
                 {
-                    var newTitle = await enrichmentService.GenerateTitleAsync(knowledge.Content, ct);
+                    var newTitle = await enrichmentService.GenerateTitleAsync(knowledge.Content, ct, workItem.TenantId);
                     if (newTitle != null)
                     {
                         knowledge.Title = newTitle;
@@ -145,7 +145,7 @@ public class EnrichmentBackgroundService : BackgroundService
                 }
                 else
                 {
-                    var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, 100, ct);
+                    var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, 100, ct, workItem.TenantId);
                     if (summary != null)
                     {
                         knowledge.Summary = summary;
@@ -154,7 +154,7 @@ public class EnrichmentBackgroundService : BackgroundService
                 }
 
                 // 4. Extract tags (with attachment context)
-                var tags = await enrichmentService.ExtractTagsAsync(knowledge.Title, contentForEnrichment, 5, ct);
+                var tags = await enrichmentService.ExtractTagsAsync(knowledge.Title, contentForEnrichment, 5, ct, workItem.TenantId);
                 if (tags.Count > 0)
                 {
                     await LinkTagsAsync(db, knowledge, tags, workItem.TenantId, ct);

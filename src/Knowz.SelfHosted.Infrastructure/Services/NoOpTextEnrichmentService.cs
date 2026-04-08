@@ -10,19 +10,19 @@ public class NoOpTextEnrichmentService : ITextEnrichmentService
     public NoOpTextEnrichmentService(ILogger<NoOpTextEnrichmentService> logger)
         => _logger = logger;
 
-    public Task<string?> GenerateTitleAsync(string content, CancellationToken ct = default)
+    public Task<string?> GenerateTitleAsync(string content, CancellationToken ct = default, Guid? tenantId = null)
     {
         _logger.LogDebug("OpenAI not configured. Title generation unavailable.");
         return Task.FromResult<string?>(null);
     }
 
-    public Task<string?> SummarizeAsync(string content, int maxWords = 100, CancellationToken ct = default)
+    public Task<string?> SummarizeAsync(string content, int maxWords = 100, CancellationToken ct = default, Guid? tenantId = null)
     {
         _logger.LogDebug("OpenAI not configured. Summarization unavailable.");
         return Task.FromResult<string?>(null);
     }
 
-    public Task<List<string>> ExtractTagsAsync(string title, string content, int maxTags = 5, CancellationToken ct = default)
+    public Task<List<string>> ExtractTagsAsync(string title, string content, int maxTags = 5, CancellationToken ct = default, Guid? tenantId = null)
     {
         _logger.LogDebug("OpenAI not configured. Tag extraction unavailable.");
         return Task.FromResult(new List<string>());

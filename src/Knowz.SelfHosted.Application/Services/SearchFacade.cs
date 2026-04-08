@@ -163,7 +163,7 @@ public class SearchFacade
             .Select(id => new SourceRef(id));
 
         var confidence = searchResults.Count > 0
-            ? Math.Min(1.0, searchResults.Average(r => r.Score))
+            ? Math.Min(1.0, searchResults.Max(r => r.Score))
             : 0;
 
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
@@ -200,7 +200,7 @@ public class SearchFacade
             .Select(id => new SourceRef(id));
 
         var confidence = searchResults.Count > 0
-            ? Math.Min(1.0, searchResults.Average(r => r.Score))
+            ? Math.Min(1.0, searchResults.Max(r => r.Score))
             : 0;
 
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { useConversations } from '../hooks/useConversations'
+import MarkdownContent from '../components/MarkdownContent'
 import type { ChatMessage, ChatRequestData } from '../lib/types'
 import {
   Plus,
@@ -13,6 +14,9 @@ import {
   ChevronRight,
   FlaskConical,
   Square,
+  CheckSquare,
+  X,
+  Loader2,
 } from 'lucide-react'
 
 export default function ChatPage() {
@@ -36,6 +40,45 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastEscapeRef = useRef<number>(0)
+
+  // Multi-select state
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set())
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const toggleSelectConv = (id: string) => {
+    setSelectedConvIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllConvs = () => {
+    if (selectedConvIds.size === conversations.length) {
+      setSelectedConvIds(new Set())
+    } else {
+      setSelectedConvIds(new Set(conversations.map((c) => c.id)))
+    }
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedConvIds(new Set())
+  }
+
+  const handleBulkDelete = () => {
+    setIsDeleting(true)
+    for (const id of selectedConvIds) {
+      deleteConversation(id)
+    }
+    setSelectedConvIds(new Set())
+    setShowDeleteConfirm(false)
+    setSelectMode(false)
+    setIsDeleting(false)
+  }
 
   const { data: vaultsData } = useQuery({
     queryKey: ['vaults'],
@@ -198,8 +241,8 @@ export default function ChatPage() {
 
   const renderAssistantBubble = (msg: ChatMessage) => (
     <div className="flex justify-start" key={msg.id}>
-      <div className="max-w-[80%] rounded-xl px-4 py-3 bg-card border border-border/60 shadow-sm">
-        <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+      <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-card border border-border/40 shadow-card">
+        <MarkdownContent content={msg.content} compact className="text-sm" />
 
         {msg.role === 'assistant' && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -245,49 +288,92 @@ export default function ChatPage() {
           sidebarOpen ? 'w-64' : 'w-0'
         } transition-all duration-200 overflow-hidden border-r bg-card flex flex-col`}
       >
-        <div className="p-3 border-b">
+        <div className="p-3 border-b border-border/40 space-y-2">
           <button
             onClick={handleNewChat}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-sm shadow-primary/20"
           >
             <Plus size={16} />
             New Chat
           </button>
+          {conversations.length > 0 && (
+            <button
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className={`w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 ${
+                selectMode
+                  ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+                  : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              }`}
+            >
+              <CheckSquare size={12} />
+              {selectMode ? 'Cancel Select' : 'Select'}
+            </button>
+          )}
         </div>
+
+        {selectMode && conversations.length > 0 && (
+          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selectedConvIds.size === conversations.length && conversations.length > 0}
+              onChange={toggleSelectAllConvs}
+              className="rounded border-input"
+            />
+            <span className="text-xs text-muted-foreground">
+              {selectedConvIds.size > 0
+                ? `${selectedConvIds.size} selected`
+                : 'Select all'}
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {conversations.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-4">
+            <p className="text-xs text-muted-foreground text-center py-8">
               No conversations yet
             </p>
           )}
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors duration-150 ${
-                activeConversation?.id === conv.id
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer text-sm transition-all duration-200 ${
+                activeConversation?.id === conv.id && !selectMode
+                  ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
+                  : selectedConvIds.has(conv.id)
+                    ? 'bg-primary/5 dark:bg-primary/10 text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
               }`}
-              onClick={() => selectConversation(conv.id)}
+              onClick={() => (selectMode ? toggleSelectConv(conv.id) : selectConversation(conv.id))}
             >
-              <MessagesSquare size={14} className="flex-shrink-0" />
+              {selectMode ? (
+                <input
+                  type="checkbox"
+                  checked={selectedConvIds.has(conv.id)}
+                  onChange={() => toggleSelectConv(conv.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded border-input flex-shrink-0"
+                />
+              ) : (
+                <MessagesSquare size={14} className="flex-shrink-0" />
+              )}
               <div className="flex-1 min-w-0">
                 <p className="truncate">{conv.title}</p>
                 <p className="text-[10px] text-muted-foreground">
                   {formatDate(conv.updatedAt)}
                 </p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  deleteConversation(conv.id)
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted transition-opacity"
-                title="Delete conversation"
-              >
-                <Trash2 size={12} />
-              </button>
+              {!selectMode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteConversation(conv.id)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted transition-opacity"
+                  title="Delete conversation"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -305,11 +391,11 @@ export default function ChatPage() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar: vault selector + research mode */}
-        <div className="flex items-center gap-3 px-4 py-2 border-b bg-card">
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/40 bg-card/80 backdrop-blur-sm">
           <select
             value={selectedVaultId}
             onChange={(e) => setSelectedVaultId(e.target.value)}
-            className="px-2 py-1.5 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
           >
             <option value="">All Vaults</option>
             {vaultsData?.vaults.map((v) => (
@@ -337,15 +423,17 @@ export default function ChatPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {!activeConversation || activeConversation.messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <MessagesSquare
-                size={48}
-                className="text-muted-foreground/30 mb-4"
-              />
-              <h2 className="text-lg font-medium text-muted-foreground mb-2">
+            <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in">
+              <div className="p-4 bg-muted/50 rounded-2xl mb-5">
+                <MessagesSquare
+                  size={40}
+                  className="text-muted-foreground/40"
+                />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground/80 mb-2">
                 Start a new conversation
               </h2>
-              <p className="text-sm text-muted-foreground max-w-md">
+              <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
                 Ask questions about your knowledge base. Conversation history
                 provides context for follow-up questions.
               </p>
@@ -359,15 +447,17 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 ${
+                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                     msg.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-card border border-border/60 shadow-sm'
+                      ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                      : 'bg-card border border-border/40 shadow-card'
                   }`}
                 >
-                  <div className="whitespace-pre-wrap text-sm">
-                    {msg.content}
-                  </div>
+                  {msg.role === 'assistant' ? (
+                    <MarkdownContent content={msg.content} compact className="text-sm" />
+                  ) : (
+                    <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                  )}
 
                   {msg.role === 'assistant' && (
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -420,7 +510,7 @@ export default function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="border-t bg-card px-4 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+        <div className="border-t border-border/40 bg-card/80 backdrop-blur-sm px-4 py-3">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
             <textarea
               ref={textareaRef}
@@ -429,7 +519,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Ask a question... (Shift+Enter for newline)"
               rows={1}
-              className="flex-1 px-3 py-2 border border-input rounded-lg bg-card text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring max-h-32 transition-colors"
+              className="flex-1 px-4 py-2.5 border border-input rounded-xl bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-primary/30 max-h-32 transition-all duration-200"
               style={{
                 height: 'auto',
                 minHeight: '2.5rem',
@@ -443,10 +533,10 @@ export default function ChatPage() {
             <button
               onClick={isStreaming ? () => abortControllerRef.current?.abort() : handleSend}
               disabled={!isStreaming && !input.trim()}
-              className={`inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`inline-flex items-center justify-center px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-95 ${
                 isStreaming
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90'
+                  ? 'bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-600/20'
+                  : 'bg-primary text-primary-foreground disabled:opacity-40 hover:brightness-110 shadow-sm shadow-primary/20'
               }`}
               title={isStreaming ? 'Stop generating' : 'Send message'}
             >
@@ -460,6 +550,68 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {/* Floating action bar for bulk conversation operations */}
+      {selectMode && selectedConvIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-3 px-5 py-3 bg-foreground text-background rounded-lg shadow-xl">
+            <span className="text-sm font-medium whitespace-nowrap">
+              {selectedConvIds.size} conversation{selectedConvIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="w-px h-5 bg-border" />
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+            <button
+              onClick={exitSelectMode}
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-sm hover:bg-primary/70 rounded transition-colors"
+              title="Deselect all"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold">
+              Delete {selectedConvIds.size} conversation{selectedConvIds.size !== 1 ? 's' : ''}?
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete {selectedConvIds.size} conversation{selectedConvIds.size !== 1 ? 's' : ''}?
+              This will remove all messages in these conversations. This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

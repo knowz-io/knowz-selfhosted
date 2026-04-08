@@ -319,7 +319,7 @@ public class AuthServiceTests : IDisposable
 
         Assert.Equal("test-issuer", token.Issuer);
         Assert.Contains(token.Claims, c => c.Type == "sub");
-        Assert.Contains(token.Claims, c => c.Type == "name" && c.Value == "admin");
+        Assert.Contains(token.Claims, c => c.Type == "name" && c.Value == "Super Administrator");
         Assert.Contains(token.Claims, c => c.Type == "role" && c.Value == "SuperAdmin");
         Assert.Contains(token.Claims, c => c.Type == "tenantId");
     }

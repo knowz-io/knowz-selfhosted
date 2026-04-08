@@ -8,6 +8,7 @@ using Knowz.SelfHosted.Application.Extensions;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Models;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -150,6 +151,19 @@ public class AuthService : IAuthService
         _db.Users.Add(superAdmin);
         await _db.SaveChangesAsync();
 
+        // Create tenant membership for the SuperAdmin
+        var membership = new UserTenantMembership
+        {
+            UserId = superAdmin.Id,
+            TenantId = defaultTenant.Id,
+            Role = UserRole.SuperAdmin,
+            IsActive = true,
+            JoinedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.UserTenantMemberships.Add(membership);
+        await _db.SaveChangesAsync();
+
         _logger.LogInformation("Created SuperAdmin user: {Username} in tenant: {TenantName}",
             superAdmin.Username, defaultTenant.Name);
     }
@@ -164,6 +178,158 @@ public class AuthService : IAuthService
         return BCrypt.Net.BCrypt.Verify(password, hash);
     }
 
+    public async Task<MultiTenantLoginResult> MultiTenantLoginAsync(string username, string password)
+    {
+        var user = await _db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Username == username);
+
+        if (user is null)
+        {
+            _logger.LogWarning("Login attempt for non-existent user: {Username}", username);
+            throw new UnauthorizedAccessException("Invalid username or password.");
+        }
+
+        if (!user.IsActive)
+        {
+            _logger.LogWarning("Login attempt for inactive user: {Username}", username);
+            throw new UnauthorizedAccessException("User account is inactive.");
+        }
+
+        if (!VerifyPassword(password, user.PasswordHash))
+        {
+            _logger.LogWarning("Invalid password for user: {Username}", username);
+            throw new UnauthorizedAccessException("Invalid username or password.");
+        }
+
+        // Update last login time
+        user.LastLoginAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        // Check tenant memberships
+        var memberships = await _db.UserTenantMemberships
+            .Where(m => m.UserId == user.Id && m.IsActive)
+            .Include(m => m.Tenant)
+            .ToListAsync();
+
+        // 0 memberships (pre-migration legacy user): fall back to User.TenantId + User.Role
+        if (memberships.Count == 0)
+        {
+            _logger.LogInformation("User {Username} has no tenant memberships, using legacy home tenant", username);
+            var authResult = GenerateAuthResult(user);
+            return new MultiTenantLoginResult
+            {
+                Token = authResult.Token,
+                ExpiresAt = authResult.ExpiresAt,
+                User = authResult.User,
+                RequiresTenantSelection = false,
+                UserId = user.Id
+            };
+        }
+
+        // 1 active membership: auto-select
+        if (memberships.Count == 1)
+        {
+            var membership = memberships[0];
+            _logger.LogInformation("User {Username} has single tenant membership, auto-selecting tenant {TenantId}", username, membership.TenantId);
+            var authResult = GenerateAuthResultForMembership(user, membership.TenantId, membership.Tenant.Name, membership.Role);
+            return new MultiTenantLoginResult
+            {
+                Token = authResult.Token,
+                ExpiresAt = authResult.ExpiresAt,
+                User = authResult.User,
+                RequiresTenantSelection = false,
+                UserId = user.Id
+            };
+        }
+
+        // 2+ active memberships: require tenant selection
+        _logger.LogInformation("User {Username} has {Count} tenant memberships, requiring selection", username, memberships.Count);
+        return new MultiTenantLoginResult
+        {
+            Token = string.Empty,
+            ExpiresAt = null,
+            User = null,
+            RequiresTenantSelection = true,
+            UserId = user.Id,
+            AvailableTenants = memberships.Select(m => new TenantMembershipDto
+            {
+                TenantId = m.TenantId,
+                TenantName = m.Tenant.Name,
+                TenantSlug = m.Tenant.Slug,
+                Role = m.Role,
+                IsActive = m.IsActive
+            }).ToList()
+        };
+    }
+
+    public async Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId)
+    {
+        var user = await _db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user is null || !user.IsActive)
+        {
+            throw new UnauthorizedAccessException("User not found or inactive.");
+        }
+
+        var membership = await _db.UserTenantMemberships
+            .Include(m => m.Tenant)
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.TenantId == tenantId && m.IsActive);
+
+        if (membership is null)
+        {
+            throw new UnauthorizedAccessException($"User does not have an active membership in the requested tenant.");
+        }
+
+        // Update last login time
+        user.LastLoginAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return GenerateAuthResultForMembership(user, membership.TenantId, membership.Tenant.Name, membership.Role);
+    }
+
+    public async Task<AuthResult> SwitchTenantAsync(Guid userId, Guid newTenantId)
+    {
+        var user = await _db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user is null || !user.IsActive)
+        {
+            throw new UnauthorizedAccessException("User not found or inactive.");
+        }
+
+        var membership = await _db.UserTenantMemberships
+            .Include(m => m.Tenant)
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.TenantId == newTenantId && m.IsActive);
+
+        if (membership is null)
+        {
+            throw new UnauthorizedAccessException($"User does not have an active membership in the requested tenant.");
+        }
+
+        return GenerateAuthResultForMembership(user, membership.TenantId, membership.Tenant.Name, membership.Role);
+    }
+
+    public async Task<List<TenantMembershipDto>> GetUserTenantsAsync(Guid userId)
+    {
+        var memberships = await _db.UserTenantMemberships
+            .Where(m => m.UserId == userId && m.IsActive)
+            .Include(m => m.Tenant)
+            .ToListAsync();
+
+        return memberships.Select(m => new TenantMembershipDto
+        {
+            TenantId = m.TenantId,
+            TenantName = m.Tenant.Name,
+            TenantSlug = m.Tenant.Slug,
+            Role = m.Role,
+            IsActive = m.IsActive
+        }).ToList();
+    }
+
     private AuthResult GenerateAuthResult(User user)
     {
         var expiresAt = DateTime.UtcNow.AddMinutes(_options.JwtExpirationMinutes);
@@ -174,6 +340,33 @@ public class AuthService : IAuthService
             Token = token,
             ExpiresAt = expiresAt,
             User = user.ToDto()
+        };
+    }
+
+    private AuthResult GenerateAuthResultForMembership(User user, Guid tenantId, string tenantName, UserRole role)
+    {
+        var expiresAt = DateTime.UtcNow.AddMinutes(_options.JwtExpirationMinutes);
+        var displayName = string.IsNullOrWhiteSpace(user.DisplayName) ? user.Username : user.DisplayName;
+        var token = JwtTokenHelper.GenerateToken(user.Id, displayName, tenantId, role, expiresAt, _options.JwtSecret, _options.JwtIssuer, _logger);
+
+        return new AuthResult
+        {
+            Token = token,
+            ExpiresAt = expiresAt,
+            User = new UserDto
+            {
+                Id = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                Role = role,
+                TenantId = tenantId,
+                TenantName = tenantName,
+                IsActive = user.IsActive,
+                ApiKey = user.ApiKey,
+                CreatedAt = user.CreatedAt,
+                LastLoginAt = user.LastLoginAt
+            }
         };
     }
 

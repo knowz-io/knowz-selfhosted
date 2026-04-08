@@ -57,6 +57,20 @@ public class SelfHostedDbContext : DbContext
     // Prompt templates (no tenant query filter — scoping done in PromptResolutionService)
     public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
 
+    // Multi-tenant user memberships (admin-level, NOT tenant-scoped by query filters)
+    public DbSet<UserTenantMembership> UserTenantMemberships => Set<UserTenantMembership>();
+
+    // Vault sync entities (no query filters — admin-level)
+    public DbSet<VaultSyncLink> VaultSyncLinks => Set<VaultSyncLink>();
+    public DbSet<SyncTombstone> SyncTombstones => Set<SyncTombstone>();
+
+    // Knowledge versioning and audit logging
+    public DbSet<KnowledgeVersion> KnowledgeVersions => Set<KnowledgeVersion>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    // Git sync entities (no query filter — scoped by VaultId in service layer)
+    public DbSet<GitRepository> GitRepositories => Set<GitRepository>();
+
     // Infrastructure entities (no query filters)
     public DbSet<EnrichmentOutboxItem> EnrichmentOutbox => Set<EnrichmentOutboxItem>();
 
@@ -77,6 +91,8 @@ public class SelfHostedDbContext : DbContext
         modelBuilder.Entity<KnowledgeComment>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
         modelBuilder.Entity<FileRecord>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
         modelBuilder.Entity<ContentChunk>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
+        modelBuilder.Entity<KnowledgeVersion>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
 
         // Junction table composite keys
         modelBuilder.Entity<KnowledgeVault>().HasKey(kv => new { kv.KnowledgeId, kv.VaultId });
@@ -236,6 +252,30 @@ public class SelfHostedDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction); // Avoid multiple cascade paths
         });
 
+        // --- VaultSyncLink entity configuration (NO query filter — admin-level) ---
+        modelBuilder.Entity<VaultSyncLink>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.LocalVaultId).IsUnique();
+            entity.Property(e => e.PlatformApiUrl).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ApiKeyEncrypted).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.LastSyncError).HasMaxLength(2000);
+        });
+
+        // --- SyncTombstone entity configuration (NO query filter — admin-level) ---
+        modelBuilder.Entity<SyncTombstone>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.VaultSyncLinkId, e.Propagated });
+            entity.HasIndex(e => new { e.VaultSyncLinkId, e.EntityType, e.LocalEntityId });
+            entity.Property(e => e.EntityType).IsRequired().HasMaxLength(100);
+
+            entity.HasOne(e => e.VaultSyncLink)
+                .WithMany()
+                .HasForeignKey(e => e.VaultSyncLinkId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // EnrichmentOutbox (no query filter — infrastructure entity)
         modelBuilder.Entity<EnrichmentOutboxItem>(entity =>
         {
@@ -262,6 +302,25 @@ public class SelfHostedDbContext : DbContext
                 .HasDatabaseName("IX_PromptTemplates_TenantId_PromptKey");
             entity.HasIndex(pt => new { pt.UserId, pt.PromptKey })
                 .HasDatabaseName("IX_PromptTemplates_UserId_PromptKey");
+        });
+
+        // --- UserTenantMembership entity configuration (NO query filter — admin-level) ---
+        modelBuilder.Entity<UserTenantMembership>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.HasIndex(m => new { m.UserId, m.TenantId }).IsUnique();
+            entity.HasIndex(m => m.UserId);
+            entity.HasIndex(m => m.TenantId);
+
+            entity.HasOne(m => m.User)
+                .WithMany()
+                .HasForeignKey(m => m.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(m => m.Tenant)
+                .WithMany()
+                .HasForeignKey(m => m.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // --- SystemConfiguration entity configuration (NO query filter) ---
@@ -318,5 +377,43 @@ public class SelfHostedDbContext : DbContext
 
         modelBuilder.Entity<ContentChunk>()
             .HasIndex(c => new { c.KnowledgeId, c.ContentHash });
+
+        // KnowledgeVersion entity configuration
+        modelBuilder.Entity<KnowledgeVersion>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+            entity.HasIndex(v => new { v.TenantId, v.KnowledgeId });
+            entity.HasIndex(v => new { v.KnowledgeId, v.VersionNumber }).IsUnique();
+            entity.Property(v => v.Title).IsRequired().HasMaxLength(500);
+            entity.Property(v => v.ContentType).HasMaxLength(100);
+            entity.Property(v => v.ChangeDescription).HasMaxLength(1000);
+        });
+
+        // AuditLog entity configuration
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.HasIndex(a => new { a.TenantId, a.EntityType, a.EntityId });
+            entity.HasIndex(a => new { a.TenantId, a.Timestamp });
+            entity.HasIndex(a => new { a.EntityId, a.Timestamp });
+            entity.Property(a => a.EntityType).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.Action).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.UserEmail).HasMaxLength(255);
+            entity.Property(a => a.Details).HasMaxLength(4000);
+        });
+
+        // --- GitRepository entity configuration (NO query filter — scoped by VaultId in service) ---
+        modelBuilder.Entity<GitRepository>(entity =>
+        {
+            entity.HasKey(g => g.Id);
+            entity.HasIndex(g => g.VaultId).IsUnique(); // One repo per vault
+            entity.HasIndex(g => g.TenantId);
+            entity.Property(g => g.RepositoryUrl).IsRequired().HasMaxLength(1000);
+            entity.Property(g => g.Branch).IsRequired().HasMaxLength(200);
+            entity.Property(g => g.Status).IsRequired().HasMaxLength(50);
+            entity.Property(g => g.LastSyncCommitSha).HasMaxLength(100);
+            entity.Property(g => g.FilePatterns).HasMaxLength(2000);
+            entity.Property(g => g.ErrorMessage).HasMaxLength(2000);
+        });
     }
 }

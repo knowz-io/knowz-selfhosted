@@ -8,19 +8,25 @@ import {
 } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { api, ApiError } from './api-client'
-import { UserRole, type UserDto } from './types'
+import { UserRole, type UserDto, type TenantMembershipDto, type MultiTenantLoginResponse } from './types'
 
 interface AuthContextValue {
   user: UserDto | null
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string) => Promise<MultiTenantLoginResponse>
   loginWithToken: (token: string) => Promise<void>
   logout: () => void
   /** Active tenant override (SuperAdmin only). null = use own tenant. */
   activeTenantId: string | null
   setActiveTenantId: (tenantId: string | null) => void
+  // Multi-tenant fields
+  availableTenants: TenantMembershipDto[]
+  currentTenantName: string | null
+  selectTenant: (tenantId: string) => Promise<void>
+  switchTenant: (tenantId: string) => Promise<void>
+  pendingUserId: string | null
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -44,6 +50,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [activeTenantId, setActiveTenantIdState] = useState<string | null>(
     () => localStorage.getItem('activeTenantId'),
   )
+  const [availableTenants, setAvailableTenants] = useState<TenantMembershipDto[]>([])
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null)
 
   useEffect(() => {
     const storedToken = localStorage.getItem('authToken')
@@ -53,6 +61,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .getMe()
         .then((userData) => {
           setUser(userData)
+          // Fetch available tenants for authenticated user
+          api.getUserTenants()
+            .then(tenants => setAvailableTenants(tenants))
+            .catch(() => {}) // Silently ignore if endpoint not available
         })
         .catch((err) => {
           if (err instanceof ApiError && err.status === 401) {
@@ -68,12 +80,54 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
+  const currentTenantName = user
+    ? availableTenants.find(t => t.tenantId === user.tenantId)?.tenantName ?? user.tenantName
+    : null
+
+  const login = useCallback(async (username: string, password: string): Promise<MultiTenantLoginResponse> => {
     const response = await api.login(username, password)
+
+    if (response.requiresTenantSelection) {
+      // Multi-tenant: store tenants for selection, don't set token yet
+      setAvailableTenants(response.availableTenants)
+      setPendingUserId(response.userId)
+      return response
+    }
+
+    // Single tenant: proceed as before
+    localStorage.setItem('authToken', response.token)
+    setToken(response.token)
+    setUser(response.user!)
+    // Clear tenant override on fresh login
+    localStorage.removeItem('activeTenantId')
+    setActiveTenantIdState(null)
+    // Fetch available tenants
+    api.getUserTenants()
+      .then(tenants => setAvailableTenants(tenants))
+      .catch(() => {})
+    return response
+  }, [])
+
+  const selectTenant = useCallback(async (tenantId: string) => {
+    if (!pendingUserId) throw new Error('No pending user for tenant selection')
+    const response = await api.selectTenant({ userId: pendingUserId, tenantId })
     localStorage.setItem('authToken', response.token)
     setToken(response.token)
     setUser(response.user)
-    // Clear tenant override on fresh login
+    setPendingUserId(null)
+    localStorage.removeItem('activeTenantId')
+    setActiveTenantIdState(null)
+    // Fetch available tenants
+    api.getUserTenants()
+      .then(tenants => setAvailableTenants(tenants))
+      .catch(() => {})
+  }, [pendingUserId])
+
+  const switchTenant = useCallback(async (tenantId: string) => {
+    const response = await api.switchTenant({ tenantId })
+    localStorage.setItem('authToken', response.token)
+    setToken(response.token)
+    setUser(response.user)
     localStorage.removeItem('activeTenantId')
     setActiveTenantIdState(null)
   }, [])
@@ -85,6 +139,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(userData)
     localStorage.removeItem('activeTenantId')
     setActiveTenantIdState(null)
+    // Fetch available tenants
+    api.getUserTenants()
+      .then(tenants => setAvailableTenants(tenants))
+      .catch(() => {})
   }, [])
 
   const logout = useCallback(() => {
@@ -93,6 +151,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setToken(null)
     setUser(null)
     setActiveTenantIdState(null)
+    setAvailableTenants([])
+    setPendingUserId(null)
   }, [])
 
   const setActiveTenantId = useCallback((tenantId: string | null) => {
@@ -118,6 +178,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         logout,
         activeTenantId,
         setActiveTenantId,
+        availableTenants,
+        currentTenantName,
+        selectTenant,
+        switchTenant,
+        pendingUserId,
       }}
     >
       {children}

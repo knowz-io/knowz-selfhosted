@@ -37,4 +37,24 @@ public interface IAuthService
     /// Verifies a plaintext password against a BCrypt hash.
     /// </summary>
     bool VerifyPassword(string password, string hash);
+
+    /// <summary>
+    /// Multi-tenant login: validates credentials and returns tenant selection info if the user belongs to multiple tenants.
+    /// </summary>
+    Task<MultiTenantLoginResult> MultiTenantLoginAsync(string username, string password);
+
+    /// <summary>
+    /// Selects a tenant after a multi-tenant login (anonymous, user identified by userId).
+    /// </summary>
+    Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId);
+
+    /// <summary>
+    /// Switches the authenticated user's active tenant context.
+    /// </summary>
+    Task<AuthResult> SwitchTenantAsync(Guid userId, Guid newTenantId);
+
+    /// <summary>
+    /// Gets all tenant memberships for a user.
+    /// </summary>
+    Task<List<TenantMembershipDto>> GetUserTenantsAsync(Guid userId);
 }

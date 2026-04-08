@@ -138,9 +138,9 @@ public class OAuthRefreshTokenTests
         result!.AccessToken.Should().Be(apiKey, "refreshed access token must be the same API key");
     }
 
-    // VERIFY-9: Refresh token stored in Redis with 30-day TTL
+    // VERIFY-9: Refresh token stored in Redis with 90-day TTL
     [Fact]
-    public void CreateRefreshToken_StoresWithCorrect30DayTTL()
+    public void CreateRefreshToken_StoresWithCorrect90DayTTL()
     {
         DistributedCacheEntryOptions? capturedOptions = null;
         _cacheMock.Setup(c => c.Set(It.Is<string>(k => k.StartsWith("oauth:refresh:")), It.IsAny<byte[]>(), It.IsAny<DistributedCacheEntryOptions>()))
@@ -153,7 +153,7 @@ public class OAuthRefreshTokenTests
         _service.CreateRefreshToken("ukz_test_key_123456789", "mcp:read");
 
         capturedOptions.Should().NotBeNull();
-        capturedOptions!.AbsoluteExpirationRelativeToNow.Should().Be(TimeSpan.FromDays(30));
+        capturedOptions!.AbsoluteExpirationRelativeToNow.Should().Be(TimeSpan.FromDays(90));
     }
 
     // VERIFY-10: In-memory fallback works when Redis unavailable

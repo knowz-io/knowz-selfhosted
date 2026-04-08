@@ -36,7 +36,7 @@ export default function Layout({ children }: LayoutProps) {
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 flex items-center justify-between px-4 border-b bg-card/80 backdrop-blur-sm lg:hidden">
+        <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/80 backdrop-blur-md lg:hidden">
           <div className="flex items-center">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -45,7 +45,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               <Menu size={22} />
             </button>
-            <span className="ml-3 text-lg font-semibold">Knowz</span>
+            <span className="ml-3 text-lg font-bold tracking-tight">Knowz</span>
           </div>
 
           {/* Mobile user menu */}
@@ -62,7 +62,7 @@ export default function Layout({ children }: LayoutProps) {
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-border/60 rounded-xl shadow-lg py-1 z-50 animate-fade-in">
+                <div className="absolute right-0 top-full mt-1.5 w-56 bg-card border border-border/40 rounded-xl shadow-elevated py-1 z-50 animate-scale-in">
                   <div className="px-3 py-2 border-b">
                     <p className="text-sm font-medium truncate">
                       {user.displayName || user.username}
@@ -70,6 +70,11 @@ export default function Layout({ children }: LayoutProps) {
                     <p className="text-xs text-muted-foreground">
                       {roleLabels[user.role] ?? 'User'}
                     </p>
+                    {user.tenantName && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {user.tenantName}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => {

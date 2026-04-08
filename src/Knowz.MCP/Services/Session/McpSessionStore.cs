@@ -29,7 +29,7 @@ public class McpSessionStore : IMcpSessionStore
 {
     private readonly ConcurrentDictionary<string, SessionData> _sessions = new();
     private readonly ConcurrentDictionary<string, FingerprintData> _fingerprints = new();
-    private readonly TimeSpan _sessionTimeout = TimeSpan.FromHours(24);
+    private readonly TimeSpan _sessionTimeout = TimeSpan.FromDays(30);
     private readonly ILogger<McpSessionStore> _logger;
 
     public McpSessionStore(ILogger<McpSessionStore> logger)

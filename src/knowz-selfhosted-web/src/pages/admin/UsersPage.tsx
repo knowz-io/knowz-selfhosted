@@ -17,6 +17,7 @@ import {
   Eye,
   EyeOff,
   Shield,
+  Building2,
 } from 'lucide-react'
 import { api } from '../../lib/api-client'
 import { useAuth } from '../../lib/auth'
@@ -52,6 +53,7 @@ export default function UsersPage() {
   const [apiKeyModal, setApiKeyModal] = useState<{ userId: string; username: string } | null>(null)
   const [resetPasswordModal, setResetPasswordModal] = useState<{ userId: string; username: string } | null>(null)
   const [vaultAccessModal, setVaultAccessModal] = useState<{ userId: string; username: string } | null>(null)
+  const [tenantMembershipsModal, setTenantMembershipsModal] = useState<{ userId: string; username: string } | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -269,6 +271,16 @@ export default function UsersPage() {
                           >
                             <Shield size={14} />
                           </button>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => setTenantMembershipsModal({ userId: user.id, username: user.username })}
+                              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              title="Tenant Memberships"
+                              aria-label="Manage tenant memberships"
+                            >
+                              <Building2 size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={() => setApiKeyModal({ userId: user.id, username: user.username })}
                             className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -368,6 +380,17 @@ export default function UsersPage() {
           userId={vaultAccessModal.userId}
           username={vaultAccessModal.username}
           onClose={() => setVaultAccessModal(null)}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Tenant Memberships Modal */}
+      {tenantMembershipsModal && (
+        <TenantMembershipsModal
+          userId={tenantMembershipsModal.userId}
+          username={tenantMembershipsModal.username}
+          tenants={tenants}
+          onClose={() => setTenantMembershipsModal(null)}
           showToast={showToast}
         />
       )}
@@ -1205,6 +1228,212 @@ function VaultAccessModal({ userId, username, onClose, showToast }: VaultAccessM
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        <div className="flex justify-end mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Tenant Memberships Modal ---
+
+interface TenantMembershipsModalProps {
+  userId: string
+  username: string
+  tenants: TenantDto[]
+  onClose: () => void
+  showToast: (type: 'success' | 'error', message: string) => void
+}
+
+function TenantMembershipsModal({ userId, username, tenants, onClose, showToast }: TenantMembershipsModalProps) {
+  const queryClient = useQueryClient()
+  const [addTenantId, setAddTenantId] = useState('')
+  const [addRole, setAddRole] = useState<number>(UserRole.User)
+
+  const membershipsQuery = useQuery({
+    queryKey: ['admin', 'user-memberships', userId],
+    queryFn: () => api.getUserMemberships(userId),
+  })
+
+  const addMutation = useMutation({
+    mutationFn: () => api.addUserToTenant(userId, { tenantId: addTenantId, role: addRole }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'user-memberships', userId] })
+      setAddTenantId('')
+      setAddRole(UserRole.User)
+      showToast('success', 'User added to tenant.')
+    },
+    onError: (err) => showToast('error', err instanceof Error ? err.message : 'Failed to add user to tenant.'),
+  })
+
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ tenantId, role }: { tenantId: string; role: number }) =>
+      api.updateUserTenantRole(userId, tenantId, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'user-memberships', userId] })
+      showToast('success', 'Role updated.')
+    },
+    onError: (err) => showToast('error', err instanceof Error ? err.message : 'Failed to update role.'),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (tenantId: string) => api.removeUserFromTenant(userId, tenantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'user-memberships', userId] })
+      showToast('success', 'User removed from tenant.')
+    },
+    onError: (err) => showToast('error', err instanceof Error ? err.message : 'Failed to remove user from tenant.'),
+  })
+
+  const memberships = membershipsQuery.data ?? []
+  const memberTenantIds = new Set(memberships.map(m => m.tenantId))
+  const availableTenants = tenants.filter(t => !memberTenantIds.has(t.id))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card border border-border/60 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <Building2 size={18} className="text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Tenant Memberships: {username}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {membershipsQuery.isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-10 bg-muted rounded animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Add to tenant */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-foreground">Add to Tenant</h3>
+              <div className="flex gap-2">
+                <select
+                  value={addTenantId}
+                  onChange={(e) => setAddTenantId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                >
+                  <option value="">Select a tenant...</option>
+                  {availableTenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(Number(e.target.value))}
+                  className="px-3 py-2 border border-input rounded-md bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                >
+                  <option value={UserRole.User}>User</option>
+                  <option value={UserRole.Admin}>Admin</option>
+                </select>
+                <button
+                  onClick={() => addTenantId && addMutation.mutate()}
+                  disabled={!addTenantId || addMutation.isPending}
+                  className="inline-flex items-center gap-1 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {/* Memberships list */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-foreground">
+                Current Memberships ({memberships.length})
+              </h3>
+
+              {memberships.length === 0 ? (
+                <div className="text-center py-6 bg-muted rounded-lg">
+                  <Building2 size={24} className="mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No tenant memberships. Add this user to a tenant above.
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-border/60 rounded-xl shadow-sm overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/60 bg-muted">
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">Tenant</th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">Role</th>
+                        <th className="text-center px-3 py-2 font-medium text-muted-foreground">Status</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {memberships.map((m) => (
+                        <tr key={m.tenantId} className="hover:bg-muted">
+                          <td className="px-3 py-2">
+                            <div>
+                              <p className="font-medium">{m.tenantName}</p>
+                              <p className="text-xs text-muted-foreground">{m.tenantSlug}</p>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={m.role}
+                              onChange={(e) =>
+                                updateRoleMutation.mutate({ tenantId: m.tenantId, role: Number(e.target.value) })
+                              }
+                              disabled={updateRoleMutation.isPending}
+                              className="px-2 py-1 border border-input rounded text-xs bg-card focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value={UserRole.User}>User</option>
+                              <option value={UserRole.Admin}>Admin</option>
+                              <option value={UserRole.SuperAdmin}>SuperAdmin</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                m.isActive
+                                  ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400'
+                                  : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
+                              }`}
+                            >
+                              {m.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => removeMutation.mutate(m.tenantId)}
+                              disabled={removeMutation.isPending}
+                              className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              title="Remove from tenant"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

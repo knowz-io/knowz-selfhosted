@@ -133,9 +133,9 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns("A summary");
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string> { "tag1" });
 
         var workItem = new EnrichmentWorkItem(
@@ -175,9 +175,9 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns((string?)null);
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(
@@ -186,7 +186,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
 
         // Title generation should NOT have been called
         await _enrichmentService.DidNotReceive()
-            .GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            .GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
     [Fact]
@@ -214,11 +214,11 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns("Machine Learning Overview");
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns((string?)null);
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
@@ -282,7 +282,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns<string?>(_ => throw new Exception("AI error"));
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
@@ -323,7 +323,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _enrichmentService.GenerateTitleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns<string?>(_ => throw new Exception("Persistent error"));
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);
@@ -359,7 +359,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
                 Id = knowledgeId,
                 TenantId = TenantId,
                 Title = "Good Title",
-                Content = "Long content about various topics"
+                Content = "Long content about various important topics that need summarization"
             });
             db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
             {
@@ -371,9 +371,9 @@ public class EnrichmentBackgroundServiceTests : IDisposable
             TenantContext.CurrentTenantId = null;
         }
 
-        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.SummarizeAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns("This is a generated summary");
-        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _enrichmentService.ExtractTagsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>())
             .Returns(new List<string>());
 
         await _svc.ProcessWorkItemAsync(new EnrichmentWorkItem(knowledgeId, TenantId), CancellationToken.None);

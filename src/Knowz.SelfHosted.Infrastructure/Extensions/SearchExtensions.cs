@@ -12,7 +12,7 @@ public static class SearchExtensions
 {
     /// <summary>
     /// Registers search services with three-tier priority:
-    /// 1. KnowzPlatform:Enabled → LocalVectorSearchService (cosine similarity on stored embeddings)
+    /// 1. KnowzPlatform:Enabled → PlatformSearchService (proxies to Knowz Platform API)
     /// 2. AzureAISearch configured → AzureSearchService (vector + keyword)
     /// 3. Neither → NoOpSearchService
     /// </summary>
@@ -20,13 +20,13 @@ public static class SearchExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Tier 1: Knowz Platform mode → local vector search using embeddings from ContentChunks
+        // Tier 1: Knowz Platform mode → proxy search to the platform API
         var platformEnabled = string.Equals(
             configuration["KnowzPlatform:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
 
         if (platformEnabled)
         {
-            services.AddScoped<ISearchService, LocalVectorSearchService>();
+            services.AddScoped<ISearchService, PlatformSearchService>();
             return services;
         }
 
@@ -54,8 +54,8 @@ public static class SearchExtensions
             return services;
         }
 
-        // Tier 3: NoOp — search features disabled, auth/admin still work
-        services.AddScoped<ISearchService, NoOpSearchService>();
+        // Tier 3: Database fallback — SQL LIKE keyword search (no vector/semantic)
+        services.AddScoped<ISearchService, DatabaseSearchService>();
         return services;
     }
 }
