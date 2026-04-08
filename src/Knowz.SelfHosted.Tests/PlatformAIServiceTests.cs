@@ -234,8 +234,8 @@ public class PlatformAIServiceTests
         Assert.Equal(2, result.SourceKnowledgeIds.Count); // Distinct IDs
         Assert.Contains(id1, result.SourceKnowledgeIds);
         Assert.Contains(id2, result.SourceKnowledgeIds);
-        // Confidence = Min(1.0, Average(0.8, 0.6, 0.7)) = 0.7
-        Assert.Equal(0.7, result.Confidence, precision: 5);
+        // Confidence = Min(1.0, Max(0.8, 0.6, 0.7)) = 0.8
+        Assert.Equal(0.8, result.Confidence, precision: 5);
     }
 
     [Fact]

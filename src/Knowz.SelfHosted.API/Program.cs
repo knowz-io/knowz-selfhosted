@@ -73,6 +73,15 @@ builder.Services.AddSingleton(Channel.CreateBounded<EnrichmentWorkItem>(
     }));
 builder.Services.AddHostedService<EnrichmentBackgroundService>();
 
+// Git sync pipeline: bounded channel + background service
+builder.Services.AddSingleton(Channel.CreateBounded<GitSyncWorkItem>(
+    new BoundedChannelOptions(10)
+    {
+        FullMode = BoundedChannelFullMode.Wait,
+        SingleReader = true
+    }));
+builder.Services.AddHostedService<GitSyncBackgroundService>();
+
 // Configure multipart form options (100MB upload limit)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
@@ -344,7 +353,7 @@ else
     if (searchConfigured)
         app.Logger.LogInformation("Search Provider: Azure AI Search ({Endpoint})", builder.Configuration["AzureAISearch:Endpoint"]);
     else
-        app.Logger.LogWarning("Search Provider: None (NoOp) — Search features disabled");
+        app.Logger.LogInformation("Search Provider: Database (SQL keyword search — no vector/semantic)");
 }
 
 app.UseCors();
@@ -384,13 +393,18 @@ app.MapAccountEndpoints();
 app.MapAdminEndpoints();
 app.MapConfigurationEndpoints();
 app.MapPortabilityEndpoints();
+app.MapSyncEndpoints();
 app.MapApiKeyEndpoints();
 app.MapChatEndpoints();
 app.MapFileEndpoints();
 app.MapCommentEndpoints();
+app.MapVersionEndpoints();
+app.MapAuditEndpoints();
+app.MapGitSyncEndpoints();
 app.MapSSOConfigEndpoints();
 app.MapVaultAccessEndpoints();
 app.MapInternalMcpEndpoints();
+app.MapKnowledgeItemTypesEndpoints();
 
 // SPA fallback (must be last)
 app.MapFallbackToFile("index.html");

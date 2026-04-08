@@ -13,6 +13,10 @@ import type {
   CreateKnowledgeData,
   UpdateKnowledgeData,
   LoginResponse,
+  MultiTenantLoginResponse,
+  SelectTenantData,
+  SwitchTenantData,
+  TenantMembershipDto,
   UserDto,
   TenantDto,
   CreateTenantData,
@@ -49,6 +53,11 @@ import type {
   SelfHostedSSOTestResultDto,
   SSOProviderInfo,
   PromptTemplateDto,
+  KnowledgeVersion,
+  PaginatedResult,
+  AuditLogEntry,
+  GitSyncStatus,
+  GitSyncHistoryEntry,
 } from './types'
 
 const getApiUrl = (): string =>
@@ -534,10 +543,28 @@ export const api = {
 
   // --- Auth ---
   login: (username: string, password: string) =>
-    request<LoginResponse>('/api/v1/auth/login', {
+    request<MultiTenantLoginResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    }).then(r => ({
+      ...r,
+      user: r.user ? normalizeUser(r.user) : null,
+    })),
+
+  selectTenant: (data: SelectTenantData) =>
+    request<LoginResponse>('/api/v1/auth/select-tenant', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }).then(r => ({ ...r, user: normalizeUser(r.user) })),
+
+  switchTenant: (data: SwitchTenantData) =>
+    request<LoginResponse>('/api/v1/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }).then(r => ({ ...r, user: normalizeUser(r.user) })),
+
+  getUserTenants: () =>
+    request<TenantMembershipDto[]>('/api/v1/auth/tenants'),
 
   getMe: () =>
     request<UserDto>('/api/v1/auth/me').then(normalizeUser),
@@ -599,6 +626,27 @@ export const api = {
     request<{ message: string }>(`/api/v1/admin/users/${userId}/reset-password`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  // --- Admin: User Tenant Memberships ---
+  getUserMemberships: (userId: string) =>
+    request<TenantMembershipDto[]>(`/api/v1/admin/users/${userId}/tenants`),
+
+  addUserToTenant: (userId: string, data: { tenantId: string; role: number }) =>
+    request<TenantMembershipDto>(`/api/v1/admin/users/${userId}/tenants`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateUserTenantRole: (userId: string, tenantId: string, data: { role: number }) =>
+    request<TenantMembershipDto>(`/api/v1/admin/users/${userId}/tenants/${tenantId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  removeUserFromTenant: (userId: string, tenantId: string) =>
+    request<{ message: string }>(`/api/v1/admin/users/${userId}/tenants/${tenantId}`, {
+      method: 'DELETE',
     }),
 
   // --- Admin: Vault Access ---
@@ -768,5 +816,51 @@ export const api = {
   resetPlatformPrompt: (key: string) =>
     request<PromptTemplateDto>(`/api/v1/prompts/platform/${key}/reset`, {
       method: 'POST',
+    }),
+
+  // --- Knowledge Versioning ---
+  getVersionHistory: (knowledgeId: string) =>
+    request<KnowledgeVersion[]>(`/api/v1/knowledge/${knowledgeId}/versions`),
+
+  getVersion: (knowledgeId: string, versionNumber: number) =>
+    request<KnowledgeVersion>(`/api/v1/knowledge/${knowledgeId}/versions/${versionNumber}`),
+
+  restoreVersion: (knowledgeId: string, versionNumber: number) =>
+    request<void>(`/api/v1/knowledge/${knowledgeId}/versions/${versionNumber}/restore`, {
+      method: 'POST',
+    }),
+
+  // --- Audit Logs ---
+  getAuditLogs: (params?: { entityId?: string; entityType?: string; page?: number; pageSize?: number }) =>
+    request<PaginatedResult<AuditLogEntry>>(
+      `/api/v1/audit-logs${buildQuery({
+        entityId: params?.entityId,
+        entityType: params?.entityType,
+        page: params?.page != null ? String(params.page) : undefined,
+        pageSize: params?.pageSize != null ? String(params.pageSize) : undefined,
+      })}`,
+    ),
+
+  // --- Git Sync ---
+  getGitSyncStatus: (vaultId: string) =>
+    request<GitSyncStatus>(`/api/v1/vaults/${vaultId}/git-sync`),
+
+  configureGitSync: (vaultId: string, config: { repositoryUrl: string; branch: string; pat?: string; filePatterns?: string }) =>
+    request<GitSyncStatus>(`/api/v1/vaults/${vaultId}/git-sync`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
+
+  triggerGitSync: (vaultId: string) =>
+    request<void>(`/api/v1/vaults/${vaultId}/git-sync/trigger`, {
+      method: 'POST',
+    }),
+
+  getGitSyncHistory: (vaultId: string) =>
+    request<GitSyncHistoryEntry[]>(`/api/v1/vaults/${vaultId}/git-sync/history`),
+
+  removeGitSync: (vaultId: string) =>
+    request<void>(`/api/v1/vaults/${vaultId}/git-sync`, {
+      method: 'DELETE',
     }),
 }

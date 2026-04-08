@@ -11,6 +11,7 @@ using Knowz.Core.Enums;
 using Knowz.SelfHosted.Application.Extensions;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -290,6 +291,19 @@ public class SelfHostedSSOService : ISelfHostedSSOService
         };
 
         _db.Users.Add(newUser);
+        await _db.SaveChangesAsync();
+
+        // Create tenant membership for auto-provisioned user
+        var membership = new UserTenantMembership
+        {
+            UserId = newUser.Id,
+            TenantId = tenantId,
+            Role = defaultRole,
+            IsActive = true,
+            JoinedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.UserTenantMemberships.Add(membership);
         await _db.SaveChangesAsync();
 
         // Reload with tenant navigation

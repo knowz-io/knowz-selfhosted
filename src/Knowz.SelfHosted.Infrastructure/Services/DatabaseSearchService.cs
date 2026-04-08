@@ -1,0 +1,111 @@
+using Knowz.Core.Interfaces;
+using Knowz.Core.Models;
+using Knowz.SelfHosted.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Knowz.SelfHosted.Infrastructure.Services;
+
+/// <summary>
+/// Database-driven search fallback when Azure AI Search is not configured.
+/// Uses SQL LIKE queries against title, content, and summary columns.
+/// No vector/semantic search — just keyword matching with relevance scoring.
+/// </summary>
+public class DatabaseSearchService : ISearchService
+{
+    private readonly SelfHostedDbContext _db;
+    private readonly ILogger<DatabaseSearchService> _logger;
+
+    public DatabaseSearchService(SelfHostedDbContext db, ILogger<DatabaseSearchService> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
+
+    public async Task<List<SearchResultItem>> HybridSearchAsync(
+        string query,
+        float[]? queryEmbedding = null,
+        Guid? vaultId = null,
+        bool includeDescendants = true,
+        IEnumerable<string>? tags = null,
+        bool requireAllTags = false,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        int maxResults = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return [];
+
+        var pattern = $"%{query}%";
+
+        var dbQuery = _db.KnowledgeItems
+            .Where(k => EF.Functions.Like(k.Title, pattern)
+                     || (k.Content != null && EF.Functions.Like(k.Content, pattern))
+                     || (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+
+        if (vaultId.HasValue)
+        {
+            dbQuery = dbQuery.Where(k =>
+                _db.KnowledgeVaults.Any(kv => kv.KnowledgeId == k.Id && kv.VaultId == vaultId.Value));
+        }
+
+        if (startDate.HasValue)
+            dbQuery = dbQuery.Where(k => k.CreatedAt >= startDate.Value);
+
+        if (endDate.HasValue)
+            dbQuery = dbQuery.Where(k => k.CreatedAt <= endDate.Value);
+
+        var results = await dbQuery
+            .OrderByDescending(k => k.UpdatedAt)
+            .Take(maxResults)
+            .Select(k => new
+            {
+                k.Id,
+                k.Title,
+                Content = k.Content ?? string.Empty,
+                Summary = k.Summary,
+                k.Type,
+                k.FilePath,
+                VaultName = _db.KnowledgeVaults
+                    .Where(kv => kv.KnowledgeId == k.Id)
+                    .Select(kv => kv.Vault!.Name)
+                    .FirstOrDefault(),
+            })
+            .ToListAsync(cancellationToken);
+
+        return results.Select((r, i) => new SearchResultItem
+        {
+            KnowledgeId = r.Id,
+            Title = r.Title,
+            Content = Truncate(r.Content, 500),
+            Summary = r.Summary,
+            VaultName = r.VaultName,
+            KnowledgeType = r.Type.ToString(),
+            FilePath = r.FilePath,
+            Score = 1.0 - (i * 0.01), // simple position-based scoring
+            Position = i,
+            DocumentType = "database",
+        }).ToList();
+    }
+
+    public Task IndexDocumentAsync(
+        Guid knowledgeId, string title, string content, string? summary,
+        string? vaultName, Guid? vaultId, List<Guid>? ancestorVaultIds,
+        string? topicName, IEnumerable<string>? tags, string? knowledgeType,
+        string? filePath, float[]? contentVector, int? chunkIndex = null,
+        CancellationToken cancellationToken = default)
+    {
+        // No external index to update — data is already in the database
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteDocumentAsync(Guid knowledgeId, CancellationToken cancellationToken = default)
+    {
+        // No external index to update — deletion is handled by EF
+        return Task.CompletedTask;
+    }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength] + "...";
+}

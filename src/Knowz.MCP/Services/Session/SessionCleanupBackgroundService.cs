@@ -1,3 +1,5 @@
+using Knowz.MCP.Services;
+
 namespace Knowz.MCP.Services.Session;
 
 /// <summary>
@@ -34,15 +36,19 @@ public class SessionCleanupBackgroundService : BackgroundService
             try
             {
                 var sessionStore = _serviceProvider.GetRequiredService<IMcpSessionStore>();
+                var oauthService = _serviceProvider.GetRequiredService<IOAuthService>();
+                var sessionTracker = _serviceProvider.GetRequiredService<IActiveSessionTracker>();
 
                 sessionStore.CleanupExpiredSessions();
+                oauthService.CleanupExpired();
 
                 if (sessionStore is RedisMcpSessionStore redisStore)
                 {
                     _logger.LogInformation(
-                        "MCP session metrics -- Redis available: {RedisAvailable}, In-memory fallback sessions: {FallbackCount}",
+                        "MCP session metrics -- Redis: {RedisAvailable}, Fallback sessions: {FallbackCount}, Active SDK sessions: {ActiveCount}",
                         redisStore.IsRedisAvailable,
-                        redisStore.FallbackSessionCount);
+                        redisStore.FallbackSessionCount,
+                        sessionTracker.Count);
                 }
             }
             catch (Exception ex)

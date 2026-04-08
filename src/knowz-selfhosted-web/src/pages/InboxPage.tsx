@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Loader2,
   Mail,
+  FolderInput,
 } from 'lucide-react'
 
 const TYPE_OPTIONS = ['All', 'Note', 'Link', 'File'] as const
@@ -39,6 +40,9 @@ export default function InboxPage() {
   const [convertIds, setConvertIds] = useState<string[]>([])
   const [convertVaultId, setConvertVaultId] = useState<string>('')
   const [convertTags, setConvertTags] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [bulkDeleteError, setBulkDeleteError] = useState('')
 
   const queryParams: Record<string, string | undefined> = {
     page: String(page),
@@ -105,6 +109,23 @@ export default function InboxPage() {
       setShowConvertDialog(false)
     },
   })
+
+  const handleBulkDelete = async () => {
+    setIsBulkDeleting(true)
+    setBulkDeleteError('')
+    const ids = Array.from(selectedIds)
+    const results = await Promise.allSettled(ids.map((id) => api.deleteInboxItem(id)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    if (failed > 0) {
+      setBulkDeleteError(`${failed} of ${ids.length} deletes failed`)
+    } else {
+      setShowDeleteConfirm(false)
+      setBulkDeleteError('')
+    }
+    setSelectedIds(new Set())
+    setIsBulkDeleting(false)
+    queryClient.invalidateQueries({ queryKey: ['inbox'] })
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -319,37 +340,8 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Batch Action Bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
-          <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
-            {selectedIds.size} selected
-          </span>
-          <button
-            onClick={() => openConvertDialog(Array.from(selectedIds))}
-            className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            <ArrowRightLeft size={14} />
-            Convert Selected
-          </button>
-          <button
-            onClick={() => {
-              selectedIds.forEach((id) => deleteMutation.mutate(id))
-              setSelectedIds(new Set())
-            }}
-            className="flex items-center gap-1 px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            <Trash2 size={14} />
-            Delete Selected
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-      )}
+      {/* Batch Action Bar - placeholder for spacing; floating bar is at the bottom */}
+      {selectedIds.size > 0 && <div className="h-1" />}
 
       {/* Items List */}
       {isLoading ? (
@@ -493,6 +485,79 @@ export default function InboxPage() {
             >
               <ChevronRight size={16} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating action bar for bulk operations */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+          <div className="flex items-center gap-3 px-5 py-3 bg-foreground text-background rounded-lg shadow-xl">
+            <span className="text-sm font-medium whitespace-nowrap">
+              {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="w-px h-5 bg-border" />
+            <button
+              onClick={() => openConvertDialog(Array.from(selectedIds))}
+              disabled={isBulkDeleting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary/80 hover:bg-primary/70 rounded disabled:opacity-50 transition-colors"
+            >
+              <FolderInput size={14} /> Convert to Knowledge
+            </button>
+            <button
+              onClick={() => { setBulkDeleteError(''); setShowDeleteConfirm(true) }}
+              disabled={isBulkDeleting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 transition-colors"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={isBulkDeleting}
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-sm hover:bg-primary/70 rounded transition-colors"
+              title="Deselect all"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold">
+              Delete {selectedIds.size} item{selectedIds.size !== 1 ? 's' : ''}?
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete {selectedIds.size} inbox item{selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.
+            </p>
+            {bulkDeleteError && (
+              <p className="text-red-600 dark:text-red-400 text-sm">{bulkDeleteError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setBulkDeleteError('') }}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium disabled:opacity-50"
+              >
+                {isBulkDeleting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -217,8 +217,8 @@ public static class OAuthEndpoints
             if (string.IsNullOrEmpty(redirectUri))
                 return Results.BadRequest(new { error = "invalid_request", error_description = "Missing redirect_uri" });
 
-            if (!redirectUri.StartsWith("http://localhost") && !redirectUri.StartsWith("http://127.0.0.1"))
-                return Results.BadRequest(new { error = "invalid_request", error_description = "redirect_uri must be localhost for CLI clients" });
+            if (!IsAllowedRedirectUri(redirectUri))
+                return Results.BadRequest(new { error = "invalid_request", error_description = "redirect_uri must be localhost or a valid native app scheme for CLI clients" });
 
             if (string.IsNullOrEmpty(codeChallenge))
                 return Results.BadRequest(new { error = "invalid_request", error_description = "PKCE code_challenge is required" });
@@ -475,5 +475,27 @@ public static class OAuthEndpoints
         });
 
         return app;
+    }
+
+    /// <summary>
+    /// Validates redirect URIs per RFC 8252: allows loopback redirects (§7.3)
+    /// and private-use URI schemes for native apps (§7.1).
+    /// PKCE (required on this endpoint) protects against interception regardless of redirect method.
+    /// </summary>
+    private static bool IsAllowedRedirectUri(string redirectUri)
+    {
+        // Loopback redirects (RFC 8252 §7.3)
+        if (redirectUri.StartsWith("http://localhost") || redirectUri.StartsWith("http://127.0.0.1"))
+            return true;
+
+        // Private-use URI schemes for native apps (RFC 8252 §7.1)
+        // e.g. warp://mcp/oauth2callback, vscode://..., etc.
+        if (Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri))
+        {
+            if (uri.Scheme != "http" && uri.Scheme != "https")
+                return true;
+        }
+
+        return false;
     }
 }

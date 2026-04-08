@@ -23,6 +23,7 @@ import TenantsPage from './pages/admin/TenantsPage'
 import UsersPage from './pages/admin/UsersPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
 import SSOSettingsPage from './pages/admin/SSOSettingsPage'
+import AuditLogPage from './pages/admin/AuditLogPage'
 import SSOCallbackPage from './pages/SSOCallbackPage'
 
 export default function App() {
@@ -86,6 +87,14 @@ export default function App() {
                     element={
                       <AdminRoute>
                         <UsersPage />
+                      </AdminRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/audit-logs"
+                    element={
+                      <AdminRoute>
+                        <AuditLogPage />
                       </AdminRoute>
                     }
                   />

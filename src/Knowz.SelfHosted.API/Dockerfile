@@ -6,8 +6,9 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
-# Copy NuGet config for restore
+# Copy NuGet config and local packages for restore
 COPY ["nuget.config", "."]
+COPY ["local-packages/", "local-packages/"]
 
 # Copy project files for NuGet restore caching
 COPY ["src/Knowz.SelfHosted.Infrastructure/Knowz.SelfHosted.Infrastructure.csproj", "src/Knowz.SelfHosted.Infrastructure/"]
@@ -34,8 +35,9 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_EnableDiagnostics=0
 
-# Create local file storage directory writable by non-root user
-RUN mkdir -p /data/files && chown -R $APP_UID:$APP_UID /data/files
+# Install curl for healthcheck + create file storage directory
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/files && chown -R $APP_UID:$APP_UID /data/files
 
 # Switch to built-in non-root user (APP_UID=1654 in .NET 10 base image)
 USER $APP_UID

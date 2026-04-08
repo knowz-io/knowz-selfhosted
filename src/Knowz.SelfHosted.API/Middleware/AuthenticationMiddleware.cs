@@ -3,7 +3,10 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Knowz.Core.Configuration;
+using Knowz.SelfHosted.Application.Extensions;
 using Knowz.SelfHosted.Application.Interfaces;
+using Knowz.SelfHosted.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -19,7 +22,7 @@ public class AuthenticationMiddleware
     private readonly SelfHostedOptions _options;
     private readonly ILogger<AuthenticationMiddleware> _logger;
 
-    private static readonly string[] PublicPathPrefixes = ["/healthz", "/swagger", "/index.html", "/api/v1/auth/login", "/api/v1/auth/sso", "/api/v1/internal/"];
+    private static readonly string[] PublicPathPrefixes = ["/healthz", "/swagger", "/index.html", "/api/v1/auth/login", "/api/v1/auth/select-tenant", "/api/v1/auth/sso", "/api/v1/internal/"];
 
     public AuthenticationMiddleware(
         RequestDelegate next,
@@ -168,6 +171,44 @@ public class AuthenticationMiddleware
             }, out _);
 
             context.User = principal;
+
+            // Check for X-Tenant-Id header to override tenant context
+            var tenantIdHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(tenantIdHeader) && Guid.TryParse(tenantIdHeader, out var requestedTenantId))
+            {
+                var db = context.RequestServices.GetRequiredService<SelfHostedDbContext>();
+                var membership = await db.UserTenantMemberships
+                    .FirstOrDefaultAsync(m => m.UserId == result.User.Id && m.TenantId == requestedTenantId && m.IsActive);
+
+                if (membership != null)
+                {
+                    var displayName = result.User.DisplayName ?? result.User.Username;
+                    var expiresAt = DateTime.UtcNow.AddMinutes(_options.JwtExpirationMinutes);
+                    var newToken = JwtTokenHelper.GenerateToken(
+                        result.User.Id, displayName, requestedTenantId, membership.Role,
+                        expiresAt, _options.JwtSecret, _options.JwtIssuer, _logger);
+
+                    var newPrincipal = tokenHandler.ValidateToken(newToken, new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = _options.JwtIssuer,
+                        ValidateAudience = true,
+                        ValidAudience = _options.JwtIssuer,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = key,
+                        ClockSkew = TimeSpan.FromMinutes(1)
+                    }, out _);
+
+                    context.User = newPrincipal;
+                    _logger.LogDebug("API key user {UserId} tenant context overridden to {TenantId}", result.User.Id, requestedTenantId);
+                }
+                else
+                {
+                    _logger.LogWarning("User {UserId} requested tenant {TenantId} via X-Tenant-Id but has no active membership", result.User.Id, requestedTenantId);
+                }
+            }
+
             return true;
         }
         catch (Exception ex)

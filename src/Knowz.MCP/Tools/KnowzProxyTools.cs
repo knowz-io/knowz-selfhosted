@@ -44,7 +44,7 @@ public class KnowzProxyTools
     public async Task<string> SearchKnowledge(
         [Description("Natural language search query")] string query,
         [Description("Maximum number of results (default: 10)")] int limit = 10,
-        [Description("Optional vault ID to limit search scope (may be overridden by connection settings)")] string? vaultId = null,
+        [Description("Vault ID to scope the search. RECOMMENDED: without this, results from ALL vaults are mixed together which may produce blended answers across unrelated projects. Pass the vault ID when the user is working within a specific vault or project.")] string? vaultId = null,
         [Description("When searching within a vault, also include results from child vaults (default: true)")] bool includeChildVaults = true,
         [Description("Optional array of tag names to filter results")] string[]? tags = null,
         [Description("If true, require all tags (AND); if false, match any tag (OR). Default: false")] bool requireAllTags = false,
@@ -213,7 +213,7 @@ public class KnowzProxyTools
     public async Task<string> AskQuestion(
         [Description("The question to ask about your knowledge base")] string question,
         [Description("Optional vault name to limit search scope (may be overridden by connection settings)")] string? vaultName = null,
-        [Description("Optional vault ID to limit search scope (may be overridden by connection settings)")] string? vaultId = null,
+        [Description("Vault ID to scope the answer. RECOMMENDED: without this, the AI searches ALL vaults and may blend answers from unrelated projects. Use list_vaults first to find the right vault ID if needed.")] string? vaultId = null,
         [Description("When scoped to a vault, also search child vaults (default: true)")] bool includeChildVaults = true,
         [Description("Optional conversation ID for multi-turn dialogue")] string? conversationId = null,
         [Description("Enable creative/adaptive reasoning mode")] bool creativeMode = false,
@@ -582,6 +582,18 @@ public class KnowzProxyTools
         };
 
         return await _backend.ExecuteToolAsync("list_comments", args, cancellationToken);
+    }
+
+    [McpServerTool(Name = "get_version_history")]
+    [Description("Get the version history and change log for a specific knowledge item. Shows what changed between versions, when, and why — including content diffs, change summaries, and line-level statistics. Use when the user asks about changes, edits, revisions, or history of a knowledge item.")]
+    public async Task<string> GetVersionHistory(
+        [Description("Knowledge item GUID to get version history for")] string knowledgeId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("SDK Tool: get_version_history - knowledgeId={KnowledgeId}", knowledgeId);
+
+        var args = new Dictionary<string, object> { ["knowledgeId"] = knowledgeId };
+        return await _backend.ExecuteToolAsync("get_version_history", args, cancellationToken);
     }
 
     [McpServerTool(Name = "list_knowledge_items")]

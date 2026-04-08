@@ -22,6 +22,10 @@ public static class ApplicationServiceExtensions
         services.AddScoped<ISelfHostedChunkingService, SelfHostedChunkingService>();
         services.AddScoped<IVaultAccessService, VaultAccessService>();
 
+        // Versioning and audit
+        services.AddScoped<IVersioningService, VersioningService>();
+        services.AddScoped<VersioningService>();
+
         // Application services
         services.AddScoped<KnowledgeService>();
         services.AddScoped<SearchFacade>();
@@ -37,6 +41,13 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IPortableExportService, PortableExportService>();
         services.AddScoped<IPortableImportService, PortableImportService>();
 
+        // Vault sync services
+        services.AddScoped<IVaultSyncOrchestrator, VaultSyncOrchestrator>();
+        services.AddScoped<IPlatformSyncClient, PlatformSyncClient>();
+        services.AddScoped<VaultScopedExportService>();
+        services.AddScoped<FileSyncService>();
+        services.AddHttpClient("PlatformSync");
+
         // Content extraction — composite pattern (routes by content type)
         services.AddScoped<TextFileContentExtractor>();
         services.AddScoped<PdfContentExtractor>();
@@ -51,8 +62,16 @@ public static class ApplicationServiceExtensions
         // Enrichment outbox writer
         services.AddScoped<IEnrichmentOutboxWriter, EnrichmentOutboxWriter>();
 
+        // Prompt resolution (singleton — owns its own in-memory cache with 5-min TTL)
+        services.AddSingleton<PromptResolutionService>();
+        services.AddScoped<PromptManagementService>();
+
         // Configuration management
         services.AddScoped<IConfigurationManagementService, ConfigurationManagementService>();
+
+        // Git sync service (implements IGitSyncService for background service resolution)
+        services.AddScoped<GitSyncService>();
+        services.AddScoped<IGitSyncService>(sp => sp.GetRequiredService<GitSyncService>());
 
         return services;
     }
