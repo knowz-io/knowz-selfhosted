@@ -358,24 +358,35 @@ public class EnrichmentBackgroundService : BackgroundService
         var totalChars = 0;
         const int maxChars = 50_000;
 
-        // 1. Direct knowledge-level attachments
+        // 1. Direct knowledge-level attachments (include all non-deleted files)
         var knowledgeAttachments = await db.FileAttachments
             .IgnoreQueryFilters()
             .Where(fa => fa.KnowledgeId == knowledgeId)
             .Join(
-                db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted && fr.ExtractedText != null),
+                db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted),
                 fa => fa.FileRecordId,
                 fr => fr.Id,
-                (fa, fr) => new { fr.FileName, fr.ExtractedText, fa.CreatedAt })
+                (fa, fr) => new { fr.FileName, fr.ExtractedText, fr.ContentType, fa.CreatedAt })
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(ct);
 
         foreach (var att in knowledgeAttachments)
         {
             if (totalChars >= maxChars) break;
-            var section = $"--- Attachment: {att.FileName} ---\n{att.ExtractedText}";
-            parts.Add(section);
-            totalChars += section.Length;
+
+            if (!string.IsNullOrEmpty(att.ExtractedText))
+            {
+                var section = $"--- Attachment: {att.FileName} ---\n{att.ExtractedText}";
+                parts.Add(section);
+                totalChars += section.Length;
+            }
+            else if (att.ContentType != null && att.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                var section = $"--- Attachment: {att.FileName} ---\n[Image: {att.FileName} — not yet analyzed]";
+                parts.Add(section);
+                totalChars += section.Length;
+            }
+            // else: non-image file with no extracted text — skip
         }
 
         // 2. Comments and their attachments
@@ -398,23 +409,34 @@ public class EnrichmentBackgroundService : BackgroundService
                 totalChars += commentSection.Length;
             }
 
-            // Comment attachments
+            // Comment attachments (include all non-deleted files)
             var commentAttachments = await db.FileAttachments
                 .IgnoreQueryFilters()
                 .Where(fa => fa.CommentId == comment.Id)
                 .Join(
-                    db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted && fr.ExtractedText != null),
+                    db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted),
                     fa => fa.FileRecordId,
                     fr => fr.Id,
-                    (fa, fr) => new { fr.FileName, fr.ExtractedText })
+                    (fa, fr) => new { fr.FileName, fr.ExtractedText, fr.ContentType })
                 .ToListAsync(ct);
 
             foreach (var att in commentAttachments)
             {
                 if (totalChars >= maxChars) break;
-                var section = $"--- Comment Attachment: {att.FileName} ---\n{att.ExtractedText}";
-                parts.Add(section);
-                totalChars += section.Length;
+
+                if (!string.IsNullOrEmpty(att.ExtractedText))
+                {
+                    var section = $"--- Comment Attachment: {att.FileName} ---\n{att.ExtractedText}";
+                    parts.Add(section);
+                    totalChars += section.Length;
+                }
+                else if (att.ContentType != null && att.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var section = $"--- Comment Attachment: {att.FileName} ---\n[Image: {att.FileName} — not yet analyzed]";
+                    parts.Add(section);
+                    totalChars += section.Length;
+                }
+                // else: non-image file with no extracted text — skip
             }
         }
 

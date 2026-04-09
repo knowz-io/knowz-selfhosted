@@ -26,6 +26,8 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
     internal const int DefaultTokenBudget = 4000;
     internal const int ResearchTokenBudget = 8000;
     internal const int ApproxCharsPerToken = 4;
+    internal const int DefaultMaxOutputTokens = 750;
+    internal const int ResearchMaxOutputTokens = 4000;
 
     public AzureOpenAIService(
         AzureOpenAIClient client,
@@ -103,7 +105,7 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
                                      _chatDeployment.Contains("gpt-5", StringComparison.OrdinalIgnoreCase);
         if (!isUnsupportedMaxTokens)
         {
-            options.MaxOutputTokenCount = researchMode ? 4000 : 2000;
+            options.MaxOutputTokenCount = researchMode ? ResearchMaxOutputTokens : DefaultMaxOutputTokens;
         }
 
         _logger.LogInformation(
@@ -164,7 +166,7 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
                                      _chatDeployment.Contains("gpt-5", StringComparison.OrdinalIgnoreCase);
         if (!isUnsupportedMaxTokens)
         {
-            options.MaxOutputTokenCount = researchMode ? 4000 : 2000;
+            options.MaxOutputTokenCount = researchMode ? ResearchMaxOutputTokens : DefaultMaxOutputTokens;
         }
 
         _logger.LogInformation(
