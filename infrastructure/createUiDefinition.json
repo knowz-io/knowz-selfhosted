@@ -181,6 +181,61 @@
             "constraints": {
               "required": true
             }
+          },
+          {
+            "name": "docIntelSeparator",
+            "type": "Microsoft.Common.Section",
+            "label": "Document Intelligence",
+            "elements": []
+          },
+          {
+            "name": "deployDocumentIntelligence",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Deploy Document Intelligence",
+            "toolTip": "Deploy Azure Document Intelligence (Form Recognizer) for advanced document extraction — scanned PDFs, images, and legacy Office formats. Select 'No' to use your own endpoint or skip this feature.",
+            "defaultValue": "Yes",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Yes",
+                  "value": true
+                },
+                {
+                  "label": "No",
+                  "value": false
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "externalDocIntelEndpoint",
+            "type": "Microsoft.Common.TextBox",
+            "label": "External Document Intelligence Endpoint",
+            "toolTip": "Your Document Intelligence API endpoint URL (e.g., https://your-docintel.cognitiveservices.azure.com/).",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').deployDocumentIntelligence, false)]",
+            "constraints": {
+              "required": false,
+              "regex": "^(https?://.+)?$",
+              "validationMessage": "Must be a valid URL starting with http:// or https://."
+            }
+          },
+          {
+            "name": "externalDocIntelKey",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "External Document Intelligence API Key",
+              "confirmPassword": "Confirm API Key"
+            },
+            "toolTip": "API key for your external Document Intelligence endpoint.",
+            "visible": "[equals(steps('aiServices').deployDocumentIntelligence, false)]",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": true
+            }
           }
         ]
       },
@@ -301,11 +356,14 @@
       "externalOpenAiKey": "[steps('aiServices').externalOpenAiKey]",
       "searchSku": "[steps('aiServices').searchSku]",
       "searchLocation": "[steps('aiServices').searchLocation]",
-      "chatDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', 'gpt-5.2-chat')]",
+      "chatDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
       "embeddingDeploymentName": "text-embedding-3-small",
       "embeddingModelName": "text-embedding-3-small",
       "caDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
       "caEmbeddingDeploymentName": "[if(steps('aiServices').deployOpenAI, 'text-embedding-3-small', steps('aiServices').caEmbeddingDeploymentName)]",
+      "deployDocumentIntelligence": "[steps('aiServices').deployDocumentIntelligence]",
+      "externalDocIntelEndpoint": "[steps('aiServices').externalDocIntelEndpoint]",
+      "externalDocIntelKey": "[steps('aiServices').externalDocIntelKey]",
       "deployKeyVault": "[steps('monitoringAdvanced').deployKeyVault]",
       "deployMonitoring": "[steps('monitoringAdvanced').deployMonitoring]",
       "deployContainerApps": true,

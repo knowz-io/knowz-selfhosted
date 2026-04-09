@@ -42,6 +42,16 @@ param externalOpenAiEndpoint string = ''
 @secure()
 param externalOpenAiKey string = ''
 
+@description('Deploy Azure Document Intelligence for advanced document extraction (scanned PDFs, images, legacy Office formats)')
+param deployDocumentIntelligence bool = true
+
+@description('External Document Intelligence endpoint (required if deployDocumentIntelligence is false)')
+param externalDocIntelEndpoint string = ''
+
+@secure()
+@description('External Document Intelligence API key (required if deployDocumentIntelligence is false)')
+param externalDocIntelKey string = ''
+
 @description('Azure AI Search SKU')
 @allowed(['free', 'basic', 'standard'])
 param searchSku string = 'basic'
@@ -240,6 +250,27 @@ resource deploymentEmbedding 'Microsoft.CognitiveServices/accounts/deployments@2
 var effectiveOpenAiEndpoint = deployOpenAI ? cognitiveServices.properties.endpoint : externalOpenAiEndpoint
 
 // ============================================================================
+// DOCUMENT INTELLIGENCE (Form Recognizer)
+// ============================================================================
+
+resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (deployDocumentIntelligence) {
+  name: '${prefix}-docintel-${location}'
+  location: location
+  tags: tags
+  kind: 'FormRecognizer'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    publicNetworkAccess: 'Enabled'
+    customSubDomainName: '${prefix}-docintel-${location}'
+  }
+}
+
+// Effective Document Intelligence endpoint (local or external)
+var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
+
+// ============================================================================
 // SQL SERVER + DATABASE
 // ============================================================================
 
@@ -407,6 +438,22 @@ resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   name: 'AzureOpenAI--ApiKey'
   properties: {
     value: deployOpenAI ? cognitiveServices.listKeys().key1 : externalOpenAiKey
+  }
+}
+
+resource kvSecretDocIntelEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureDocumentIntelligence--Endpoint'
+  properties: {
+    value: effectiveDocIntelEndpoint
+  }
+}
+
+resource kvSecretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureDocumentIntelligence--ApiKey'
+  properties: {
+    value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
   }
 }
 
@@ -733,6 +780,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
               name: 'MCP__ServiceKey'
               value: mcpServiceKey
             }
+            {
+              name: 'AzureDocumentIntelligence__Endpoint'
+              value: effectiveDocIntelEndpoint
+            }
+            {
+              name: 'AzureDocumentIntelligence__ApiKey'
+              value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
+            }
           ]
         }
       ]
@@ -885,6 +940,10 @@ output openAiResourceName string = deployOpenAI ? cognitiveServices.name : 'exte
 output chatDeploymentName string = chatDeploymentName
 output miniDeploymentName string = 'gpt-5-mini'
 output embeddingDeploymentName string = embeddingDeploymentName
+
+// Document Intelligence (non-secret: endpoint, resource name)
+output documentIntelligenceEndpoint string = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
+output documentIntelligenceName string = deployDocumentIntelligence ? documentIntelligence.name : 'external'
 
 // SQL Database (non-secret: FQDN, database name, server name)
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
