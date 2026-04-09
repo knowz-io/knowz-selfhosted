@@ -85,17 +85,26 @@ public class FileStorageService
                 UpdatedAt = DateTime.UtcNow
             };
 
-            // Proactive text extraction (best-effort)
+            // Proactive text extraction (best-effort, with timeout to avoid blocking uploads)
             if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && workingStream.CanSeek)
             {
                 try
                 {
                     workingStream.Position = 0;
-                    var extraction = await _contentExtractor.ExtractAsync(fileRecord, workingStream, ct);
+                    // 30-second timeout — image vision analysis can take 15-25s
+                    // Text/PDF/Office extraction is fast (<1s) so this only affects images
+                    using var extractionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    extractionCts.CancelAfter(TimeSpan.FromSeconds(30));
+                    var extraction = await _contentExtractor.ExtractAsync(fileRecord, workingStream, extractionCts.Token);
                     if (extraction.Success)
                     {
                         fileRecord.ExtractedText = extraction.ExtractedText;
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Proactive extraction timed out for {FileRecordId} ({ContentType}) — will be handled by enrichment",
+                        fileRecordId, contentType);
                 }
                 catch (Exception ex)
                 {

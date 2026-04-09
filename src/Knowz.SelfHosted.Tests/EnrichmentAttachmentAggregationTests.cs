@@ -198,9 +198,9 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllAttachmentText_SkipsNullExtractedText()
+    public async Task GetAllAttachmentText_SkipsNonImageNullExtractedText()
     {
-        // VERIFY_IDX_06: Attachments with null ExtractedText are skipped
+        // VERIFY_IDX_06: Non-image attachments with null ExtractedText are skipped
         var knowledgeId = Guid.NewGuid();
         using (var db = GetDb())
         {
@@ -218,7 +218,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             var fileWithout = new FileRecord
             {
                 Id = Guid.NewGuid(), TenantId = TenantId,
-                FileName = "no-text.pdf", ExtractedText = null
+                FileName = "no-text.pdf", ContentType = "application/pdf", ExtractedText = null
             };
             db.FileRecords.AddRange(fileWithText, fileWithout);
             db.FileAttachments.Add(new FileAttachment
@@ -243,6 +243,173 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
 
             Assert.Contains("with-text.txt", result);
             Assert.DoesNotContain("no-text.pdf", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_IncludesImagePlaceholder_WhenExtractedTextNull()
+    {
+        // Image files with null ExtractedText should get a placeholder note
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "photo.jpg", ContentType = "image/jpeg", ExtractedText = null
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("photo.jpg", result);
+            Assert.Contains("[Image: photo.jpg", result);
+            Assert.Contains("not yet analyzed", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_IncludesImagePlaceholder_ForPngContentType()
+    {
+        // All image/* content types should get placeholder treatment
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "screenshot.png", ContentType = "image/png", ExtractedText = null
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("screenshot.png", result);
+            Assert.Contains("[Image: screenshot.png", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_UsesExtractedText_WhenImageHasIt()
+    {
+        // Image file WITH ExtractedText should use that text, not the placeholder
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "analyzed.jpg", ContentType = "image/jpeg",
+                ExtractedText = "A cat sitting on a windowsill"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("analyzed.jpg", result);
+            Assert.Contains("A cat sitting on a windowsill", result);
+            Assert.DoesNotContain("not yet analyzed", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_IncludesCommentImagePlaceholder_WhenExtractedTextNull()
+    {
+        // Comment-level image attachments with null ExtractedText should also get placeholder
+        var knowledgeId = Guid.NewGuid();
+        var commentId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            db.Comments.Add(new KnowledgeComment
+            {
+                Id = commentId, KnowledgeId = knowledgeId,
+                TenantId = TenantId, AuthorName = "Alice",
+                Body = "See attached image"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "diagram.png", ContentType = "image/png", ExtractedText = null
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                CommentId = commentId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("diagram.png", result);
+            Assert.Contains("[Image: diagram.png", result);
+            Assert.Contains("not yet analyzed", result);
         }
     }
 

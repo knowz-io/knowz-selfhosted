@@ -6,7 +6,7 @@ import {
   ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload,
   Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight,
   Sparkles, FileText, PanelRightClose, PanelRightOpen, Eye,
-  MessageCircle, Send,
+  MessageCircle, Send, Maximize2, Minimize2,
 } from 'lucide-react'
 import CommentSection from '../components/CommentSection'
 import MarkdownContent from '../components/MarkdownContent'
@@ -978,6 +978,14 @@ function VersionHistoryPanel({
 
 // --- Knowledge Chat Panel ---
 
+type DetailLevel = 'concise' | 'balanced' | 'detailed'
+
+const DETAIL_LEVEL_CONFIG: Record<DetailLevel, { label: string; placeholder: string }> = {
+  concise: { label: 'Concise', placeholder: 'Ask a quick question...' },
+  balanced: { label: 'Balanced', placeholder: 'Ask about this knowledge...' },
+  detailed: { label: 'Detailed', placeholder: 'Ask for a thorough analysis...' },
+}
+
 interface ChatMsg {
   role: 'user' | 'assistant'
   content: string
@@ -995,6 +1003,8 @@ function KnowledgeChatPanel({
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>('concise')
+  const [maximized, setMaximized] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = useCallback(() => {
@@ -1016,8 +1026,9 @@ function KnowledgeChatPanel({
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }))
+      const prefixedQuestion = `[Detail level: ${detailLevel}] ${question}`
       const response = await api.chat({
-        question,
+        question: prefixedQuestion,
         knowledgeId,
         conversationHistory: history,
       })
@@ -1039,8 +1050,12 @@ function KnowledgeChatPanel({
 
   const truncatedTitle = knowledgeTitle.length > 30 ? knowledgeTitle.slice(0, 30) + '...' : knowledgeTitle
 
+  const panelSize = maximized
+    ? 'w-[700px] h-[80vh]'
+    : 'w-[400px] h-[500px]'
+
   return (
-    <div className="fixed bottom-24 right-6 z-50 w-[400px] h-[500px] bg-card border border-border rounded-xl shadow-xl flex flex-col overflow-hidden animate-fade-in">
+    <div className={`fixed bottom-24 right-6 z-50 ${panelSize} bg-card border border-border rounded-xl shadow-xl flex flex-col overflow-hidden animate-fade-in transition-all duration-200`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
@@ -1049,13 +1064,41 @@ function KnowledgeChatPanel({
             Chat with: {truncatedTitle}
           </span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors flex-shrink-0"
-          aria-label="Close chat"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setMaximized(!maximized)}
+            className="p-1 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+            aria-label={maximized ? 'Minimize chat' : 'Maximize chat'}
+          >
+            {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+            aria-label="Close chat"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Detail Level Picker */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-border/60 bg-muted/10">
+        {(Object.entries(DETAIL_LEVEL_CONFIG) as [DetailLevel, typeof DETAIL_LEVEL_CONFIG[DetailLevel]][]).map(
+          ([level, config]) => (
+            <button
+              key={level}
+              onClick={() => setDetailLevel(level)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                detailLevel === level
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
+              }`}
+            >
+              {config.label}
+            </button>
+          ),
+        )}
       </div>
 
       {/* Messages */}
@@ -1101,7 +1144,7 @@ function KnowledgeChatPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question..."
+            placeholder={DETAIL_LEVEL_CONFIG[detailLevel].placeholder}
             rows={1}
             className="flex-1 px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors resize-none"
           />
