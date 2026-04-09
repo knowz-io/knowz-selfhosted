@@ -107,8 +107,22 @@ public class AzureSearchService : ISearchService
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, timeoutCts.Token);
 
-        var response = await _searchClient.SearchAsync<SearchDocument>(
-            query, searchOptions, linkedCts.Token);
+        Azure.Response<SearchResults<SearchDocument>> response;
+        try
+        {
+            response = await _searchClient.SearchAsync<SearchDocument>(
+                query, searchOptions, linkedCts.Token);
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 400 &&
+            ex.Message.Contains("Semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            // Semantic search not available on this SKU — fall back to simple query
+            _logger.LogWarning("Semantic search not available (SKU may be basic), falling back to simple query");
+            searchOptions.QueryType = SearchQueryType.Simple;
+            searchOptions.SemanticSearch = null;
+            response = await _searchClient.SearchAsync<SearchDocument>(
+                query, searchOptions, linkedCts.Token);
+        }
 
         var results = new List<SearchResultItem>();
         await foreach (var result in response.Value.GetResultsAsync())
