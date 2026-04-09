@@ -16,7 +16,7 @@ public record SearchResponse(IEnumerable<SearchResultResponse> Items, int TotalR
 
 public record AskAnswerResponse(string Answer, IEnumerable<SourceRef> Sources, double Confidence);
 
-public record SourceRef(Guid KnowledgeId);
+public record SourceRef(Guid KnowledgeId, string Title = "");
 
 public record FilePatternResponse(string Pattern, List<FilePatternItem>? Items, int Count);
 

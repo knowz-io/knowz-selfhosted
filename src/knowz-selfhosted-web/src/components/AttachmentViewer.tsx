@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
-import { X, Download, FileText, Image, File } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, Download, FileText, Image, File, Loader2 } from 'lucide-react'
 import { formatFileSize } from '../lib/format-utils'
+import { api } from '../lib/api-client'
 import type { FileMetadataDto } from '../lib/types'
 
 interface AttachmentViewerProps {
@@ -18,6 +19,10 @@ function hasExtractedContent(file: FileMetadataDto): boolean {
 }
 
 export default function AttachmentViewer({ file, onClose, onDownload }: AttachmentViewerProps) {
+  const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null)
+  const [imageLoading, setImageLoading] = useState(false)
+  const blobUrlRef = useRef<string | null>(null)
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -27,6 +32,37 @@ export default function AttachmentViewer({ file, onClose, onDownload }: Attachme
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
+
+  // Fetch image as blob and create object URL for authenticated preview
+  useEffect(() => {
+    if (!isImageType(file.contentType)) return
+
+    let cancelled = false
+    setImageLoading(true)
+
+    api.downloadFile(file.id)
+      .then((blob) => {
+        if (!cancelled) {
+          const url = URL.createObjectURL(blob)
+          blobUrlRef.current = url
+          setImageBlobUrl(url)
+        }
+      })
+      .catch(() => {
+        // Silently fail — image preview will not show
+      })
+      .finally(() => {
+        if (!cancelled) setImageLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
+    }
+  }, [file.id, file.contentType])
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -76,13 +112,24 @@ export default function AttachmentViewer({ file, onClose, onDownload }: Attachme
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Image preview */}
-          {isImageType(file.contentType) && file.blobUri && (
-            <div className="rounded-lg overflow-hidden bg-muted/30 flex items-center justify-center">
-              <img
-                src={file.blobUri}
-                alt={file.fileName}
-                className="max-w-full max-h-96 object-contain"
-              />
+          {isImageType(file.contentType) && (
+            <div className="rounded-lg overflow-hidden bg-muted/30 flex items-center justify-center min-h-[120px]">
+              {imageLoading ? (
+                <div className="flex items-center gap-2 py-8 text-muted-foreground">
+                  <Loader2 size={18} className="animate-spin" />
+                  <span className="text-sm">Loading preview...</span>
+                </div>
+              ) : imageBlobUrl ? (
+                <img
+                  src={imageBlobUrl}
+                  alt={file.fileName}
+                  className="max-w-full max-h-96 object-contain"
+                />
+              ) : (
+                <div className="py-8 text-sm text-muted-foreground">
+                  Preview unavailable
+                </div>
+              )}
             </div>
           )}
 

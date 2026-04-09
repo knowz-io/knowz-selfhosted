@@ -59,6 +59,12 @@ public class SearchFacade
                 .ToList();
         }
 
+        // Deduplicate by knowledgeId — take highest scoring result per knowledge item
+        results = results
+            .GroupBy(r => r.KnowledgeId)
+            .Select(g => g.OrderByDescending(r => r.Score).First())
+            .ToList();
+
         results = results.Take(limit).ToList();
 
         var items = results.Select(r => new SearchResultResponse(
@@ -94,8 +100,10 @@ public class SearchFacade
         var answer = await _openAIService.AnswerQuestionAsync(
             question, searchResults, null, researchMode, ct);
 
-        var sources = answer.SourceKnowledgeIds.Select(id => new SourceRef(id));
-        return new AskAnswerResponse(answer.Answer, sources, answer.Confidence);
+        var sources = answer.SourceKnowledgeIds.Select(id =>
+            new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
+        var confidence = NormalizeConfidence(searchResults);
+        return new AskAnswerResponse(answer.Answer, sources, confidence);
     }
 
     public async Task<FilePatternResponse> SearchByFilePatternAsync(
@@ -160,11 +168,9 @@ public class SearchFacade
             .Where(r => r.KnowledgeId != Guid.Empty)
             .Select(r => r.KnowledgeId)
             .Distinct()
-            .Select(id => new SourceRef(id));
+            .Select(id => new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
 
-        var confidence = searchResults.Count > 0
-            ? Math.Min(1.0, searchResults.Max(r => r.Score))
-            : 0;
+        var confidence = NormalizeConfidence(searchResults);
 
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
             question, searchResults, null, researchMode, ct);
@@ -179,29 +185,35 @@ public class SearchFacade
         bool researchMode,
         int maxTurns,
         CancellationToken ct,
-        List<Guid>? accessibleVaultIds = null)
+        List<Guid>? accessibleVaultIds = null,
+        Guid? knowledgeId = null)
     {
         var compositeQuestion = BuildCompositeQuestion(question, conversationHistory, maxTurns);
 
-        var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
+        List<SearchResultItem> searchResults;
+        if (knowledgeId.HasValue)
+        {
+            searchResults = await BuildKnowledgeScopedContextAsync(knowledgeId.Value, question, ct);
+        }
+        else
+        {
+            var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
+            searchResults = await _searchService.HybridSearchAsync(
+                question, embedding, vaultId, includeDescendants: true,
+                maxResults: researchMode ? 15 : 10,
+                cancellationToken: ct);
 
-        var searchResults = await _searchService.HybridSearchAsync(
-            question, embedding, vaultId, includeDescendants: true,
-            maxResults: researchMode ? 15 : 10,
-            cancellationToken: ct);
-
-        if (accessibleVaultIds != null)
-            searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+            if (accessibleVaultIds != null)
+                searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+        }
 
         var sources = searchResults
             .Where(r => r.KnowledgeId != Guid.Empty)
             .Select(r => r.KnowledgeId)
             .Distinct()
-            .Select(id => new SourceRef(id));
+            .Select(id => new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
 
-        var confidence = searchResults.Count > 0
-            ? Math.Min(1.0, searchResults.Max(r => r.Score))
-            : 0;
+        var confidence = searchResults.Count > 0 ? NormalizeConfidence(searchResults) : 0.0;
 
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
             compositeQuestion, searchResults, null, researchMode, ct);
@@ -216,28 +228,107 @@ public class SearchFacade
         bool researchMode,
         int maxTurns,
         CancellationToken ct,
-        List<Guid>? accessibleVaultIds = null)
+        List<Guid>? accessibleVaultIds = null,
+        Guid? knowledgeId = null)
     {
         // Build composite question string with conversation history context
         var compositeQuestion = BuildCompositeQuestion(question, conversationHistory, maxTurns);
 
-        // Generate embedding from the current question ONLY (not the composite string)
-        var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
+        List<SearchResultItem> searchResults;
+        if (knowledgeId.HasValue)
+        {
+            searchResults = await BuildKnowledgeScopedContextAsync(knowledgeId.Value, question, ct);
+        }
+        else
+        {
+            // Generate embedding from the current question ONLY (not the composite string)
+            var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
 
-        var searchResults = await _searchService.HybridSearchAsync(
-            question, embedding, vaultId, includeDescendants: true,
-            maxResults: researchMode ? 15 : 10,
-            cancellationToken: ct);
+            searchResults = await _searchService.HybridSearchAsync(
+                question, embedding, vaultId, includeDescendants: true,
+                maxResults: researchMode ? 15 : 10,
+                cancellationToken: ct);
 
-        // Post-filter by vault access
-        if (accessibleVaultIds != null)
-            searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+            // Post-filter by vault access
+            if (accessibleVaultIds != null)
+                searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+        }
 
         var answer = await _openAIService.AnswerQuestionAsync(
             compositeQuestion, searchResults, null, researchMode, ct);
 
-        var sources = answer.SourceKnowledgeIds.Select(id => new SourceRef(id));
-        return new ChatResponse(answer.Answer, sources, answer.Confidence);
+        var sources = answer.SourceKnowledgeIds.Select(id =>
+            new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
+        var confidence = searchResults.Count > 0 ? NormalizeConfidence(searchResults) : 0.0;
+        return new ChatResponse(answer.Answer, sources, confidence);
+    }
+
+    /// <summary>
+    /// Builds search context scoped to a single knowledge item by loading
+    /// its content, summary, and any attachment extracted text directly from the database.
+    /// </summary>
+    internal async Task<List<SearchResultItem>> BuildKnowledgeScopedContextAsync(
+        Guid knowledgeId, string question, CancellationToken ct)
+    {
+        var knowledge = await _db.KnowledgeItems
+            .AsNoTracking()
+            .Where(k => k.Id == knowledgeId)
+            .Select(k => new
+            {
+                k.Id,
+                k.Title,
+                k.Content,
+                k.Summary,
+                k.Type,
+                k.FilePath,
+                VaultName = _db.KnowledgeVaults
+                    .Where(kv => kv.KnowledgeId == k.Id)
+                    .Select(kv => kv.Vault!.Name)
+                    .FirstOrDefault(),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (knowledge == null)
+            return new List<SearchResultItem>();
+
+        var results = new List<SearchResultItem>();
+
+        // Build a rich context string combining content + summary
+        var contextParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(knowledge.Summary))
+            contextParts.Add($"Summary: {knowledge.Summary}");
+        if (!string.IsNullOrWhiteSpace(knowledge.Content))
+            contextParts.Add(knowledge.Content);
+
+        // Add attachment extracted text
+        var attachmentTexts = await _db.FileAttachments
+            .Where(fa => fa.KnowledgeId == knowledgeId)
+            .Join(_db.FileRecords, fa => fa.FileRecordId, fr => fr.Id, (fa, fr) => new { fr.ExtractedText, fr.TranscriptionText, fr.FileName })
+            .ToListAsync(ct);
+
+        foreach (var att in attachmentTexts)
+        {
+            if (!string.IsNullOrWhiteSpace(att.ExtractedText))
+                contextParts.Add($"[Attachment: {att.FileName}]\n{att.ExtractedText}");
+            if (!string.IsNullOrWhiteSpace(att.TranscriptionText))
+                contextParts.Add($"[Transcription: {att.FileName}]\n{att.TranscriptionText}");
+        }
+
+        var fullContent = string.Join("\n\n", contextParts);
+
+        results.Add(new SearchResultItem
+        {
+            KnowledgeId = knowledge.Id,
+            Title = knowledge.Title,
+            Content = fullContent,
+            Summary = knowledge.Summary,
+            VaultName = knowledge.VaultName,
+            KnowledgeType = knowledge.Type.ToString(),
+            FilePath = knowledge.FilePath,
+            Score = 1.0 // Max relevance since user explicitly selected this item
+        });
+
+        return results;
     }
 
     internal static string BuildCompositeQuestion(
@@ -295,6 +386,18 @@ public class SearchFacade
 
         var allowed = accessibleKnowledgeIds.Concat(idsWithoutVaults).ToHashSet();
         return results.Where(r => allowed.Contains(r.KnowledgeId)).ToList();
+    }
+
+    /// <summary>
+    /// Normalizes search scores to a 0-1 confidence range.
+    /// Azure AI Search RRF hybrid scores are typically 0.01-0.05; local cosine similarity scores are 0-1.
+    /// </summary>
+    internal static double NormalizeConfidence(List<SearchResultItem> searchResults)
+    {
+        if (searchResults.Count == 0) return 0;
+        var maxScore = searchResults.Max(r => r.Score);
+        // Scores below 0.1 are likely RRF-based (Azure AI Search hybrid) — scale to 0-1 range
+        return maxScore < 0.1 ? Math.Min(1.0, maxScore * 10) : Math.Min(1.0, maxScore);
     }
 
     internal static string? Truncate(string? value, int maxLength)

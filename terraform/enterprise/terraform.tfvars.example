@@ -1,0 +1,40 @@
+# terraform.tfvars.example — Example variable values for enterprise deployment
+# Copy this file to terraform.tfvars and fill in your values.
+
+# Required
+prefix                 = "kze"
+location               = "eastus2"
+aad_admin_object_id    = "00000000-0000-0000-0000-000000000000"  # AAD user/group Object ID for SQL admin
+aad_admin_display_name = "DBA Group"
+admin_password         = "ChangeMe!SecurePassword123"
+
+# Optional — auto-generated if empty
+# api_key     = ""
+# jwt_secret  = ""
+
+# Azure OpenAI (set deploy_openai = false to use external endpoint)
+deploy_openai            = true
+# external_openai_endpoint = "https://your-openai.openai.azure.com/"
+# external_openai_key      = ""
+chat_deployment_name     = "gpt-5.2-chat"
+embedding_deployment_name = "text-embedding-3-small"
+
+# Document Intelligence (set deploy_document_intelligence = false to use external endpoint)
+deploy_document_intelligence = true
+# external_docintel_endpoint = ""
+# external_docintel_key      = ""
+
+# Azure AI Search (enterprise requires standard+ for private endpoints)
+search_sku = "standard"
+
+# Container images
+image_tag       = "latest"
+registry_server = "ghcr.io"
+# registry_username = ""  # Only needed for private registries
+# registry_password = ""
+
+# Tags (merged with default project tags)
+tags = {
+  cost-center = "engineering"
+  owner       = "platform-team"
+}

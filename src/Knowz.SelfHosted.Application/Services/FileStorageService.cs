@@ -50,52 +50,72 @@ public class FileStorageService
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable");
 
-        var fileRecordId = Guid.NewGuid();
-        var tenantId = _tenantProvider.TenantId;
-
-        var blobUri = await _storageProvider.UploadAsync(tenantId, fileRecordId, stream, contentType, ct)
-            .ConfigureAwait(false);
-
-        var sizeBytes = stream.CanSeek ? stream.Length : 0;
-
-        var fileRecord = new FileRecord
+        // Buffer non-seekable streams (e.g. HTTP upload streams) into memory
+        // so we can seek back for both storage upload and content extraction.
+        Stream workingStream = stream;
+        MemoryStream? bufferedStream = null;
+        if (!stream.CanSeek)
         {
-            Id = fileRecordId,
-            TenantId = tenantId,
-            FileName = fileName,
-            ContentType = contentType,
-            SizeBytes = sizeBytes,
-            BlobUri = blobUri,
-            BlobMigrationPending = false,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        // Proactive text extraction (best-effort)
-        if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && stream.CanSeek)
-        {
-            try
-            {
-                stream.Position = 0;
-                var extraction = await _contentExtractor.ExtractAsync(fileRecord, stream, ct);
-                if (extraction.Success)
-                {
-                    fileRecord.ExtractedText = extraction.ExtractedText;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Proactive text extraction failed for {FileRecordId}", fileRecordId);
-            }
+            bufferedStream = new MemoryStream();
+            await stream.CopyToAsync(bufferedStream, ct).ConfigureAwait(false);
+            bufferedStream.Position = 0;
+            workingStream = bufferedStream;
         }
 
-        await _fileRepo.AddAsync(fileRecord, ct).ConfigureAwait(false);
-        await _fileRepo.SaveChangesAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var fileRecordId = Guid.NewGuid();
+            var tenantId = _tenantProvider.TenantId;
 
-        _logger.LogInformation("File uploaded: {FileRecordId}, {FileName}, {SizeBytes} bytes",
-            fileRecordId, fileName, sizeBytes);
+            var blobUri = await _storageProvider.UploadAsync(tenantId, fileRecordId, workingStream, contentType, ct)
+                .ConfigureAwait(false);
 
-        return new FileUploadResult(fileRecordId, fileName, contentType, sizeBytes, blobUri, true);
+            var sizeBytes = workingStream.CanSeek ? workingStream.Length : 0;
+
+            var fileRecord = new FileRecord
+            {
+                Id = fileRecordId,
+                TenantId = tenantId,
+                FileName = fileName,
+                ContentType = contentType,
+                SizeBytes = sizeBytes,
+                BlobUri = blobUri,
+                BlobMigrationPending = false,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Proactive text extraction (best-effort)
+            if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && workingStream.CanSeek)
+            {
+                try
+                {
+                    workingStream.Position = 0;
+                    var extraction = await _contentExtractor.ExtractAsync(fileRecord, workingStream, ct);
+                    if (extraction.Success)
+                    {
+                        fileRecord.ExtractedText = extraction.ExtractedText;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Proactive text extraction failed for {FileRecordId}", fileRecordId);
+                }
+            }
+
+            await _fileRepo.AddAsync(fileRecord, ct).ConfigureAwait(false);
+            await _fileRepo.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            _logger.LogInformation("File uploaded: {FileRecordId}, {FileName}, {SizeBytes} bytes",
+                fileRecordId, fileName, sizeBytes);
+
+            return new FileUploadResult(fileRecordId, fileName, contentType, sizeBytes, blobUri, true);
+        }
+        finally
+        {
+            if (bufferedStream != null)
+                await bufferedStream.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public async Task<(Stream stream, string contentType, string fileName)?> DownloadAsync(

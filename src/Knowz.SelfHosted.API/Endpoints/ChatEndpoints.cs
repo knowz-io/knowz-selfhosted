@@ -41,6 +41,10 @@ public static class ChatEndpoints
             if (!string.IsNullOrWhiteSpace(req.VaultId) && Guid.TryParse(req.VaultId, out var vid))
                 vaultId = vid;
 
+            Guid? knowledgeId = null;
+            if (!string.IsNullOrWhiteSpace(req.KnowledgeId) && Guid.TryParse(req.KnowledgeId, out var kid))
+                knowledgeId = kid;
+
             var maxTurns = Math.Clamp(req.MaxTurns, 1, 50);
 
             var history = req.ConversationHistory?
@@ -48,7 +52,7 @@ public static class ChatEndpoints
                 .ToList();
 
             var result = await svc.ChatWithHistoryAsync(
-                req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds);
+                req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId);
 
             return Results.Ok(result);
         }).WithTags("Chat").Produces<ChatResponse>(200).Produces(400);
@@ -86,6 +90,10 @@ public static class ChatEndpoints
             if (!string.IsNullOrWhiteSpace(req.VaultId) && Guid.TryParse(req.VaultId, out var vid))
                 vaultId = vid;
 
+            Guid? knowledgeId = null;
+            if (!string.IsNullOrWhiteSpace(req.KnowledgeId) && Guid.TryParse(req.KnowledgeId, out var kid))
+                knowledgeId = kid;
+
             var maxTurns = Math.Clamp(req.MaxTurns, 1, 50);
 
             var history = req.ConversationHistory?
@@ -99,7 +107,7 @@ public static class ChatEndpoints
             try
             {
                 var result = await svc.ChatWithHistoryStreamingAsync(
-                    req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds);
+                    req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId);
 
                 var sourcesJson = System.Text.Json.JsonSerializer.Serialize(new
                 {

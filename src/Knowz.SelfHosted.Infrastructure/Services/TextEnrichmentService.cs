@@ -97,7 +97,7 @@ public class TextEnrichmentService : ITextEnrichmentService
 
             var options = new ChatCompletionOptions();
             if (!IsUnsupportedMaxTokens())
-                options.MaxOutputTokenCount = Math.Max(maxWords * 3, 500);
+                options.MaxOutputTokenCount = Math.Max(maxWords * 2, 1000);
 
             var result = await chatClient.CompleteChatAsync(messages, options, ct);
             var summary = result.Value.Content[0].Text.Trim();

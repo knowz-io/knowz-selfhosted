@@ -124,7 +124,7 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
             Answer = result.Value.Content[0].Text,
             SourceKnowledgeIds = sourceIds,
             Confidence = searchResults.Count > 0
-                ? Math.Min(1.0, searchResults.Max(r => r.Score))
+                ? NormalizeConfidence(searchResults)
                 : 0
         };
     }
@@ -272,6 +272,17 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Normalizes search scores to a 0-1 confidence range.
+    /// Azure AI Search RRF hybrid scores are typically 0.01-0.05; local cosine similarity scores are 0-1.
+    /// </summary>
+    private static double NormalizeConfidence(List<SearchResultItem> searchResults)
+    {
+        if (searchResults.Count == 0) return 0;
+        var maxScore = searchResults.Max(r => r.Score);
+        return maxScore < 0.1 ? Math.Min(1.0, maxScore * 10) : Math.Min(1.0, maxScore);
     }
 
     internal const string DefaultSystemPrompt = """

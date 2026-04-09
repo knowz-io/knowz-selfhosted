@@ -369,7 +369,8 @@ public class KnowledgeService
         string? knowledgeType, string? titlePattern, string? fileNamePattern,
         string? startDateStr, string? endDateStr, CancellationToken ct,
         List<Guid>? accessibleVaultIds = null,
-        Guid? filterVaultId = null, Guid? filterCreatedByUserId = null)
+        Guid? filterVaultId = null, Guid? filterCreatedByUserId = null,
+        string? filterTag = null)
     {
         var query = BuildFilteredQuery(knowledgeType, titlePattern, fileNamePattern, startDateStr, endDateStr);
 
@@ -381,6 +382,9 @@ public class KnowledgeService
 
         if (filterCreatedByUserId.HasValue)
             query = query.Where(k => k.CreatedByUserId == filterCreatedByUserId.Value);
+
+        if (!string.IsNullOrWhiteSpace(filterTag))
+            query = query.Where(k => k.Tags.Any(t => t.Name == filterTag));
 
         query = (sortBy, sortDir) switch
         {

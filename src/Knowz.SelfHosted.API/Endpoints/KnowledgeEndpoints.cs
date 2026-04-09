@@ -31,6 +31,7 @@ public static class KnowledgeEndpoints
             string? endDate = null,
             string? vaultId = null,
             string? createdByUserId = null,
+            string? tag = null,
             CancellationToken ct = default) =>
         {
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -43,7 +44,7 @@ public static class KnowledgeEndpoints
 
             var result = await svc.ListKnowledgeItemsAsync(
                 page, pageSize, sort, sortDir, type, title, fileName, startDate, endDate, ct,
-                accessibleVaultIds, filterVaultId, filterCreatedByUserId);
+                accessibleVaultIds, filterVaultId, filterCreatedByUserId, tag);
             return Results.Ok(result);
         }).Produces<KnowledgeListResponse>();
 

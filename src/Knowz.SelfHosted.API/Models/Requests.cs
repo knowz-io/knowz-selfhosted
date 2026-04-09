@@ -47,7 +47,8 @@ public record ChatRequest(
     List<ChatMessageRequest>? ConversationHistory = null,
     string? VaultId = null,
     bool ResearchMode = false,
-    int MaxTurns = 10);
+    int MaxTurns = 10,
+    string? KnowledgeId = null);
 
 public record CreateCommentRequest(
     string Body,
