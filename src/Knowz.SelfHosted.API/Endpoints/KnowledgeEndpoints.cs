@@ -77,6 +77,7 @@ public static class KnowledgeEndpoints
         group.MapPost("/", async (
             KnowledgeService svc,
             IVaultAccessService vaultAccessService,
+            FileStorageService fileSvc,
             HttpContext context,
             CreateKnowledgeRequest req,
             CancellationToken ct) =>
@@ -107,6 +108,25 @@ public static class KnowledgeEndpoints
                 req.Source,
                 ct,
                 userId);
+
+            // Attach pre-uploaded files to the newly created knowledge item
+            if (req.AttachmentFileRecordIds?.Count > 0)
+            {
+                var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("KnowledgeEndpoints");
+                foreach (var fileRecordId in req.AttachmentFileRecordIds)
+                {
+                    try
+                    {
+                        await fileSvc.AttachToKnowledgeAsync(fileRecordId, result.Id, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to attach file {FileRecordId} to knowledge {KnowledgeId}", fileRecordId, result.Id);
+                    }
+                }
+            }
+
             return Results.Created($"/api/v1/knowledge/{result.Id}", result);
         }).Produces<CreateKnowledgeResult>(201).Produces(400);
 

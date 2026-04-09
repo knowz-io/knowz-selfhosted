@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, type KeyboardEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
-import { MessageSquare, Paperclip, Loader2 } from 'lucide-react'
+import { MessageSquare, Paperclip, Loader2, X } from 'lucide-react'
+import MarkdownContent from './MarkdownContent'
+import { formatFileSize } from '../lib/format-utils'
 import type { Comment } from '../lib/types'
 
 interface CommentSectionProps {
@@ -20,6 +22,18 @@ function timeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
   return new Date(dateStr).toLocaleDateString()
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0][0].toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+interface PendingFile {
+  file: File
+  fileRecordId: string | null
+  uploading: boolean
 }
 
 function CommentItem({
@@ -63,10 +77,23 @@ function CommentItem({
   const isDeleting = deleteConfirmId === comment.id
   const isReplying = replyingTo === comment.id
 
+  const handleReplyKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      onReplySubmit()
+    }
+  }
+
   return (
     <div className={isReply ? 'ml-8 border-l-2 border-border pl-4' : ''}>
-      <div className="py-3">
+      <div
+        data-testid="comment-card"
+        className="p-3 rounded-lg border border-border hover:border-primary/30 transition-colors"
+      >
         <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+            {getInitials(comment.authorName)}
+          </div>
           <span className="text-sm font-medium">{comment.authorName}</span>
           <span className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</span>
           {comment.sentiment && (
@@ -109,7 +136,7 @@ function CommentItem({
             </div>
           </div>
         ) : (
-          <p className="text-sm">{comment.body}</p>
+          <MarkdownContent content={comment.body} compact />
         )}
 
         {isDeleting && (
@@ -174,6 +201,7 @@ function CommentItem({
             <textarea
               value={replyBody}
               onChange={(e) => setReplyBody(e.target.value)}
+              onKeyDown={handleReplyKeyDown}
               placeholder="Write a reply..."
               className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
               rows={2}
@@ -231,6 +259,7 @@ function CommentItem({
 
 export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [newBody, setNewBody] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
@@ -238,6 +267,7 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
 
   const { data: comments, isLoading } = useQuery({
     queryKey: ['comments', knowledgeId],
@@ -245,13 +275,25 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   })
 
   const addMut = useMutation({
-    mutationFn: (data: { body: string; parentCommentId?: string }) =>
-      api.addComment(knowledgeId, data),
+    mutationFn: async (data: { body: string; parentCommentId?: string }) => {
+      const comment = await api.addComment(knowledgeId, data)
+
+      // Attach any pending files — only for top-level comments (not replies)
+      if (!data.parentCommentId) {
+        const uploadedFiles = pendingFiles.filter((pf) => pf.fileRecordId)
+        for (const pf of uploadedFiles) {
+          await api.attachFileToComment(comment.id, pf.fileRecordId!)
+        }
+      }
+
+      return comment
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', knowledgeId] })
       setNewBody('')
       setReplyingTo(null)
       setReplyBody('')
+      setPendingFiles([])
     },
   })
 
@@ -295,6 +337,42 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
     deleteMut.mutate(deleteConfirmId)
   }
 
+  const handleNewCommentKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleAddComment()
+    }
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    for (const file of Array.from(files)) {
+      const pending: PendingFile = { file, fileRecordId: null, uploading: true }
+      setPendingFiles((prev) => [...prev, pending])
+
+      try {
+        const result = await api.uploadFile(file)
+        setPendingFiles((prev) =>
+          prev.map((pf) =>
+            pf.file === file ? { ...pf, fileRecordId: result.fileRecordId, uploading: false } : pf,
+          ),
+        )
+      } catch {
+        // Remove failed upload from pending
+        setPendingFiles((prev) => prev.filter((pf) => pf.file !== file))
+      }
+    }
+
+    // Reset the input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleRemoveFile = (file: File) => {
+    setPendingFiles((prev) => prev.filter((pf) => pf.file !== file))
+  }
+
   return (
     <div className="bg-card border border-border/60 rounded-xl p-4 space-y-3 shadow-sm">
       <div className="flex items-center gap-2">
@@ -310,17 +388,60 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
         <textarea
           value={newBody}
           onChange={(e) => setNewBody(e.target.value)}
+          onKeyDown={handleNewCommentKeyDown}
           placeholder="Add a contribution..."
           className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
           rows={3}
         />
-        <button
-          onClick={handleAddComment}
-          disabled={!newBody.trim() || addMut.isPending}
-          className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
-        >
-          {addMut.isPending ? 'Adding...' : 'Add Contribution'}
-        </button>
+
+        {/* File preview chips */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {pendingFiles.map((pf, i) => (
+              <div
+                key={i}
+                className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md text-xs"
+              >
+                <Paperclip size={12} className="text-muted-foreground" />
+                <span>{pf.file.name}</span>
+                <span className="text-muted-foreground">{formatFileSize(pf.file.size)}</span>
+                {pf.uploading && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                <button
+                  onClick={() => handleRemoveFile(pf.file)}
+                  className="p-0.5 rounded hover:bg-background transition-colors"
+                  aria-label="Remove file"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Form action bar */}
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            aria-label="Attach file"
+          >
+            <Paperclip size={16} className="text-muted-foreground" />
+          </button>
+          <div className="flex-grow" />
+          <button
+            onClick={handleAddComment}
+            disabled={!newBody.trim() || addMut.isPending}
+            className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+          >
+            {addMut.isPending ? 'Adding...' : 'Add Contribution'}
+          </button>
+        </div>
       </div>
 
       {addMut.error && (
@@ -335,7 +456,7 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
           <Loader2 size={16} className="animate-spin text-muted-foreground" />
         </div>
       ) : comments && comments.length > 0 ? (
-        <div className="divide-y divide-border">
+        <div className="space-y-2">
           {comments.map((comment) => (
             <CommentItem
               key={comment.id}

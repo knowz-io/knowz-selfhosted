@@ -5,6 +5,14 @@ import { renderWithProviders } from './test-utils'
 import CommentSection from '../components/CommentSection'
 import type { Comment } from '../lib/types'
 
+vi.mock('../components/MarkdownContent', () => ({
+  default: ({ content, compact }: { content: string; compact?: boolean }) => (
+    <div data-testid="markdown-content" data-compact={compact ? 'true' : 'false'}>
+      {content}
+    </div>
+  ),
+}))
+
 vi.mock('../lib/api-client', () => ({
   api: {
     listComments: vi.fn(),
@@ -14,6 +22,7 @@ vi.mock('../lib/api-client', () => ({
     attachFileToComment: vi.fn(),
     getCommentAttachments: vi.fn(),
     detachFileFromComment: vi.fn(),
+    uploadFile: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number
@@ -31,6 +40,8 @@ const mockListComments = vi.mocked(api.listComments)
 const mockAddComment = vi.mocked(api.addComment)
 const mockUpdateComment = vi.mocked(api.updateComment)
 const mockDeleteComment = vi.mocked(api.deleteComment)
+const mockUploadFile = vi.mocked(api.uploadFile)
+const mockAttachFileToComment = vi.mocked(api.attachFileToComment)
 
 const sampleComment: Comment = {
   id: 'comment-1',
@@ -317,5 +328,269 @@ describe('CommentSection', () => {
     await waitFor(() => {
       expect(mockListComments).toHaveBeenCalledWith('knowledge-1')
     })
+  })
+
+  // --- VERIFY: Markdown rendering ---
+
+  it('Should_RenderMarkdownContent_WhenCommentDisplayed', async () => {
+    const markdownComment: Comment = {
+      ...sampleComment,
+      body: '**bold** and _italic_ and `code`',
+    }
+    mockListComments.mockResolvedValue([markdownComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+    await waitFor(() => {
+      const mdEl = screen.getByTestId('markdown-content')
+      expect(mdEl).toBeInTheDocument()
+      expect(mdEl).toHaveTextContent('**bold** and _italic_ and `code`')
+      expect(mdEl).toHaveAttribute('data-compact', 'true')
+    })
+  })
+
+  // --- VERIFY: Author initials avatar ---
+
+  it('Should_DisplayAuthorInitialsAvatar_WhenSingleName', async () => {
+    mockListComments.mockResolvedValue([sampleComment]) // authorName: 'Alice'
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+    await waitFor(() => {
+      expect(screen.getByText('A')).toBeInTheDocument()
+    })
+  })
+
+  it('Should_DisplayAuthorInitialsAvatar_WhenTwoWordName', async () => {
+    const twoWordComment: Comment = {
+      ...sampleComment,
+      id: 'comment-two',
+      authorName: 'John Doe',
+    }
+    mockListComments.mockResolvedValue([twoWordComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+    await waitFor(() => {
+      expect(screen.getByText('JD')).toBeInTheDocument()
+    })
+  })
+
+  it('Should_DisplayAuthorInitialsAvatar_WhenThreeWordName', async () => {
+    const threeWordComment: Comment = {
+      ...sampleComment,
+      id: 'comment-three',
+      authorName: 'Mary Jane Watson',
+    }
+    mockListComments.mockResolvedValue([threeWordComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+    await waitFor(() => {
+      expect(screen.getByText('MJ')).toBeInTheDocument()
+    })
+  })
+
+  // --- VERIFY: Ctrl+Enter submits new comment form ---
+
+  it('Should_SubmitNewComment_WhenCtrlEnterPressed', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/add a contribution/i)).toBeInTheDocument()
+    })
+
+    const textarea = screen.getByPlaceholderText(/add a contribution/i)
+    await user.type(textarea, 'Ctrl enter test')
+    await user.keyboard('{Control>}{Enter}{/Control}')
+
+    await waitFor(() => {
+      expect(mockAddComment).toHaveBeenCalledWith('knowledge-1', {
+        body: 'Ctrl enter test',
+      })
+    })
+  })
+
+  it('Should_SubmitNewComment_WhenMetaEnterPressed', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/add a contribution/i)).toBeInTheDocument()
+    })
+
+    const textarea = screen.getByPlaceholderText(/add a contribution/i)
+    await user.type(textarea, 'Meta enter test')
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+
+    await waitFor(() => {
+      expect(mockAddComment).toHaveBeenCalledWith('knowledge-1', {
+        body: 'Meta enter test',
+      })
+    })
+  })
+
+  // --- VERIFY: Ctrl+Enter submits reply textarea ---
+
+  it('Should_SubmitReply_WhenCtrlEnterPressedInReplyTextarea', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([sampleComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /reply/i }))
+    const replyTextarea = screen.getByPlaceholderText(/write a reply/i)
+    await user.type(replyTextarea, 'Reply via shortcut')
+    await user.keyboard('{Control>}{Enter}{/Control}')
+
+    await waitFor(() => {
+      expect(mockAddComment).toHaveBeenCalledWith('knowledge-1', {
+        body: 'Reply via shortcut',
+        parentCommentId: 'comment-1',
+      })
+    })
+  })
+
+  // --- VERIFY: File attachment ---
+
+  it('Should_UploadFileAndAttachToComment_WhenFileSelected', async () => {
+    const user = userEvent.setup()
+    const createdComment: Comment = {
+      ...sampleComment,
+      id: 'new-comment-1',
+      body: 'Comment with file',
+    }
+    mockAddComment.mockResolvedValue(createdComment)
+    mockUploadFile.mockResolvedValue({
+      fileRecordId: 'file-rec-1',
+      fileName: 'test.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 1024,
+      blobUri: 'https://blob/test.pdf',
+      success: true,
+    })
+    mockAttachFileToComment.mockResolvedValue({
+      id: 'attach-1',
+      fileRecordId: 'file-rec-1',
+      commentId: 'new-comment-1',
+      createdAt: '2026-02-16T12:00:00Z',
+    })
+
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/add a contribution/i)).toBeInTheDocument()
+    })
+
+    // Select a file via the hidden input
+    const file = new File(['test content'], 'test.pdf', { type: 'application/pdf' })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeTruthy()
+    await user.upload(fileInput, file)
+
+    // File preview chip should appear
+    await waitFor(() => {
+      expect(screen.getByText('test.pdf')).toBeInTheDocument()
+    })
+
+    // Type a comment and submit
+    const textarea = screen.getByPlaceholderText(/add a contribution/i)
+    await user.type(textarea, 'Comment with file')
+    await user.click(screen.getByRole('button', { name: /add contribution/i }))
+
+    // Verify upload + attach calls
+    await waitFor(() => {
+      expect(mockUploadFile).toHaveBeenCalledWith(file)
+      expect(mockAddComment).toHaveBeenCalledWith('knowledge-1', {
+        body: 'Comment with file',
+      })
+      expect(mockAttachFileToComment).toHaveBeenCalledWith('new-comment-1', 'file-rec-1')
+    })
+  })
+
+  // --- VERIFY: Removing pending file before submit ---
+
+  it('Should_ExcludeRemovedFile_WhenRemoveClickedBeforeSubmit', async () => {
+    const user = userEvent.setup()
+    mockUploadFile.mockResolvedValue({
+      fileRecordId: 'file-rec-1',
+      fileName: 'test.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 1024,
+      blobUri: 'https://blob/test.pdf',
+      success: true,
+    })
+
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/add a contribution/i)).toBeInTheDocument()
+    })
+
+    // Select a file
+    const file = new File(['test content'], 'test.pdf', { type: 'application/pdf' })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(fileInput, file)
+
+    // File chip appears
+    await waitFor(() => {
+      expect(screen.getByText('test.pdf')).toBeInTheDocument()
+    })
+
+    // Remove the file
+    const removeBtn = screen.getByRole('button', { name: /remove file/i })
+    await user.click(removeBtn)
+
+    // File chip should be gone
+    expect(screen.queryByText('test.pdf')).not.toBeInTheDocument()
+
+    // Submit without file
+    const textarea = screen.getByPlaceholderText(/add a contribution/i)
+    await user.type(textarea, 'No file comment')
+    await user.click(screen.getByRole('button', { name: /add contribution/i }))
+
+    await waitFor(() => {
+      expect(mockAddComment).toHaveBeenCalled()
+      expect(mockAttachFileToComment).not.toHaveBeenCalled()
+    })
+  })
+
+  // --- VERIFY: Comment cards have visible borders and hover states ---
+
+  it('Should_HaveBorderAndRoundedStyling_OnCommentCards', async () => {
+    mockListComments.mockResolvedValue([sampleComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument()
+    })
+    // The comment card wrapper should have border and rounded classes
+    const commentCard = screen.getByText('Alice').closest('[data-testid="comment-card"]')
+    expect(commentCard).toBeTruthy()
+    expect(commentCard).toHaveClass('rounded-lg')
+    expect(commentCard).toHaveClass('border')
+    expect(commentCard).toHaveClass('border-border')
+  })
+
+  // --- VERIFY: Reply, Edit, Delete still work after visual changes ---
+
+  it('Should_StillAllowReplyEditDelete_AfterVisualUpgrade', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([sampleComment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument()
+    })
+
+    // Reply button exists and works
+    expect(screen.getByRole('button', { name: /reply/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reply/i }))
+    expect(screen.getByPlaceholderText(/write a reply/i)).toBeInTheDocument()
+
+    // Cancel reply, then check Edit
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+    expect(screen.getByDisplayValue('This is a contribution')).toBeInTheDocument()
+
+    // Cancel edit, then check Delete
+    await user.click(screen.getByRole('button', { name: /cancel edit/i }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    expect(screen.getByText(/are you sure/i)).toBeInTheDocument()
   })
 })

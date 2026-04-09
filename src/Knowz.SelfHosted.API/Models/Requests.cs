@@ -6,7 +6,8 @@ public record CreateKnowledgeRequest(
     string? Type = null,
     string? VaultId = null,
     List<string>? Tags = null,
-    string? Source = null);
+    string? Source = null,
+    List<Guid>? AttachmentFileRecordIds = null);
 
 public record UpdateKnowledgeRequest(
     string? Title = null,

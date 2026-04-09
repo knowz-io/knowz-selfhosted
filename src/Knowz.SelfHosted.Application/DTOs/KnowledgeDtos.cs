@@ -5,6 +5,7 @@ public record KnowledgeItemResponse(
     string Title,
     string Content,
     string? Summary,
+    string? BriefSummary,
     string Type,
     string? Source,
     string? FilePath,

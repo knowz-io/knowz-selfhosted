@@ -2,20 +2,18 @@ import { useState, useRef, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api-client'
-import { ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload, Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
-import { formatMarkdown } from '../lib/format-markdown'
+import {
+  ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload,
+  Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight,
+  Sparkles, FileText, PanelRightClose, PanelRightOpen,
+} from 'lucide-react'
 import CommentSection from '../components/CommentSection'
 import MarkdownContent from '../components/MarkdownContent'
+import ContentTabs from '../components/ContentTabs'
+import DetailSidebar from '../components/DetailSidebar'
+import type { TabId } from '../components/ContentTabs'
 import type { FileMetadataDto, KnowledgeVersion } from '../lib/types'
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const size = bytes / Math.pow(k, i)
-  return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
-}
+import { formatFileSize } from '../lib/format-utils'
 
 export default function KnowledgeDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,7 +29,8 @@ export default function KnowledgeDetailPage() {
   const [reprocessMsg, setReprocessMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editTab, setEditTab] = useState<'write' | 'preview'>('write')
   const [showAttachPicker, setShowAttachPicker] = useState(false)
-  const [activeTab, setActiveTab] = useState<'details' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<TabId>('summary')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null)
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<number | null>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
@@ -172,6 +171,18 @@ export default function KnowledgeDetailPage() {
     setEditing(true)
   }
 
+  const attachmentCount = attachments?.length ?? 0
+
+  const contentTabs = useMemo(
+    () => [
+      { id: 'summary' as TabId, label: 'AI Summary', icon: Sparkles },
+      { id: 'original' as TabId, label: 'Original', icon: FileText },
+      { id: 'attachments' as TabId, label: 'Attachments', icon: Paperclip, count: attachmentCount },
+      { id: 'history' as TabId, label: 'History', icon: History },
+    ],
+    [attachmentCount],
+  )
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -206,6 +217,7 @@ export default function KnowledgeDetailPage() {
       </Link>
 
       {editing ? (
+        /* --- EDIT MODE (unchanged) --- */
         <div className="space-y-4">
           <input
             type="text"
@@ -248,10 +260,7 @@ export default function KnowledgeDetailPage() {
             ) : (
               <div className="px-3 py-2 bg-card min-h-[384px]">
                 {editContent.trim() ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: formatMarkdown(editContent) }}
-                  />
+                  <MarkdownContent content={editContent} />
                 ) : (
                   <p className="text-muted-foreground text-sm italic">
                     Nothing to preview
@@ -296,26 +305,36 @@ export default function KnowledgeDetailPage() {
           </div>
         </div>
       ) : (
+        /* --- VIEW MODE: Two-column layout --- */
         <div className="space-y-4">
+          {/* Header: Title + Actions */}
           <div className="flex items-start justify-between gap-4">
             <h1 className="text-2xl font-bold">{data.title}</h1>
             <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={startEditing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm hover:bg-muted transition-colors"
               >
                 <Pencil size={14} /> Edit
               </button>
               <button
                 onClick={() => { setReprocessMsg(null); reprocessMut.mutate() }}
                 disabled={reprocessMut.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-input rounded-md text-sm disabled:opacity-50 hover:bg-muted transition-colors"
               >
-                <RefreshCw size={14} className={reprocessMut.isPending ? 'animate-spin' : ''} /> {reprocessMut.isPending ? 'Reprocessing...' : 'Reprocess'}
+                <RefreshCw size={14} className={reprocessMut.isPending ? 'animate-spin' : ''} />
+                {reprocessMut.isPending ? 'Reprocessing...' : 'Reprocess'}
+              </button>
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="hidden lg:inline-flex items-center gap-1.5 px-2 py-1.5 border border-input rounded-md text-sm hover:bg-muted transition-colors"
+                title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+              >
+                {sidebarOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-md text-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-md text-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
               >
                 <Trash2 size={14} /> Delete
               </button>
@@ -328,234 +347,86 @@ export default function KnowledgeDetailPage() {
             </p>
           )}
 
-          {/* Tab Navigation */}
-          <div className="border-b border-border/60">
-            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('details')}
-                className={`whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                  activeTab === 'details'
-                    ? 'border-foreground text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                Details
-              </button>
-              <button
-                onClick={() => setActiveTab('history')}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                  activeTab === 'history'
-                    ? 'border-foreground text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                <History size={14} /> History
-              </button>
-            </nav>
-          </div>
+          {/* Two-column grid */}
+          <div className={`grid gap-6 ${sidebarOpen ? 'grid-cols-1 lg:grid-cols-[1fr_300px]' : 'grid-cols-1'}`}>
+            {/* Left column: Content with tabs */}
+            <div className="min-w-0 space-y-4">
+              <ContentTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                tabs={contentTabs}
+              />
 
-          {activeTab === 'details' ? (
-            <>
-              <div className="flex flex-wrap gap-2 text-sm">
-                <span className="px-2 py-0.5 bg-muted rounded">
-                  {data.type}
-                </span>
-                {data.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              {data.summary && (
-                <div className="bg-muted/50 border border-border/60 rounded-xl p-4">
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Summary</h3>
-                  <MarkdownContent content={data.summary} compact />
-                </div>
-              )}
-
-              <div className="whitespace-pre-wrap text-sm bg-muted border border-border/60 rounded-xl p-4">
-                {data.content}
-              </div>
-
-              <div className="text-sm text-muted-foreground space-y-1">
-                {data.source && <p>Source: {data.source}</p>}
-                {data.filePath && <p>File: {data.filePath}</p>}
-                {data.vaults.length > 0 && (
-                  <p>
-                    Vaults:{' '}
-                    {data.vaults.map((v) => (
-                      <Link
-                        key={v.id}
-                        to={`/vaults/${v.id}`}
-                        className="text-blue-600 dark:text-blue-400 hover:underline mr-2"
-                      >
-                        {v.name}
-                      </Link>
-                    ))}
-                  </p>
+              <div className="animate-fade-in">
+                {activeTab === 'summary' && (
+                  <SummaryTabContent
+                    summary={data.summary}
+                    reprocessMut={reprocessMut}
+                  />
                 )}
-                {data.topic && (
-                  <p>Topic: {data.topic.name}</p>
-                )}
-                <p>
-                  Created: {new Date(data.createdAt).toLocaleString()} | Updated: {new Date(data.updatedAt).toLocaleString()}
-                </p>
-                <p>
-                  Enrichment:{' '}
-                  {data.isIndexed ? (
-                    <>
-                      <span className="text-green-600 dark:text-green-400">Indexed</span>
-                      {data.indexedAt && ` on ${new Date(data.indexedAt).toLocaleString()}`}
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">Pending</span>
-                  )}
-                </p>
-              </div>
 
-              {/* Attachments Section */}
-              <div className="border border-border/60 rounded-xl p-4 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Paperclip size={16} className="text-muted-foreground" />
-                    <h2 className="text-sm font-semibold">Attachments</h2>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => attachFileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                    >
-                      <Upload size={12} />
-                      Upload & Attach
-                    </button>
-                    <input
-                      ref={attachFileInputRef}
-                      type="file"
-                      multiple
-                      onChange={handleAttachUpload}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowAttachPicker(!showAttachPicker)}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-input rounded hover:bg-muted transition-colors"
-                    >
-                      <Paperclip size={12} />
-                      Attach File
-                    </button>
-                  </div>
-                </div>
-
-                {uploadAndAttachMut.isPending && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 size={14} className="animate-spin" />
-                    Uploading and attaching...
+                {activeTab === 'original' && (
+                  <div className="bg-card border border-border/60 rounded-xl p-5">
+                    <MarkdownContent content={data.content} />
                   </div>
                 )}
 
-                {attachmentsLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 size={16} className="animate-spin text-muted-foreground" />
-                  </div>
-                ) : attachments && attachments.length > 0 ? (
-                  <div className="space-y-2">
-                    {attachments.map((file: FileMetadataDto) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Paperclip size={14} className="text-muted-foreground flex-shrink-0" />
-                          <span className="text-sm truncate">{file.fileName}</span>
-                          <span className="text-xs text-muted-foreground flex-shrink-0">
-                            {formatFileSize(file.sizeBytes)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => handleDownloadAttachment(file.id, file.fileName)}
-                            className="p-1 text-muted-foreground hover:text-blue-600 rounded"
-                            title="Download"
-                          >
-                            <Download size={14} />
-                          </button>
-                          <button
-                            onClick={() => detachMut.mutate(file.id)}
-                            className="p-1 text-muted-foreground hover:text-red-600 rounded"
-                            title="Detach"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground py-2">No attachments yet.</p>
+                {activeTab === 'attachments' && (
+                  <AttachmentsTabContent
+                    attachments={attachments}
+                    attachmentsLoading={attachmentsLoading}
+                    attachFileInputRef={attachFileInputRef}
+                    handleAttachUpload={handleAttachUpload}
+                    handleDownloadAttachment={handleDownloadAttachment}
+                    uploadAndAttachMut={uploadAndAttachMut}
+                    detachMut={detachMut}
+                    attachMut={attachMut}
+                    showAttachPicker={showAttachPicker}
+                    setShowAttachPicker={setShowAttachPicker}
+                    availableFiles={availableFiles}
+                  />
                 )}
 
-                {/* Attach from existing files picker */}
-                {showAttachPicker && (
-                  <div className="border border-border/60 rounded p-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Select an existing file to attach:
-                    </p>
-                    {availableFiles && availableFiles.items.length > 0 ? (
-                      <div className="max-h-40 overflow-y-auto space-y-1">
-                        {availableFiles.items
-                          .filter(
-                            (f) => !attachments?.some((a: FileMetadataDto) => a.id === f.id),
-                          )
-                          .map((file) => (
-                            <button
-                              key={file.id}
-                              onClick={() => attachMut.mutate(file.id)}
-                              disabled={attachMut.isPending}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-muted disabled:opacity-50 transition-colors"
-                            >
-                              <Paperclip size={12} className="text-muted-foreground" />
-                              <span className="truncate">{file.fileName}</span>
-                              <span className="text-xs text-muted-foreground ml-auto">
-                                {formatFileSize(file.sizeBytes)}
-                              </span>
-                            </button>
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No files available.</p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowAttachPicker(false)}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
+                {activeTab === 'history' && (
+                  <VersionHistoryPanel
+                    versions={versions}
+                    isLoading={versionsLoading}
+                    error={versionsError}
+                    expandedVersion={expandedVersion}
+                    onToggleExpand={(vn) => setExpandedVersion(expandedVersion === vn ? null : vn)}
+                    showRestoreConfirm={showRestoreConfirm}
+                    onShowRestoreConfirm={setShowRestoreConfirm}
+                    restoreMut={restoreMut}
+                  />
                 )}
               </div>
 
-              {/* Contributions Section */}
+              {/* Contributions Section - always visible below tabs */}
               <CommentSection knowledgeId={id!} />
-            </>
-          ) : (
-            /* Version History Tab */
-            <VersionHistoryPanel
-              versions={versions}
-              isLoading={versionsLoading}
-              error={versionsError}
-              expandedVersion={expandedVersion}
-              onToggleExpand={(vn) => setExpandedVersion(expandedVersion === vn ? null : vn)}
-              showRestoreConfirm={showRestoreConfirm}
-              onShowRestoreConfirm={setShowRestoreConfirm}
-              restoreMut={restoreMut}
-            />
-          )}
+            </div>
+
+            {/* Right column: Sidebar */}
+            {sidebarOpen && (
+              <aside className="animate-fade-in">
+                <DetailSidebar
+                  briefSummary={data.briefSummary}
+                  tags={data.tags}
+                  type={data.type}
+                  vaults={data.vaults}
+                  source={data.source}
+                  createdAt={data.createdAt}
+                  updatedAt={data.updatedAt}
+                  isIndexed={data.isIndexed}
+                  indexedAt={data.indexedAt}
+                  attachmentCount={attachmentCount}
+                />
+              </aside>
+            )}
+          </div>
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-card rounded-xl p-6 max-w-sm w-full space-y-4 shadow-sm">
@@ -590,6 +461,196 @@ export default function KnowledgeDetailPage() {
   )
 }
 
+// --- Summary Tab ---
+
+function SummaryTabContent({
+  summary,
+  reprocessMut,
+}: {
+  summary?: string
+  reprocessMut: { mutate: () => void; isPending: boolean }
+}) {
+  if (!summary) {
+    return (
+      <div className="text-center py-12 space-y-3">
+        <Sparkles size={32} className="mx-auto text-muted-foreground" />
+        <p className="text-muted-foreground text-sm">No AI summary available yet.</p>
+        <button
+          onClick={() => reprocessMut.mutate()}
+          disabled={reprocessMut.isPending}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+        >
+          <RefreshCw size={14} className={reprocessMut.isPending ? 'animate-spin' : ''} />
+          {reprocessMut.isPending ? 'Processing...' : 'Generate Summary'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-card border border-border/60 rounded-xl p-5">
+      <MarkdownContent content={summary} />
+    </div>
+  )
+}
+
+// --- Attachments Tab ---
+
+function AttachmentsTabContent({
+  attachments,
+  attachmentsLoading,
+  attachFileInputRef,
+  handleAttachUpload,
+  handleDownloadAttachment,
+  uploadAndAttachMut,
+  detachMut,
+  attachMut,
+  showAttachPicker,
+  setShowAttachPicker,
+  availableFiles,
+}: {
+  attachments: FileMetadataDto[] | undefined
+  attachmentsLoading: boolean
+  attachFileInputRef: React.RefObject<HTMLInputElement | null>
+  handleAttachUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  handleDownloadAttachment: (fileId: string, fileName: string) => void
+  uploadAndAttachMut: { isPending: boolean }
+  detachMut: { mutate: (id: string) => void }
+  attachMut: { mutate: (id: string) => void; isPending: boolean }
+  showAttachPicker: boolean
+  setShowAttachPicker: (v: boolean) => void
+  availableFiles: { items: FileMetadataDto[] } | undefined
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Upload actions */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => attachFileInputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity"
+        >
+          <Upload size={14} />
+          Upload & Attach
+        </button>
+        <input
+          ref={attachFileInputRef}
+          type="file"
+          multiple
+          onChange={handleAttachUpload}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => setShowAttachPicker(!showAttachPicker)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-input rounded-md hover:bg-muted transition-colors"
+        >
+          <Paperclip size={14} />
+          Attach Existing
+        </button>
+      </div>
+
+      {uploadAndAttachMut.isPending && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          Uploading and attaching...
+        </div>
+      )}
+
+      {/* Attach from existing files picker */}
+      {showAttachPicker && (
+        <div className="border border-border/60 rounded-lg p-3 space-y-2 bg-card">
+          <p className="text-xs font-medium text-muted-foreground">
+            Select an existing file to attach:
+          </p>
+          {availableFiles && availableFiles.items.length > 0 ? (
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {availableFiles.items
+                .filter(
+                  (f) => !attachments?.some((a: FileMetadataDto) => a.id === f.id),
+                )
+                .map((file) => (
+                  <button
+                    key={file.id}
+                    onClick={() => attachMut.mutate(file.id)}
+                    disabled={attachMut.isPending}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    <Paperclip size={12} className="text-muted-foreground" />
+                    <span className="truncate">{file.fileName}</span>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {formatFileSize(file.sizeBytes)}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No files available.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowAttachPicker(false)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* File list */}
+      {attachmentsLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 size={16} className="animate-spin text-muted-foreground" />
+        </div>
+      ) : attachments && attachments.length > 0 ? (
+        <div className="border border-border/60 rounded-lg divide-y divide-border/40">
+          {attachments.map((file: FileMetadataDto) => (
+            <div
+              key={file.id}
+              className="flex items-center justify-between py-2.5 px-3 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Paperclip size={14} className="text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-sm truncate block">{file.fileName}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatFileSize(file.sizeBytes)}
+                    {file.contentType && ` \u00b7 ${file.contentType}`}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => handleDownloadAttachment(file.id, file.fileName)}
+                  className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted transition-colors"
+                  title="Download"
+                >
+                  <Download size={14} />
+                </button>
+                <button
+                  onClick={() => detachMut.mutate(file.id)}
+                  className="p-1.5 text-muted-foreground hover:text-red-600 rounded hover:bg-muted transition-colors"
+                  title="Detach"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8">
+          <Paperclip size={32} className="mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground text-sm">No attachments yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Upload a file or attach an existing one.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // --- Version History Panel ---
 
 interface DiffLine {
@@ -602,7 +663,6 @@ function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
   const newLines = newText.split('\n')
   const result: DiffLine[] = []
 
-  const maxLen = Math.max(oldLines.length, newLines.length)
   let oi = 0
   let ni = 0
 
@@ -618,9 +678,9 @@ function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
       oi++
       ni++
     } else {
-      // Look ahead to see if the old line appears in new lines soon
       let foundInNew = -1
       let foundInOld = -1
+      const maxLen = Math.max(oldLines.length, newLines.length)
       const lookAhead = Math.min(5, maxLen)
 
       for (let k = 1; k <= lookAhead && ni + k < newLines.length; k++) {
@@ -637,19 +697,16 @@ function computeSimpleDiff(oldText: string, newText: string): DiffLine[] {
       }
 
       if (foundInNew >= 0 && (foundInOld < 0 || (foundInNew - ni) <= (foundInOld - oi))) {
-        // Lines were added
         while (ni < foundInNew) {
           result.push({ type: 'added', text: newLines[ni] })
           ni++
         }
       } else if (foundInOld >= 0) {
-        // Lines were removed
         while (oi < foundInOld) {
           result.push({ type: 'removed', text: oldLines[oi] })
           oi++
         }
       } else {
-        // Changed line
         result.push({ type: 'removed', text: oldLines[oi] })
         result.push({ type: 'added', text: newLines[ni] })
         oi++
@@ -693,7 +750,6 @@ function VersionHistoryPanel({
   }
 
   if (error) {
-    // If 404, the feature may not be available — show a friendly message
     const is404 = error instanceof ApiError && error.status === 404
     return (
       <div className="text-center py-8">
