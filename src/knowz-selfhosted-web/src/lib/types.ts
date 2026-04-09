@@ -434,6 +434,7 @@ export interface ChatRequestData {
   question: string
   conversationHistory?: { role: string; content: string }[]
   vaultId?: string
+  knowledgeId?: string
   researchMode?: boolean
   maxTurns?: number
 }

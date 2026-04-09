@@ -1,10 +1,10 @@
-import { useState, useRef, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
-import { MessageSquare, Paperclip, Loader2, X } from 'lucide-react'
+import { MessageSquare, Paperclip, Loader2, X, Download, Image } from 'lucide-react'
 import MarkdownContent from './MarkdownContent'
 import { formatFileSize } from '../lib/format-utils'
-import type { Comment } from '../lib/types'
+import type { Comment, FileMetadataDto } from '../lib/types'
 
 interface CommentSectionProps {
   knowledgeId: string
@@ -34,6 +34,109 @@ interface PendingFile {
   file: File
   fileRecordId: string | null
   uploading: boolean
+}
+
+function isImageContentType(contentType?: string): boolean {
+  return !!contentType && contentType.startsWith('image/')
+}
+
+function CommentAttachmentChip({ file }: { file: FileMetadataDto }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [thumbLoading, setThumbLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isImageContentType(file.contentType)) return
+    let cancelled = false
+    setThumbLoading(true)
+    api.downloadFile(file.id)
+      .then((blob) => {
+        if (!cancelled) {
+          setThumbUrl(URL.createObjectURL(blob))
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setThumbLoading(false) })
+    return () => {
+      cancelled = true
+      if (thumbUrl) URL.revokeObjectURL(thumbUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, file.contentType])
+
+  const handleDownload = async () => {
+    try {
+      const blob = await api.downloadFile(file.id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent
+    }
+  }
+
+  return (
+    <div className="inline-flex flex-col items-start gap-1 p-1.5 bg-muted/60 rounded-md border border-border/40">
+      {isImageContentType(file.contentType) && (
+        <div className="rounded overflow-hidden bg-muted/30 flex items-center justify-center" style={{ maxHeight: 100 }}>
+          {thumbLoading ? (
+            <div className="flex items-center justify-center w-20 h-16">
+              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+            </div>
+          ) : thumbUrl ? (
+            <img src={thumbUrl} alt={file.fileName} className="max-h-[100px] max-w-[160px] object-contain" />
+          ) : null}
+        </div>
+      )}
+      <div className="inline-flex items-center gap-1.5">
+        {isImageContentType(file.contentType) ? (
+          <Image size={12} className="text-blue-500 flex-shrink-0" />
+        ) : (
+          <Paperclip size={12} className="text-muted-foreground flex-shrink-0" />
+        )}
+        <span className="text-xs truncate max-w-[120px]" title={file.fileName}>{file.fileName}</span>
+        <span className="text-[10px] text-muted-foreground">{formatFileSize(file.sizeBytes)}</span>
+        <button
+          onClick={handleDownload}
+          className="p-0.5 rounded hover:bg-background transition-colors text-muted-foreground hover:text-blue-600"
+          title="Download"
+        >
+          <Download size={12} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CommentAttachments({ commentId, attachmentCount }: { commentId: string; attachmentCount: number }) {
+  const { data: attachments, isLoading } = useQuery({
+    queryKey: ['comment-attachments', commentId],
+    queryFn: () => api.getCommentAttachments(commentId),
+    enabled: attachmentCount > 0,
+  })
+
+  if (attachmentCount === 0) return null
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <Loader2 size={12} className="animate-spin text-muted-foreground" />
+        <span className="text-[10px] text-muted-foreground">Loading attachments...</span>
+      </div>
+    )
+  }
+  if (!attachments || attachments.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1.5">
+      {attachments.map((file) => (
+        <CommentAttachmentChip key={file.id} file={file} />
+      ))}
+    </div>
+  )
 }
 
 function CommentItem({
@@ -136,7 +239,10 @@ function CommentItem({
             </div>
           </div>
         ) : (
-          <MarkdownContent content={comment.body} compact />
+          <>
+            <MarkdownContent content={comment.body} compact />
+            <CommentAttachments commentId={comment.id} attachmentCount={comment.attachmentCount} />
+          </>
         )}
 
         {isDeleting && (

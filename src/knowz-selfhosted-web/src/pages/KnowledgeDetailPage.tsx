@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api-client'
@@ -6,6 +6,7 @@ import {
   ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload,
   Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight,
   Sparkles, FileText, PanelRightClose, PanelRightOpen, Eye,
+  MessageCircle, Send,
 } from 'lucide-react'
 import CommentSection from '../components/CommentSection'
 import MarkdownContent from '../components/MarkdownContent'
@@ -36,6 +37,7 @@ export default function KnowledgeDetailPage() {
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null)
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<number | null>(null)
   const [viewingAttachment, setViewingAttachment] = useState<FileMetadataDto | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -505,6 +507,26 @@ export default function KnowledgeDetailPage() {
           onDownload={handleDownloadAttachment}
         />
       )}
+
+      {/* Floating Chat Button */}
+      {!editing && (
+        <button
+          onClick={() => setChatOpen(!chatOpen)}
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-all flex items-center justify-center"
+          title="Chat with this knowledge item"
+        >
+          {chatOpen ? <X size={22} /> : <MessageCircle size={22} />}
+        </button>
+      )}
+
+      {/* Chat Panel */}
+      {chatOpen && !editing && (
+        <KnowledgeChatPanel
+          knowledgeId={id!}
+          knowledgeTitle={data.title}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -950,6 +972,149 @@ function VersionHistoryPanel({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// --- Knowledge Chat Panel ---
+
+interface ChatMsg {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+function KnowledgeChatPanel({
+  knowledgeId,
+  knowledgeTitle,
+  onClose,
+}: {
+  knowledgeId: string
+  knowledgeTitle: string
+  onClose: () => void
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  const handleSend = async () => {
+    const question = input.trim()
+    if (!question || loading) return
+
+    const userMsg: ChatMsg = { role: 'user', content: question }
+    setMessages((prev) => [...prev, userMsg])
+    setInput('')
+    setLoading(true)
+
+    try {
+      const history = messages.map((m) => ({ role: m.role, content: m.content }))
+      const response = await api.chat({
+        question,
+        knowledgeId,
+        conversationHistory: history,
+      })
+      setMessages((prev) => [...prev, { role: 'assistant', content: response.answer }])
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to get response'
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${errMsg}` }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  const truncatedTitle = knowledgeTitle.length > 30 ? knowledgeTitle.slice(0, 30) + '...' : knowledgeTitle
+
+  return (
+    <div className="fixed bottom-24 right-6 z-50 w-[400px] h-[500px] bg-card border border-border rounded-xl shadow-xl flex flex-col overflow-hidden animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageCircle size={16} className="text-primary flex-shrink-0" />
+          <span className="text-sm font-medium truncate" title={`Chat with: ${knowledgeTitle}`}>
+            Chat with: {truncatedTitle}
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors flex-shrink-0"
+          aria-label="Close chat"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center py-12 space-y-2">
+            <MessageCircle size={28} className="mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Ask anything about this knowledge item</p>
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                msg.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted border border-border/60'
+              }`}
+            >
+              {msg.role === 'assistant' ? (
+                <MarkdownContent content={msg.content} compact />
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-muted border border-border/60 rounded-lg px-3 py-2 flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Thinking...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="border-t border-border px-3 py-2">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask a question..."
+            rows={1}
+            className="flex-1 px-3 py-2 text-sm border border-input rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-ring transition-colors resize-none"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || loading}
+            className="p-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity flex-shrink-0"
+            aria-label="Send message"
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
