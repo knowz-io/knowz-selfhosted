@@ -1,4 +1,5 @@
 using Knowz.Core.Entities;
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Models;
 using Knowz.SelfHosted.Infrastructure.Data;
@@ -73,7 +74,22 @@ public class TenantManagementService : ITenantManagementService
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("Created tenant: {TenantName} ({TenantSlug})", tenant.Name, tenant.Slug);
+        // Create a default vault for the new tenant
+        var defaultVault = new Vault
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            Name = "Knowledge",
+            Description = "Default knowledge vault",
+            IsDefault = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.Vaults.Add(defaultVault);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Created tenant: {TenantName} ({TenantSlug}) with default vault {VaultId}",
+            tenant.Name, tenant.Slug, defaultVault.Id);
 
         return MapToDto(tenant);
     }

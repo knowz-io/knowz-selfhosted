@@ -162,25 +162,36 @@ public class EnrichmentBackgroundService : BackgroundService
                 }
                 else
                 {
+                    // Scale summary depth with content length — no arbitrary cap
+                    // Short content gets concise summaries, long technical docs get thorough ones
+                    var maxWords = wordCount switch
+                    {
+                        <= 50 => 100,        // Brief note → short summary
+                        <= 200 => 300,       // Short content → moderate summary
+                        <= 1000 => 1000,     // Medium content → detailed summary
+                        <= 5000 => 2500,     // Long content → comprehensive summary
+                        _ => 5000            // Very long technical docs → thorough summary
+                    };
+
                     // Use concrete TextEnrichmentService overload if available (for createdAt/authorName)
                     if (enrichmentService is TextEnrichmentService concreteService)
                     {
                         var summary = await concreteService.SummarizeAsync(
-                            contentForEnrichment, 100, ct, workItem.TenantId,
+                            contentForEnrichment, maxWords, ct, workItem.TenantId,
                             knowledge.CreatedAt, authorName);
                         if (summary != null)
                         {
                             knowledge.Summary = summary;
-                            _logger.LogDebug("Generated summary for knowledge {Id}", knowledge.Id);
+                            _logger.LogDebug("Generated summary for knowledge {Id} (maxWords={MaxWords}, contentWords={WordCount})", knowledge.Id, maxWords, wordCount);
                         }
                     }
                     else
                     {
-                        var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, 100, ct, workItem.TenantId);
+                        var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, maxWords, ct, workItem.TenantId);
                         if (summary != null)
                         {
                             knowledge.Summary = summary;
-                            _logger.LogDebug("Generated summary for knowledge {Id}", knowledge.Id);
+                            _logger.LogDebug("Generated summary for knowledge {Id} (maxWords={MaxWords})", knowledge.Id, maxWords);
                         }
                     }
                 }

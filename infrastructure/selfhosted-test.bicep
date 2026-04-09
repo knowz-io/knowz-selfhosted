@@ -792,7 +792,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1
         maxReplicas: 3
       }
     }
@@ -861,7 +861,7 @@ resource mcpContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1
         maxReplicas: 2
       }
     }
@@ -918,7 +918,7 @@ resource webContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1
         maxReplicas: 2
       }
     }

@@ -167,7 +167,7 @@ export default function VaultListPage() {
           {data?.vaults.map((vault) => (
             <Link
               key={vault.id}
-              to={`/vaults/${vault.id}`}
+              to={`/knowledge?vaultId=${vault.id}`}
               className="block p-5 bg-card border border-border/60 rounded-xl hover:shadow-md transition-all"
             >
               <div className="flex items-center gap-3 mb-2">
