@@ -58,7 +58,7 @@ public class ConfigurationManagementServiceTests : IDisposable
     {
         var result = await _service.GetAllCategoriesAsync();
 
-        Assert.Equal(7, result.Count);
+        Assert.Equal(9, result.Count);
         var categoryNames = result.Select(c => c.Category).ToList();
         Assert.Contains("ConnectionStrings", categoryNames);
         Assert.Contains("AzureOpenAI", categoryNames);
@@ -66,6 +66,8 @@ public class ConfigurationManagementServiceTests : IDisposable
         Assert.Contains("Storage", categoryNames);
         Assert.Contains("SelfHosted", categoryNames);
         Assert.Contains("AzureKeyVault", categoryNames);
+        Assert.Contains("KnowzPlatform", categoryNames);
+        Assert.Contains("Inbox", categoryNames);
         Assert.Contains("SSO", categoryNames);
     }
 
@@ -514,7 +516,7 @@ public class ConfigurationManagementServiceTests : IDisposable
     {
         var result = await _service.GetAllCategoriesAsync();
 
-        Assert.Equal(7, result.Count);
+        Assert.Equal(9, result.Count);
     }
 
     [Fact]

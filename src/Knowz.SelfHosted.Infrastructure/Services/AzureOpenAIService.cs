@@ -124,7 +124,7 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
             Answer = result.Value.Content[0].Text,
             SourceKnowledgeIds = sourceIds,
             Confidence = searchResults.Count > 0
-                ? Math.Min(1.0, searchResults.Average(r => r.Score))
+                ? Math.Min(1.0, searchResults.Max(r => r.Score))
                 : 0
         };
     }

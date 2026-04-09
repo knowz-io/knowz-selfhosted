@@ -90,6 +90,9 @@ public class SelfHostedToolBackend : IToolBackend
         ["amend_knowledge"] = new(HttpMethod.Post, "/api/v1/knowledge/{id}/amend",
             new[] { "id" }, null, null,
             new[] { "instruction" }),
+
+        ["get_version_history"] = new(HttpMethod.Get, "/api/v1/knowledge/{knowledgeId}/versions",
+            new[] { "knowledgeId" }, null, null),
     };
 
     public SelfHostedToolBackend(

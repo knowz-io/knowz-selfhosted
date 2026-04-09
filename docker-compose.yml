@@ -3,12 +3,15 @@
 #
 # Services:
 #   db  - SQL Server 2022 Express (free)
-#   api - Knowz Self-Hosted API (.NET 9)
+#   api - Knowz Self-Hosted API (.NET 10)
 #   web - Knowz Self-Hosted Web (React + nginx)
 #   mcp - Knowz MCP Server (Model Context Protocol for AI tools)
 #
 # First run: API auto-migrates the database and seeds SuperAdmin (admin/changeme).
 # Access: http://localhost:3000 (web) | http://localhost:5000/swagger (API) | http://localhost:3001 (MCP)
+#
+# AI: Copy .env.example to .env. Easiest: uncomment KNOWZ_PLATFORM section + paste your API key.
+# No .env = no AI (Mode 1). Get your API key at https://knowz.io → Settings → API Keys.
 
 services:
   db:
@@ -60,16 +63,19 @@ services:
       Storage__Provider: "LocalFileSystem"
       Storage__Local__RootPath: "/data/files"
 
-      # Optional: Azure OpenAI (uncomment and set for AI features)
-      # AzureOpenAI__Endpoint: "https://your-openai.openai.azure.com/"
-      # AzureOpenAI__ApiKey: "your-api-key"
-      # AzureOpenAI__DeploymentName: "gpt-4o"
-      # AzureOpenAI__EmbeddingDeploymentName: "text-embedding-3-small"
+      # AI Services — Mode 2: Direct Azure (configure in .env, see .env.example)
+      AzureOpenAI__Endpoint: "${AZURE_OPENAI_ENDPOINT:-}"
+      AzureOpenAI__ApiKey: "${AZURE_OPENAI_APIKEY:-}"
+      AzureOpenAI__DeploymentName: "${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}"
+      AzureOpenAI__EmbeddingDeploymentName: "${AZURE_OPENAI_EMBEDDING:-text-embedding-3-small}"
+      AzureAISearch__Endpoint: "${AZURE_SEARCH_ENDPOINT:-}"
+      AzureAISearch__ApiKey: "${AZURE_SEARCH_APIKEY:-}"
+      AzureAISearch__IndexName: "${AZURE_SEARCH_INDEX:-knowz-selfhosted}"
 
-      # Optional: Azure AI Search (uncomment and set for semantic search)
-      # AzureAISearch__Endpoint: "https://your-search.search.windows.net"
-      # AzureAISearch__ApiKey: "your-api-key"
-      # AzureAISearch__IndexName: "knowledge"
+      # AI Services — Mode 3: Platform Proxy (configure in .env, see .env.example)
+      KnowzPlatform__Enabled: "${KNOWZ_PLATFORM_ENABLED:-false}"
+      KnowzPlatform__BaseUrl: "${KNOWZ_PLATFORM_URL:-}"
+      KnowzPlatform__ApiKey: "${KNOWZ_PLATFORM_APIKEY:-}"
     volumes:
       - knowz-file-storage:/data/files
     healthcheck:

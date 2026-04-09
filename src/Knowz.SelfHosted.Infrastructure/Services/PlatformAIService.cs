@@ -137,7 +137,7 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
                 Answer = result.Content,
                 SourceKnowledgeIds = sourceIds,
                 Confidence = searchResults.Count > 0
-                    ? Math.Min(1.0, searchResults.Average(r => r.Score))
+                    ? Math.Min(1.0, searchResults.Max(r => r.Score))
                     : 0
             };
         }

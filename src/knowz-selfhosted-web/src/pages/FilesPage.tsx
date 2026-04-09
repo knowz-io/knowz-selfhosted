@@ -382,14 +382,14 @@ export default function FilesPage() {
         <div className="border border-border/60 rounded-xl divide-y divide-border/60 shadow-sm">
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-2 bg-muted text-sm font-medium text-muted-foreground">
-            <span className="w-6" />
-            <span className="flex-1">Name</span>
-            <span className="w-20 text-center">Type</span>
-            <span className="w-20 text-right">Size</span>
-            <span className="w-36 truncate">Knowledge</span>
-            <span className="w-28 truncate">Vault</span>
-            <span className="w-24 text-right">Uploaded</span>
-            <span className="w-20 text-right">Actions</span>
+            <span className="w-6 shrink-0" />
+            <span className="flex-1 min-w-0">Name</span>
+            <span className="w-24 text-center shrink-0">Type</span>
+            <span className="w-20 text-right shrink-0">Size</span>
+            <span className="w-36 truncate shrink-0">Knowledge</span>
+            <span className="w-28 truncate shrink-0">Vault</span>
+            <span className="w-24 text-right shrink-0">Uploaded</span>
+            <span className="w-20 text-right shrink-0">Actions</span>
           </div>
 
           {data.items.map((file) => (
@@ -404,17 +404,18 @@ export default function FilesPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-foreground truncate">{file.fileName}</p>
                 </div>
-                <span className="w-20 text-center">
+                <span className="w-24 text-center shrink-0 overflow-hidden">
                   <span
-                    className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${contentTypeBadgeClass(file.contentType)}`}
+                    className={`inline-flex px-2 py-0.5 rounded text-xs font-medium max-w-full truncate ${contentTypeBadgeClass(file.contentType)}`}
+                    title={file.contentType || 'Unknown'}
                   >
                     {contentTypeLabel(file.contentType)}
                   </span>
                 </span>
-                <span className="w-20 text-right text-sm text-muted-foreground">
+                <span className="w-20 text-right text-sm text-muted-foreground shrink-0">
                   {formatFileSize(file.sizeBytes)}
                 </span>
-                <span className="w-36 truncate text-sm">
+                <span className="w-36 truncate text-sm shrink-0">
                   {file.knowledgeId ? (
                     <Link
                       to={`/knowledge/${file.knowledgeId}`}
@@ -427,7 +428,7 @@ export default function FilesPage() {
                     <span className="text-muted-foreground">--</span>
                   )}
                 </span>
-                <span className="w-28 truncate text-sm">
+                <span className="w-28 truncate text-sm shrink-0">
                   {file.vaultId ? (
                     <Link
                       to={`/vaults/${file.vaultId}`}
@@ -440,10 +441,10 @@ export default function FilesPage() {
                     <span className="text-muted-foreground">--</span>
                   )}
                 </span>
-                <span className="w-24 text-right text-xs text-muted-foreground">
+                <span className="w-24 text-right text-xs text-muted-foreground shrink-0">
                   {relativeTime(file.createdAt)}
                 </span>
-                <div className="w-20 flex items-center justify-end gap-1">
+                <div className="w-20 flex items-center justify-end gap-1 shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(file.id, file.fileName) }}
                     className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted"

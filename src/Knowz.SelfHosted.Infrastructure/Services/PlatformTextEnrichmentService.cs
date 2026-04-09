@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -12,11 +13,14 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 /// Proxies text enrichment operations (title generation, summarization, tag extraction)
 /// to the Knowz Platform AI Services API. Enables selfhosted deployments to enrich
 /// knowledge items without directly configuring Azure OpenAI.
+/// When a tenantId is provided, resolves configurable prompts via PromptResolutionService
+/// (3-tier hierarchy: Platform → Tenant → User). Falls back to hardcoded defaults otherwise.
 /// </summary>
 public class PlatformTextEnrichmentService : ITextEnrichmentService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _apiKey;
+    private readonly PromptResolutionService _promptResolution;
     private readonly ILogger<PlatformTextEnrichmentService> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -41,23 +45,30 @@ public class PlatformTextEnrichmentService : ITextEnrichmentService
     public PlatformTextEnrichmentService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
+        PromptResolutionService promptResolution,
         ILogger<PlatformTextEnrichmentService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _apiKey = configuration["KnowzPlatform:ApiKey"]
             ?? throw new InvalidOperationException("KnowzPlatform:ApiKey is required");
+        _promptResolution = promptResolution;
         _logger = logger;
     }
 
-    public async Task<string?> GenerateTitleAsync(string content, CancellationToken ct = default)
+    public async Task<string?> GenerateTitleAsync(string content, CancellationToken ct = default, Guid? tenantId = null)
     {
         try
         {
             var truncated = TruncateContent(content);
+
+            var systemPrompt = tenantId.HasValue
+                ? await _promptResolution.ResolvePromptAsync(PromptKeys.TitlePrompt, tenantId.Value, ct: ct)
+                : TitleSystemPrompt;
+
             var request = new PlatformCompletionRequest(
                 Messages: new[]
                 {
-                    new PlatformChatMessage("system", TitleSystemPrompt),
+                    new PlatformChatMessage("system", systemPrompt),
                     new PlatformChatMessage("user", truncated)
                 },
                 MaxTokens: 50);
@@ -82,11 +93,42 @@ public class PlatformTextEnrichmentService : ITextEnrichmentService
         }
     }
 
-    public async Task<string?> SummarizeAsync(string content, int maxWords = 100, CancellationToken ct = default)
+    public async Task<string?> SummarizeAsync(string content, int maxWords = 100, CancellationToken ct = default, Guid? tenantId = null)
     {
         try
         {
             var truncated = TruncateContent(content);
+
+            // When tenant-specific prompts are configured, use the completion endpoint
+            // with the resolved prompt instead of the platform's built-in summarize endpoint.
+            if (tenantId.HasValue)
+            {
+                var resolvedPrompt = await _promptResolution.ResolvePromptAsync(
+                    PromptKeys.SummarizePrompt, tenantId.Value, formatArgs: new object[] { maxWords }, ct: ct);
+
+                var completionRequest = new PlatformCompletionRequest(
+                    Messages: new[]
+                    {
+                        new PlatformChatMessage("system", resolvedPrompt),
+                        new PlatformChatMessage("user", truncated)
+                    },
+                    MaxTokens: maxWords * 2);
+
+                var completionHttpRequest = CreateRequest("/api/v1/ai-services/completion", completionRequest);
+                var completionClient = _httpClientFactory.CreateClient("KnowzPlatformClient");
+                var completionResponse = await completionClient.SendAsync(completionHttpRequest, ct);
+                completionResponse.EnsureSuccessStatusCode();
+
+                var completionBody = await completionResponse.Content.ReadAsStringAsync(ct);
+                var completionResult = UnwrapResponse<PlatformCompletionResponse>(completionBody, "Summarize");
+                if (completionResult == null)
+                    return null;
+
+                var summaryText = completionResult.Content.Trim();
+                return string.IsNullOrWhiteSpace(summaryText) ? null : summaryText;
+            }
+
+            // Default path: use the platform's built-in summarize endpoint
             var request = new PlatformSummarizeRequest(
                 Content: truncated,
                 MaxWords: maxWords,
@@ -112,12 +154,17 @@ public class PlatformTextEnrichmentService : ITextEnrichmentService
         }
     }
 
-    public async Task<List<string>> ExtractTagsAsync(string title, string content, int maxTags = 5, CancellationToken ct = default)
+    public async Task<List<string>> ExtractTagsAsync(string title, string content, int maxTags = 5, CancellationToken ct = default, Guid? tenantId = null)
     {
         try
         {
             var truncated = TruncateContent(content);
-            var systemPrompt = string.Format(TagsSystemPrompt, maxTags);
+
+            var systemPrompt = tenantId.HasValue
+                ? await _promptResolution.ResolvePromptAsync(
+                    PromptKeys.TagsPrompt, tenantId.Value, formatArgs: new object[] { maxTags }, ct: ct)
+                : string.Format(TagsSystemPrompt, maxTags);
+
             var userPrompt = string.IsNullOrWhiteSpace(title)
                 ? truncated
                 : $"Title: {title}\n\n{truncated}";
@@ -209,6 +256,23 @@ public class PlatformTextEnrichmentService : ITextEnrichmentService
         };
         request.Headers.Add("X-Api-Key", _apiKey);
         return request;
+    }
+
+    public Task<string?> GenerateBriefSummaryAsync(string content, CancellationToken ct = default, Guid? tenantId = null)
+    {
+        // Platform already has its own brief summary capability; no separate call needed for proxy mode
+        _logger.LogDebug("Brief summary generation not implemented for platform proxy mode");
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<IList<string?>> GenerateChunkContextsAsync(
+        string documentTitle, string? documentSummary,
+        IList<(string Content, int Position)> chunks,
+        CancellationToken ct = default)
+    {
+        // Platform handles contextual retrieval internally
+        _logger.LogDebug("Chunk context generation not implemented for platform proxy mode");
+        return Task.FromResult<IList<string?>>(Array.Empty<string?>());
     }
 
     // --- Internal DTOs ---

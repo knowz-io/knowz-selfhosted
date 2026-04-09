@@ -8,7 +8,7 @@ using Xunit;
 namespace Knowz.MCP.Tests.Services;
 
 /// <summary>
-/// Tests for FIX_OAuthTokenExpiry — verifies expires_in changed from 3600 to 604800 (7 days).
+/// Tests for FIX_OAuthTokenExpiry — verifies expires_in is 2592000 (30 days).
 /// </summary>
 public class OAuthTokenExpiryTests
 {
@@ -21,16 +21,16 @@ public class OAuthTokenExpiryTests
         _service = new OAuthService(cacheMock.Object, logger.Object);
     }
 
-    // VERIFY-4: OAuthService.TokenExpirySeconds constant equals 604800
+    // VERIFY-4: OAuthService.TokenExpirySeconds constant equals 2592000 (30 days)
     [Fact]
-    public void TokenExpirySeconds_Equals_604800()
+    public void TokenExpirySeconds_Equals_2592000()
     {
-        OAuthService.TokenExpirySeconds.Should().Be(604800);
+        OAuthService.TokenExpirySeconds.Should().Be(2592000);
     }
 
-    // VERIFY-1: authorization_code grant returns expires_in: 604800
+    // VERIFY-1: authorization_code grant returns expires_in: 2592000
     [Fact]
-    public void ExchangeCode_Returns_ExpiresIn_604800()
+    public void ExchangeCode_Returns_ExpiresIn_2592000()
     {
         var request = _service.CreateAuthorizationRequest(
             "test-client", "http://localhost:8080/callback", "mcp:read",
@@ -41,7 +41,7 @@ public class OAuthTokenExpiryTests
         var result = _service.ExchangeCode(code, "test-verifier", "http://localhost:8080/callback");
 
         result.Should().NotBeNull();
-        result!.ExpiresIn.Should().Be(604800);
+        result!.ExpiresIn.Should().Be(2592000);
     }
 
     // VERIFY-3: access_token value is still the API key (no regression)

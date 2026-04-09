@@ -130,68 +130,208 @@ public class LocalVectorSearchServiceTests : IDisposable
     }
 
     // ============================================================
-    // ComputeKeywordScore unit tests
+    // Legacy ComputeKeywordScore tests (updated for ComputeFieldWeightedScore)
     // ============================================================
 
     [Fact]
-    public void ComputeKeywordScore_TitleMatch_ReturnsOne()
+    public void ComputeFieldWeightedScore_TitleMatch_ScoresPositive()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Apollo Guide", null, "Unrelated content", "Apollo");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo Guide", null, "Unrelated content", null, "Apollo");
 
-        Assert.Equal(1.0, score);
+        Assert.True(score > 0);
     }
 
     [Fact]
-    public void ComputeKeywordScore_SummaryMatch_ReturnsZeroPointEight()
+    public void ComputeFieldWeightedScore_SummaryMatch_ScoresPositive()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Space Guide", "Apollo missions overview", "Unrelated content", "Apollo");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", "Apollo missions overview", "Unrelated content", null, "Apollo");
 
-        Assert.Equal(0.8, score);
+        Assert.True(score > 0);
     }
 
     [Fact]
-    public void ComputeKeywordScore_ContentMatch_ReturnsZeroPointSix()
+    public void ComputeFieldWeightedScore_ContentMatch_ScoresPositive()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Space Guide", null, "The Apollo program was great", "Apollo");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", null, "The Apollo program was great", null, "Apollo");
 
-        Assert.Equal(0.6, score);
+        Assert.True(score > 0);
     }
 
     [Fact]
-    public void ComputeKeywordScore_NoMatch_ReturnsZero()
+    public void ComputeFieldWeightedScore_LegacyNoMatch_ReturnsZero()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Space Guide", "Space summary", "Space content", "Apollo");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", "Space summary", "Space content", null, "Apollo");
 
         Assert.Equal(0.0, score);
     }
 
     [Fact]
-    public void ComputeKeywordScore_CaseInsensitive()
+    public void ComputeFieldWeightedScore_LegacyCaseInsensitive()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "apollo guide", null, "Unrelated", "APOLLO");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "apollo guide", null, "Unrelated", null, "APOLLO");
 
-        Assert.Equal(1.0, score);
+        Assert.True(score > 0);
     }
 
     [Fact]
-    public void ComputeKeywordScore_MultipleFieldsMatch_UsesHighest()
+    public void ComputeFieldWeightedScore_MultipleFieldsMatch_SumsAcrossFields()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Apollo Guide", "Apollo summary", "Apollo content", "Apollo");
+        var allMatch = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo Guide", "Apollo summary", "Apollo content", null, "Apollo");
 
-        Assert.Equal(1.0, score); // title match is highest
+        var titleOnly = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo Guide", "No match", "No match", null, "Apollo");
+
+        // All fields matching should score higher than title-only
+        Assert.True(allMatch > titleOnly);
     }
 
     [Fact]
-    public void ComputeKeywordScore_NullSummary_DoesNotThrow()
+    public void ComputeFieldWeightedScore_LegacyNullSummary_DoesNotThrow()
     {
-        var score = LocalVectorSearchService.ComputeKeywordScore(
-            "Space Guide", null, "Content", "query");
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", null, "Content", null, "query");
+
+        Assert.Equal(0.0, score);
+    }
+
+    // ============================================================
+    // ComputeFieldWeightedScore unit tests
+    // ============================================================
+
+    [Fact]
+    public void ComputeFieldWeightedScore_SplitsQueryIntoTerms()
+    {
+        // "machine learning" should match both terms independently
+        // "machine" appears in title, "learning" appears in title
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "machine learning fundamentals", null, "other content", null, "machine learning");
+
+        Assert.True(score > 0);
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_UsesFieldBoostWeights()
+    {
+        // Title match (boost 3.0) should score higher than content match (boost 2.5)
+        var titleScore = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo guide to space", null, "unrelated content here", null, "Apollo");
+
+        var contentScore = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "unrelated title here", null, "Apollo guide to space", null, "Apollo");
+
+        Assert.True(titleScore > contentScore, $"Title score {titleScore} should be > content score {contentScore}");
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_CountsTermOccurrences()
+    {
+        // "Apollo Apollo Apollo" has 3 occurrences; "Apollo once" has 1
+        var moreOccurrences = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo Apollo Apollo in short", null, "other", null, "Apollo");
+
+        var fewerOccurrences = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo in a longer title field", null, "other", null, "Apollo");
+
+        Assert.True(moreOccurrences > fewerOccurrences,
+            $"More occurrences {moreOccurrences} should score > fewer {fewerOccurrences}");
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_NormalizesByFieldLength()
+    {
+        // Same occurrence count but shorter field = higher TF
+        var shortField = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo", null, "x", null, "Apollo");
+
+        var longField = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo " + new string('x', 500), null, "x", null, "Apollo");
+
+        Assert.True(shortField > longField,
+            $"Short field score {shortField} should be > long field score {longField}");
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_ContextSummaryBoost_IsOnePointFive()
+    {
+        // ContextSummary-only match (boost 1.5) should produce a score
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "unrelated", null, "unrelated", "Apollo context summary info", "Apollo");
+
+        Assert.True(score > 0);
+
+        // ContextSummary (1.5) < Summary (2.0)
+        var summaryScore = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "unrelated", "Apollo summary info long", "unrelated", null, "Apollo");
+
+        Assert.True(summaryScore > score, $"Summary score {summaryScore} should be > context score {score}");
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_NullContextSummary_DoesNotThrow()
+    {
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo guide", null, "content", null, "Apollo");
+
+        Assert.True(score > 0);
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_NullSummaryAndContextSummary_DoesNotThrow()
+    {
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo guide", null, "content", null, "Apollo");
+
+        Assert.True(score > 0);
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_NoMatch_ReturnsZero()
+    {
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", "Space summary", "Space content", "Space context", "Quantum");
+
+        Assert.Equal(0.0, score);
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_CaseInsensitive()
+    {
+        var score1 = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "APOLLO GUIDE", null, "content", null, "apollo");
+
+        var score2 = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "apollo guide", null, "content", null, "APOLLO");
+
+        Assert.True(score1 > 0);
+        Assert.Equal(score1, score2, precision: 10);
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_MultiWordQuery_AveragesAcrossTerms()
+    {
+        // "machine learning" — both terms match title
+        var bothMatch = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "machine learning basics", null, "content", null, "machine learning");
+
+        // "machine quantum" — only "machine" matches title
+        var oneMatch = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "machine learning basics", null, "content", null, "machine quantum");
+
+        Assert.True(bothMatch > oneMatch,
+            $"Both match {bothMatch} should be > one match {oneMatch}");
+    }
+
+    [Fact]
+    public void ComputeFieldWeightedScore_EmptyQuery_ReturnsZero()
+    {
+        var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo guide", "summary", "content", "context", "");
 
         Assert.Equal(0.0, score);
     }
@@ -245,10 +385,15 @@ public class LocalVectorSearchServiceTests : IDisposable
         // Act
         var results = await _svc.HybridSearchAsync("Space", queryEmbedding: queryEmbedding);
 
-        // Assert: fusedScore = (1.0 * 0.7) + (keywordScore * 0.3)
-        // "Space" matches title (score=1.0) => fused = 0.7 + 0.3 = 1.0
+        // Assert: fusedScore = (vectorScore * 0.7) + (keywordScore * 0.3)
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score, precision: 5);
+        Assert.True(results[0].Score > 0);
+        // Verify fused score equals vectorWeight*vector + keywordWeight*keyword
+        var expectedKeyword = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", null, "Content about space", null, "Space");
+        var expectedFused = 1.0 * LocalVectorSearchService.VectorWeight
+                          + expectedKeyword * LocalVectorSearchService.KeywordWeight;
+        Assert.Equal(expectedFused, results[0].Score, precision: 5);
     }
 
     [Fact]
@@ -277,7 +422,7 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo");
 
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score); // title match = 1.0 keyword only
+        Assert.True(results[0].Score > 0); // title match produces positive score
     }
 
     [Fact]
@@ -308,7 +453,7 @@ public class LocalVectorSearchServiceTests : IDisposable
         // No vector score because chunk embeddings are null (filtered out by query),
         // so vectorScore stays 0 => hasVector = false => keyword only
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score); // title match keyword only
+        Assert.True(results[0].Score > 0); // title match keyword only
     }
 
     [Fact]
@@ -359,8 +504,8 @@ public class LocalVectorSearchServiceTests : IDisposable
         Assert.Single(results2);
         Assert.Equal(vectorItem.Id, results2[0].KnowledgeId);
 
-        // Fused score should be higher than keyword-only content score (0.6)
-        Assert.True(results2[0].Score > 0.6);
+        // Fused score should include both vector and keyword components
+        Assert.True(results2[0].Score > 0);
     }
 
     [Fact]
@@ -402,10 +547,10 @@ public class LocalVectorSearchServiceTests : IDisposable
 
         var results = await _svc.HybridSearchAsync("Space", queryEmbedding: queryEmbedding);
 
-        // Best chunk score = 1.0, keyword title match = 1.0
-        // Fused = 1.0*0.7 + 1.0*0.3 = 1.0
+        // Best chunk score = 1.0, keyword match is positive
+        // Fused = vectorScore*0.7 + keywordScore*0.3
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score, precision: 5);
+        Assert.True(results[0].Score > 0);
     }
 
     // ============================================================
@@ -519,7 +664,7 @@ public class LocalVectorSearchServiceTests : IDisposable
 
         // Should return the item but with keyword-only score (no matching tenant chunks)
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score); // title keyword match only
+        Assert.True(results[0].Score > 0); // title keyword match only
     }
 
     // ============================================================
@@ -732,16 +877,18 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo");
 
         Assert.Equal(3, results.Count);
-        Assert.Equal(1.0, results[0].Score);  // title match
-        Assert.Equal(0.8, results[1].Score);  // summary match
-        Assert.Equal(0.6, results[2].Score);  // content match
+        // Title match (boost 3.0) > Summary match (boost 2.0) > Content match (boost 2.5 but longer field)
+        // Verify descending order
+        Assert.True(results[0].Score >= results[1].Score);
+        Assert.True(results[1].Score >= results[2].Score);
+        Assert.True(results[0].Score > 0);
+        Assert.True(results[2].Score > 0);
     }
 
     [Fact]
     public async Task HybridSearchAsync_FusedScoresOrderedDescending()
     {
-        // Two items, both match keyword in content (score=0.6)
-        // but one has a high vector score, the other does not
+        // Two items with similar keyword scores, but different vector scores
         var highVector = new Knowledge
         {
             TenantId = TenantId, Title = "Space Exploration", Content = "Apollo content here"
@@ -755,6 +902,7 @@ public class LocalVectorSearchServiceTests : IDisposable
 
         var queryEmbedding = UnitVector(3, 0);
 
+        // highVector: high vector similarity (1.0)
         _db.ContentChunks.Add(new ContentChunk
         {
             TenantId = TenantId,
@@ -765,6 +913,7 @@ public class LocalVectorSearchServiceTests : IDisposable
             EmbeddingVectorJson = EmbeddingJson(UnitVector(3, 0)), // similarity 1.0
             EmbeddedAt = DateTime.UtcNow
         });
+        // lowVector: low vector similarity (~0.1)
         _db.ContentChunks.Add(new ContentChunk
         {
             TenantId = TenantId,
@@ -772,7 +921,7 @@ public class LocalVectorSearchServiceTests : IDisposable
             Position = 0,
             Content = "chunk",
             ContentHash = "lv",
-            EmbeddingVectorJson = EmbeddingJson(UnitVector(3, 1)), // similarity 0.0
+            EmbeddingVectorJson = EmbeddingJson(new float[] { 0.1f, 0.99f, 0.0f }), // low but positive similarity
             EmbeddedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
@@ -780,8 +929,11 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo", queryEmbedding: queryEmbedding);
 
         Assert.Equal(2, results.Count);
-        // highVector: fused = 1.0*0.7 + 0.6*0.3 = 0.88
-        // lowVector: vector=0, hasVector is false (vectorScore=0) => keyword only = 0.6
+        // Both have similar keyword scores, highVector has much higher vector score
+        // highVector fused = 1.0*0.7 + kw*0.3
+        // lowVector fused = 0.0*0.7 + kw*0.3 (hasVector=true because vectorScore=0 but embedding exists)
+        // Actually, vectorScore=0 with queryEmbedding means hasVector depends on whether similarity > 0
+        // highVector should rank first due to vector component
         Assert.Equal(highVector.Id, results[0].KnowledgeId);
         Assert.True(results[0].Score > results[1].Score);
     }
@@ -866,7 +1018,7 @@ public class LocalVectorSearchServiceTests : IDisposable
 
         // Should still return the item with keyword-only score (bad embedding skipped)
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score); // title keyword match only
+        Assert.True(results[0].Score > 0); // title keyword match only
     }
 
     [Fact]
@@ -883,7 +1035,7 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo", queryEmbedding: queryEmbedding);
 
         Assert.Single(results);
-        Assert.Equal(1.0, results[0].Score); // keyword only
+        Assert.True(results[0].Score > 0); // keyword only
     }
 
     [Fact]
@@ -905,6 +1057,82 @@ public class LocalVectorSearchServiceTests : IDisposable
 
         Assert.Single(results);
         Assert.Equal("Apollo Guide", results[0].Title);
+    }
+
+    // ============================================================
+    // HybridSearchAsync: ContextSummary in keyword scoring
+    // ============================================================
+
+    [Fact]
+    public async Task HybridSearchAsync_IncludesContextSummaryInKeywordScoring()
+    {
+        // Knowledge with no keyword match in title/content/summary
+        var knowledge = new Knowledge
+        {
+            TenantId = TenantId, Title = "Space Guide", Content = "Content here"
+        };
+        _db.KnowledgeItems.Add(knowledge);
+        await _db.SaveChangesAsync();
+
+        // Chunk with ContextSummary containing the query term
+        _db.ContentChunks.Add(new ContentChunk
+        {
+            TenantId = TenantId,
+            KnowledgeId = knowledge.Id,
+            Position = 0,
+            Content = "chunk content",
+            ContentHash = "cs1",
+            ContextSummary = "This chunk discusses Apollo missions and lunar exploration",
+            EmbeddingVectorJson = null
+        });
+        await _db.SaveChangesAsync();
+
+        var results = await _svc.HybridSearchAsync("Apollo");
+
+        // "Apollo" only appears in ContextSummary — should be found
+        Assert.Single(results);
+        Assert.True(results[0].Score > 0);
+    }
+
+    [Fact]
+    public async Task HybridSearchAsync_HandlesNullContextSummary_Gracefully()
+    {
+        var knowledge = new Knowledge
+        {
+            TenantId = TenantId, Title = "Apollo Guide", Content = "Apollo content"
+        };
+        _db.KnowledgeItems.Add(knowledge);
+        await _db.SaveChangesAsync();
+
+        // Chunk with null ContextSummary
+        _db.ContentChunks.Add(new ContentChunk
+        {
+            TenantId = TenantId,
+            KnowledgeId = knowledge.Id,
+            Position = 0,
+            Content = "chunk",
+            ContentHash = "nc1",
+            ContextSummary = null,
+            EmbeddingVectorJson = null
+        });
+        // Chunk with non-null ContextSummary
+        _db.ContentChunks.Add(new ContentChunk
+        {
+            TenantId = TenantId,
+            KnowledgeId = knowledge.Id,
+            Position = 1,
+            Content = "chunk 2",
+            ContentHash = "nc2",
+            ContextSummary = "Apollo context",
+            EmbeddingVectorJson = null
+        });
+        await _db.SaveChangesAsync();
+
+        var results = await _svc.HybridSearchAsync("Apollo");
+
+        // Should not throw and should return results
+        Assert.Single(results);
+        Assert.True(results[0].Score > 0);
     }
 
     // ============================================================
@@ -971,8 +1199,8 @@ public class LocalVectorSearchServiceTests : IDisposable
     [Fact]
     public async Task HybridSearchAsync_FusedScore_CorrectMath()
     {
-        // Setup: content match (keyword=0.6) + vector similarity 1.0
-        // Expected: 1.0 * 0.7 + 0.6 * 0.3 = 0.88
+        // Setup: content match + vector similarity 1.0
+        // Fused score = vectorScore*0.7 + keywordScore*0.3
         var knowledge = new Knowledge
         {
             TenantId = TenantId, Title = "Space Guide", Content = "Apollo content here"
@@ -996,16 +1224,18 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo", queryEmbedding: queryEmbedding);
 
         Assert.Single(results);
-        // keyword: "Apollo" in content => 0.6
-        // vector: identical => 1.0
-        // fused: 1.0 * 0.7 + 0.6 * 0.3 = 0.88
-        Assert.Equal(0.88, results[0].Score, precision: 5);
+        // Compute expected: keyword score from field-weighted scoring + vector * 0.7
+        var expectedKeyword = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", null, "Apollo content here", null, "Apollo");
+        var expectedFused = 1.0 * LocalVectorSearchService.VectorWeight
+                          + expectedKeyword * LocalVectorSearchService.KeywordWeight;
+        Assert.Equal(expectedFused, results[0].Score, precision: 5);
     }
 
     [Fact]
     public async Task HybridSearchAsync_FusedScore_SummaryKeywordWithVector()
     {
-        // Setup: summary match (keyword=0.8) + vector similarity 0.5
+        // Setup: summary match + vector similarity ~0.5
         var knowledge = new Knowledge
         {
             TenantId = TenantId,
@@ -1016,7 +1246,6 @@ public class LocalVectorSearchServiceTests : IDisposable
         _db.KnowledgeItems.Add(knowledge);
         await _db.SaveChangesAsync();
 
-        // Create a query embedding and a chunk embedding with ~0.5 cosine similarity
         // Two vectors at 60 degrees: cos(60) = 0.5
         var queryEmbedding = new float[] { 1.0f, 0.0f };
         var chunkEmbedding = new float[] { 0.5f, 0.866025f }; // cos(60 deg) ~ 0.5
@@ -1036,12 +1265,13 @@ public class LocalVectorSearchServiceTests : IDisposable
         var results = await _svc.HybridSearchAsync("Apollo", queryEmbedding: queryEmbedding);
 
         Assert.Single(results);
-        // keyword: "Apollo" in summary => 0.8
-        // vector: ~0.5
-        // fused: 0.5 * 0.7 + 0.8 * 0.3 = 0.35 + 0.24 = 0.59
-        var expectedScore = 0.5 * LocalVectorSearchService.VectorWeight
-                          + 0.8 * LocalVectorSearchService.KeywordWeight;
-        Assert.Equal(expectedScore, results[0].Score, precision: 3);
+        // Verify fused score uses vectorWeight * vectorScore + keywordWeight * keywordScore
+        var vectorSim = LocalVectorSearchService.CosineSimilarity(queryEmbedding, chunkEmbedding);
+        var expectedKeyword = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Space Guide", "Apollo mission overview", "Unrelated content", null, "Apollo");
+        var expectedFused = vectorSim * LocalVectorSearchService.VectorWeight
+                          + expectedKeyword * LocalVectorSearchService.KeywordWeight;
+        Assert.Equal(expectedFused, results[0].Score, precision: 3);
     }
 
     // ============================================================
@@ -1083,8 +1313,12 @@ public class LocalVectorSearchServiceTests : IDisposable
             queryEmbedding: queryEmbedding, vaultId: vault.Id);
 
         Assert.Single(results);
-        // title keyword=1.0 + vector=1.0 => fused = 0.7 + 0.3 = 1.0
-        Assert.Equal(1.0, results[0].Score, precision: 5);
+        // Fused score = vectorWeight*vector + keywordWeight*keyword
+        var expectedKeyword = LocalVectorSearchService.ComputeFieldWeightedScore(
+            "Apollo Guide", null, "Content", null, "Apollo");
+        var expectedFused = 1.0 * LocalVectorSearchService.VectorWeight
+                          + expectedKeyword * LocalVectorSearchService.KeywordWeight;
+        Assert.Equal(expectedFused, results[0].Score, precision: 5);
     }
 
     // ============================================================

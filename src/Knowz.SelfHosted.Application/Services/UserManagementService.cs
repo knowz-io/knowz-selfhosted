@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using Knowz.Core.Entities;
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.Application.Extensions;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Models;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -95,6 +97,19 @@ public class UserManagementService : IUserManagementService
         };
 
         _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        // Create membership for the user's home tenant
+        var membership = new UserTenantMembership
+        {
+            UserId = user.Id,
+            TenantId = request.TenantId,
+            Role = request.Role,
+            IsActive = true,
+            JoinedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.UserTenantMemberships.Add(membership);
         await _db.SaveChangesAsync();
 
         _logger.LogInformation("Created user: {Username} in tenant: {TenantId}", user.Username, user.TenantId);
@@ -191,6 +206,103 @@ public class UserManagementService : IUserManagementService
         _logger.LogInformation("Password reset for user: {UserId}", userId);
 
         return "Password reset successfully";
+    }
+
+    // --- Multi-tenant membership methods ---
+
+    public async Task<TenantMembershipDto> AddUserToTenantAsync(Guid userId, Guid tenantId, UserRole role)
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null)
+            throw new KeyNotFoundException($"User with ID '{userId}' not found.");
+
+        var tenant = await _db.Tenants.FindAsync(tenantId);
+        if (tenant is null)
+            throw new KeyNotFoundException($"Tenant with ID '{tenantId}' not found.");
+
+        var existingMembership = await _db.UserTenantMemberships
+            .AnyAsync(m => m.UserId == userId && m.TenantId == tenantId);
+        if (existingMembership)
+            throw new InvalidOperationException($"User '{userId}' is already a member of tenant '{tenantId}'.");
+
+        var membership = new UserTenantMembership
+        {
+            UserId = userId,
+            TenantId = tenantId,
+            Role = role,
+            IsActive = true,
+            JoinedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _db.UserTenantMemberships.Add(membership);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Added user {UserId} to tenant {TenantId} with role {Role}", userId, tenantId, role);
+
+        return new TenantMembershipDto
+        {
+            TenantId = tenant.Id,
+            TenantName = tenant.Name,
+            TenantSlug = tenant.Slug,
+            Role = role,
+            IsActive = true
+        };
+    }
+
+    public async Task RemoveUserFromTenantAsync(Guid userId, Guid tenantId)
+    {
+        var membership = await _db.UserTenantMemberships
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.TenantId == tenantId);
+
+        if (membership is null)
+            throw new KeyNotFoundException($"Membership not found for user '{userId}' in tenant '{tenantId}'.");
+
+        _db.UserTenantMemberships.Remove(membership);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Removed user {UserId} from tenant {TenantId}", userId, tenantId);
+    }
+
+    public async Task<TenantMembershipDto> UpdateUserTenantRoleAsync(Guid userId, Guid tenantId, UserRole role)
+    {
+        var membership = await _db.UserTenantMemberships
+            .Include(m => m.Tenant)
+            .FirstOrDefaultAsync(m => m.UserId == userId && m.TenantId == tenantId);
+
+        if (membership is null)
+            throw new KeyNotFoundException($"Membership not found for user '{userId}' in tenant '{tenantId}'.");
+
+        membership.Role = role;
+        membership.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Updated role for user {UserId} in tenant {TenantId} to {Role}", userId, tenantId, role);
+
+        return new TenantMembershipDto
+        {
+            TenantId = membership.TenantId,
+            TenantName = membership.Tenant.Name,
+            TenantSlug = membership.Tenant.Slug,
+            Role = membership.Role,
+            IsActive = membership.IsActive
+        };
+    }
+
+    public async Task<List<TenantMembershipDto>> GetUserTenantsAsync(Guid userId)
+    {
+        return await _db.UserTenantMemberships
+            .Include(m => m.Tenant)
+            .Where(m => m.UserId == userId)
+            .Select(m => new TenantMembershipDto
+            {
+                TenantId = m.TenantId,
+                TenantName = m.Tenant.Name,
+                TenantSlug = m.Tenant.Slug,
+                Role = m.Role,
+                IsActive = m.IsActive
+            })
+            .ToListAsync();
     }
 
     private static string GenerateApiKey()

@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.API.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
@@ -122,6 +123,24 @@ public static class VaultEndpoints
             var result = await svc.DeleteVaultAsync(id, ct);
             return result is not null ? Results.Ok(result) : Results.NotFound();
         }).Produces<DeleteVaultResult>().Produces(404);
+
+        group.MapGet("/{id:guid}/knowledge-item-types", async (
+            IVaultAccessService vaultAccessService,
+            HttpContext context,
+            Guid id,
+            CancellationToken ct) =>
+        {
+            var hasAccess = await HasVaultAccessAsync(context, vaultAccessService, id, ct: ct);
+            if (!hasAccess)
+                return Results.Json(new { error = "Access denied to this vault." }, statusCode: 403);
+
+            // Return all knowledge types (vault-specific filtering can be added later)
+            var types = Enum.GetValues<KnowledgeType>()
+                .Select(t => new { name = t.ToString(), value = (int)t })
+                .ToList();
+
+            return Results.Ok(new { success = true, data = types });
+        });
     }
 
     internal static Guid? GetUserIdFromContext(HttpContext context)

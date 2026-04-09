@@ -148,9 +148,15 @@ public class VaultAccessService : IVaultAccessService
             throw new InvalidOperationException($"Vault {vaultId} does not belong to tenant {tenantId}");
         }
 
-        // Validate user belongs to tenant
-        var userBelongsToTenant = await _context.Users
-            .AnyAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        // Validate user belongs to tenant (via membership or home tenant)
+        var userBelongsToTenant = await _context.UserTenantMemberships
+            .AnyAsync(m => m.UserId == userId && m.TenantId == tenantId && m.IsActive, ct);
+        if (!userBelongsToTenant)
+        {
+            // Fallback to User.TenantId for backward compat (pre-migration users)
+            userBelongsToTenant = await _context.Users
+                .AnyAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        }
         if (!userBelongsToTenant)
         {
             throw new InvalidOperationException($"User {userId} does not belong to tenant {tenantId}");
@@ -210,8 +216,15 @@ public class VaultAccessService : IVaultAccessService
     public async Task BatchSetVaultAccessAsync(
         Guid userId, Guid tenantId, List<VaultAccessGrant> grants, Guid? grantedByUserId, CancellationToken ct = default)
     {
-        // Validate user belongs to tenant
-        var userBelongsToTenant = await _context.Users.AnyAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        // Validate user belongs to tenant (via membership or home tenant)
+        var userBelongsToTenant = await _context.UserTenantMemberships
+            .AnyAsync(m => m.UserId == userId && m.TenantId == tenantId && m.IsActive, ct);
+        if (!userBelongsToTenant)
+        {
+            // Fallback to User.TenantId for backward compat (pre-migration users)
+            userBelongsToTenant = await _context.Users
+                .AnyAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        }
         if (!userBelongsToTenant)
             throw new InvalidOperationException($"User {userId} does not belong to tenant {tenantId}");
 

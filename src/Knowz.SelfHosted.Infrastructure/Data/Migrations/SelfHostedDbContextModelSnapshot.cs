@@ -37,6 +37,65 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.ToTable("KnowledgeTags");
                 });
 
+            modelBuilder.Entity("Knowz.Core.Entities.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PlatformData")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityId", "Timestamp");
+
+                    b.HasIndex("TenantId", "Timestamp");
+
+                    b.HasIndex("TenantId", "EntityType", "EntityId");
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("Knowz.Core.Entities.ContentChunk", b =>
                 {
                     b.Property<Guid>("Id")
@@ -51,6 +110,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("ContextSummary")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -59,6 +121,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.Property<string>("EmbeddingVectorJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsContextualEmbedding")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -208,6 +273,70 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.ToTable("FileRecords");
                 });
 
+            modelBuilder.Entity("Knowz.Core.Entities.GitRepository", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Branch")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("FilePatterns")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSyncAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastSyncCommitSha")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PlatformData")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RepositoryUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("VaultId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("VaultId")
+                        .IsUnique();
+
+                    b.ToTable("GitRepositories");
+                });
+
             modelBuilder.Entity("Knowz.Core.Entities.InboxItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -254,6 +383,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BriefSummary")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -456,6 +588,63 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("VaultId");
 
                     b.ToTable("KnowledgeVaults");
+                });
+
+            modelBuilder.Entity("Knowz.Core.Entities.KnowledgeVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ChangeDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("KnowledgeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlatformData")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KnowledgeId", "VersionNumber")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "KnowledgeId");
+
+                    b.ToTable("KnowledgeVersions");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Location", b =>
@@ -919,6 +1108,104 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.ToTable("EnrichmentOutbox");
                 });
 
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.PromptTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsSystemSeeded")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("MergeStrategy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PromptKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TemplateText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PromptKey")
+                        .HasDatabaseName("IX_PromptTemplates_TenantId_PromptKey");
+
+                    b.HasIndex("UserId", "PromptKey")
+                        .HasDatabaseName("IX_PromptTemplates_UserId_PromptKey");
+
+                    b.HasIndex("PromptKey", "Scope", "TenantId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PromptTemplates_Key_Scope_Tenant_User")
+                        .HasFilter("[TenantId] IS NOT NULL AND [UserId] IS NOT NULL");
+
+                    b.ToTable("PromptTemplates");
+                });
+
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.SyncTombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("LocalEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Propagated")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("PropagatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RemoteEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("VaultSyncLinkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VaultSyncLinkId", "Propagated");
+
+                    b.HasIndex("VaultSyncLinkId", "EntityType", "LocalEntityId");
+
+                    b.ToTable("SyncTombstones");
+                });
+
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserPermissions", b =>
                 {
                     b.Property<Guid>("Id")
@@ -951,6 +1238,42 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("UserPermissions");
+                });
+
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserTenantMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("UserTenantMemberships");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserVaultAccess", b =>
@@ -998,6 +1321,64 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("UserVaultAccess");
+                });
+
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.VaultSyncLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ApiKeyEncrypted")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastPullCursor")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastPushCursor")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastSyncCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastSyncError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("LastSyncStatus")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("LocalVaultId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlatformApiUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("RemoteTenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RemoteVaultId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("SyncEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocalVaultId")
+                        .IsUnique();
+
+                    b.ToTable("VaultSyncLinks");
                 });
 
             modelBuilder.Entity("KnowledgeTags", b =>
@@ -1213,6 +1594,17 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.Navigation("Vault");
                 });
 
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.SyncTombstone", b =>
+                {
+                    b.HasOne("Knowz.SelfHosted.Infrastructure.Data.Entities.VaultSyncLink", "VaultSyncLink")
+                        .WithMany()
+                        .HasForeignKey("VaultSyncLinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("VaultSyncLink");
+                });
+
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserPermissions", b =>
                 {
                     b.HasOne("Knowz.Core.Entities.User", "User")
@@ -1220,6 +1612,25 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .HasForeignKey("Knowz.SelfHosted.Infrastructure.Data.Entities.UserPermissions", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserTenantMembership", b =>
+                {
+                    b.HasOne("Knowz.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Knowz.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
 
                     b.Navigation("User");
                 });

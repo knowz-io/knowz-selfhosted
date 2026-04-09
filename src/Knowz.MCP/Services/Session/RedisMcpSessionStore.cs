@@ -24,7 +24,7 @@ public class RedisMcpSessionStore : IMcpSessionStore
         _cache = cache;
         _logger = logger;
 
-        var timeoutHours = configuration.GetValue<int>("MCP_SESSION_TIMEOUT_HOURS", 168);
+        var timeoutHours = configuration.GetValue<int>("MCP_SESSION_TIMEOUT_HOURS", 720); // 30 days default
         _sessionTimeout = TimeSpan.FromHours(timeoutHours);
 
         _logger.LogInformation("MCP session store initialized with {TimeoutHours}h timeout", timeoutHours);
@@ -69,23 +69,13 @@ public class RedisMcpSessionStore : IMcpSessionStore
 
         try
         {
+            // Redis SlidingExpiration auto-extends TTL on each Get — no manual re-write needed
             var json = _cache.GetString(KeyPrefix + sessionId);
             if (json != null)
             {
                 var data = JsonSerializer.Deserialize<SessionData>(json);
-                if (data?.ApiKey != null)
-                {
-                    data.LastActivity = DateTime.UtcNow;
-                    var updatedJson = JsonSerializer.Serialize(data);
-                    var options = new DistributedCacheEntryOptions
-                    {
-                        SlidingExpiration = _sessionTimeout
-                    };
-                    _cache.SetString(KeyPrefix + sessionId, updatedJson, options);
-                    _redisAvailable = true;
-
-                    return data.ApiKey;
-                }
+                _redisAvailable = true;
+                return data?.ApiKey;
             }
         }
         catch (Exception ex)

@@ -1,3 +1,4 @@
+using Knowz.MCP.Services;
 using Knowz.MCP.Services.Session;
 
 namespace Knowz.MCP.Middleware;
@@ -281,6 +282,16 @@ public class McpAuthMiddleware
                 var fingerprint = GetClientFingerprint(context);
                 sessionStore.StoreFingerprint(fingerprint, sessionId);
 
+                // Sliding cookie extension: refresh the session cookie on every authenticated request
+                // so active clients never have their cookies expire mid-use
+                context.Response.Cookies.Append("mcp_session", sessionId, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.None,
+                    MaxAge = OAuthService.SessionCookieMaxAge
+                });
+
                 _logger.LogInformation("Stored API key and fingerprint in session store for session {SessionId}", sessionId);
             }
         }
@@ -296,6 +307,21 @@ public class McpAuthMiddleware
         if (!string.IsNullOrWhiteSpace(sessionId))
         {
             context.Items["McpSessionId"] = sessionId;
+        }
+
+        // Deployment resilience: if the client sends a Mcp-Session-Id that the SDK
+        // doesn't recognize (container restarted), strip it so the SDK creates a new
+        // session instead of returning 404. Auth is preserved via Redis-backed session store.
+        if (context.Items["ApiKey"] is string && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            var tracker = context.RequestServices.GetService<IActiveSessionTracker>();
+            if (tracker != null && !tracker.IsKnown(sessionId))
+            {
+                context.Request.Headers.Remove("Mcp-Session-Id");
+                _logger.LogInformation(
+                    "Stripped stale Mcp-Session-Id {SessionId} after deployment — forcing transparent session re-creation",
+                    sessionId);
+            }
         }
 
         // Vault scoping

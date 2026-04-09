@@ -59,3 +59,9 @@ public record UpdateCommentRequest(
     string? Sentiment = null);
 
 public record AmendKnowledgeRequest(string Instruction);
+
+public record VerifyApiKeyRequest(string? ApiKey = null);
+
+public record QuickCreateKnowledgeRequest(
+    string Content,
+    string? VaultId = null);

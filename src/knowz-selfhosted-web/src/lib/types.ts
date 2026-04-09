@@ -179,6 +179,32 @@ export interface LoginResponse {
   user: UserDto
 }
 
+export interface TenantMembershipDto {
+  tenantId: string
+  tenantName: string
+  tenantSlug: string
+  role: number
+  isActive: boolean
+}
+
+export interface MultiTenantLoginResponse {
+  token: string
+  expiresAt: string | null
+  user: UserDto | null
+  requiresTenantSelection: boolean
+  userId: string | null
+  availableTenants: TenantMembershipDto[]
+}
+
+export interface SelectTenantData {
+  userId: string
+  tenantId: string
+}
+
+export interface SwitchTenantData {
+  tenantId: string
+}
+
 export interface CreateTenantData {
   name: string
   slug: string
@@ -503,6 +529,61 @@ export interface PromptTemplateDto {
   isSystemSeeded: boolean
   updatedAt: string
   lastModifiedBy: string | null
+}
+
+// --- Knowledge Versioning Types ---
+
+export interface KnowledgeVersion {
+  id: string
+  knowledgeId: string
+  versionNumber: number
+  title: string
+  content: string
+  contentType?: string
+  createdAt: string
+  createdByUserId?: string
+  changeDescription?: string
+}
+
+// --- Audit Log Types ---
+
+export interface AuditLogEntry {
+  id: string
+  entityType: string
+  entityId: string
+  action: string
+  userId?: string
+  userEmail?: string
+  timestamp: string
+  details?: string
+}
+
+export interface PaginatedResult<T> {
+  items: T[]
+  page: number
+  pageSize: number
+  totalItems: number
+  totalPages: number
+}
+
+// --- Git Sync Types ---
+
+export interface GitSyncStatus {
+  id: string
+  vaultId: string
+  repositoryUrl: string
+  branch: string
+  lastSyncCommitSha?: string
+  lastSyncAt?: string
+  status: string
+  filePatterns?: string
+  errorMessage?: string
+}
+
+export interface GitSyncHistoryEntry {
+  action: string
+  timestamp: string
+  details?: string
 }
 
 // --- SSE Streaming Types ---

@@ -1,5 +1,7 @@
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Knowz.SelfHosted.API.Endpoints;
@@ -51,6 +53,61 @@ public static class InternalMcpEndpoints
                 logger.LogInformation("Generated API key for user {UserId} via MCP authenticate", user.Id);
             }
 
+            // Resolve tenant based on memberships
+            var activeMemberships = await db.UserTenantMemberships
+                .Include(m => m.Tenant)
+                .Where(m => m.UserId == user.Id && m.IsActive)
+                .ToListAsync();
+
+            if (request.TenantId.HasValue)
+            {
+                // Caller specified a tenant - validate membership
+                var membership = activeMemberships.FirstOrDefault(m => m.TenantId == request.TenantId.Value);
+                if (membership == null)
+                {
+                    return Results.Json(
+                        new { success = false, error = "User does not have access to the specified tenant" },
+                        statusCode: 403);
+                }
+
+                return Results.Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        apiKey,
+                        email = user.Email,
+                        displayName = user.DisplayName,
+                        userId = user.Id,
+                        tenantId = membership.TenantId,
+                    }
+                });
+            }
+
+            if (activeMemberships.Count >= 2)
+            {
+                // Multiple tenants - client must select
+                return Results.Ok(new
+                {
+                    success = true,
+                    requiresTenantSelection = true,
+                    data = new
+                    {
+                        apiKey,
+                        userId = user.Id,
+                        tenants = activeMemberships.Select(m => new
+                        {
+                            tenantId = m.TenantId,
+                            tenantName = m.Tenant?.Name ?? "Unknown",
+                            role = m.Role.ToString(),
+                        })
+                    }
+                });
+            }
+
+            // 0 or 1 membership - proceed with single tenant
+            var resolvedTenantId = activeMemberships.FirstOrDefault()?.TenantId ?? user.TenantId;
+
             return Results.Ok(new
             {
                 success = true,
@@ -60,6 +117,7 @@ public static class InternalMcpEndpoints
                     email = user.Email,
                     displayName = user.DisplayName,
                     userId = user.Id,
+                    tenantId = resolvedTenantId,
                 }
             });
         }
@@ -131,6 +189,19 @@ public static class InternalMcpEndpoints
             };
 
             db.Users.Add(user);
+            await db.SaveChangesAsync();
+
+            // Create tenant membership for auto-provisioned user
+            var membership = new UserTenantMembership
+            {
+                UserId = user.Id,
+                TenantId = tenant.Id,
+                Role = UserRole.User,
+                IsActive = true,
+                JoinedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.UserTenantMemberships.Add(membership);
             await db.SaveChangesAsync();
 
             user.Tenant = tenant;
@@ -227,6 +298,7 @@ public class McpAuthenticateRequest
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+    public Guid? TenantId { get; set; }
 }
 
 public class SSOResolveRequest

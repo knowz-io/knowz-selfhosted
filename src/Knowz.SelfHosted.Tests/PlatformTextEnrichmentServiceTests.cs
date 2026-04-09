@@ -4,6 +4,7 @@ using System.Text.Json;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -13,6 +14,7 @@ public class PlatformTextEnrichmentServiceTests
 {
     private readonly ILogger<PlatformTextEnrichmentService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly PromptResolutionService _promptResolution;
 
     public PlatformTextEnrichmentServiceTests()
     {
@@ -24,6 +26,11 @@ public class PlatformTextEnrichmentServiceTests
                 ["KnowzPlatform:ApiKey"] = "test-api-key-123"
             })
             .Build();
+
+        // Create a PromptResolutionService that returns defaults (no DB)
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        var promptLogger = Substitute.For<ILogger<PromptResolutionService>>();
+        _promptResolution = new PromptResolutionService(scopeFactory, promptLogger);
     }
 
     private PlatformTextEnrichmentService CreateService(MockHttpMessageHandler handler)
@@ -31,7 +38,7 @@ public class PlatformTextEnrichmentServiceTests
         var httpClientFactory = Substitute.For<IHttpClientFactory>();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.knowz.io") };
         httpClientFactory.CreateClient("KnowzPlatformClient").Returns(httpClient);
-        return new PlatformTextEnrichmentService(httpClientFactory, _configuration, _logger);
+        return new PlatformTextEnrichmentService(httpClientFactory, _configuration, _promptResolution, _logger);
     }
 
     private static string WrapInApiResponse<T>(T data) =>
