@@ -62,6 +62,7 @@ builder.Services.AddSelfHostedDatabase(builder.Configuration);
 builder.Services.AddSelfHostedSearch(builder.Configuration);
 builder.Services.AddSelfHostedOpenAI(builder.Configuration);
 builder.Services.AddSelfHostedFileStorage(builder.Configuration);
+builder.Services.AddDocumentIntelligence(builder.Configuration);
 builder.Services.AddSelfHostedApplication();
 
 // Enrichment pipeline: bounded channel + background service

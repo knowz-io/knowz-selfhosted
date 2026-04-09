@@ -5,6 +5,7 @@ using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Knowz.SelfHosted.Application.Extensions;
 
@@ -49,15 +50,34 @@ public static class ApplicationServiceExtensions
         services.AddHttpClient("PlatformSync");
 
         // Content extraction — composite pattern (routes by content type)
+        // Native extractors handle common formats directly via OpenXml/PdfPig
         services.AddScoped<TextFileContentExtractor>();
         services.AddScoped<PdfContentExtractor>();
         services.AddScoped<DocxContentExtractor>();
-        services.AddScoped<IFileContentExtractor>(sp => new CompositeContentExtractor(new IFileContentExtractor[]
+        services.AddScoped<ExcelContentExtractor>();
+        services.AddScoped<PowerPointContentExtractor>();
+        services.AddScoped<ImageContentExtractor>();
+        // DocumentIntelligenceContentExtractor is registered conditionally by AddDocumentIntelligence()
+
+        services.AddScoped<IFileContentExtractor>(sp =>
         {
-            sp.GetRequiredService<TextFileContentExtractor>(),
-            sp.GetRequiredService<PdfContentExtractor>(),
-            sp.GetRequiredService<DocxContentExtractor>()
-        }));
+            var extractors = new List<IFileContentExtractor>
+            {
+                sp.GetRequiredService<TextFileContentExtractor>(),
+                sp.GetRequiredService<PdfContentExtractor>(),
+                sp.GetRequiredService<DocxContentExtractor>(),
+                sp.GetRequiredService<ExcelContentExtractor>(),
+                sp.GetRequiredService<PowerPointContentExtractor>(),
+                sp.GetRequiredService<ImageContentExtractor>()
+            };
+
+            // Document Intelligence as fallback for types not handled natively (e.g. scanned PDFs, legacy formats)
+            var diExtractor = sp.GetService<DocumentIntelligenceContentExtractor>();
+            if (diExtractor != null)
+                extractors.Add(diExtractor);
+
+            return new CompositeContentExtractor(extractors);
+        });
 
         // Enrichment outbox writer
         services.AddScoped<IEnrichmentOutboxWriter, EnrichmentOutboxWriter>();

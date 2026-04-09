@@ -28,6 +28,7 @@ param(
     [switch]$AllowAllIps,
     [switch]$SkipKeyVault,
     [switch]$SkipMonitoring,
+    [switch]$SkipDocumentIntelligence,
     [switch]$DisableStorageSharedKey,
 
     # Container Apps deployment (opt-in)
@@ -58,6 +59,7 @@ Write-Host "Search Region:  $SearchLocation"
 Write-Host "Embedding:      $EmbeddingModel"
 if (-not $SkipKeyVault) { Write-Host "Key Vault:      Enabled" -ForegroundColor Green }
 if (-not $SkipMonitoring) { Write-Host "Monitoring:     Enabled" -ForegroundColor Green }
+if (-not $SkipDocumentIntelligence) { Write-Host "Doc Intel:      Enabled" -ForegroundColor Green }
 if ($DisableStorageSharedKey) {
     Write-Host "Storage:        Shared key DISABLED" -ForegroundColor DarkYellow
     Write-Host "  WARNING: Storage shared key access disabled. Connection strings using AccountKey will not work." -ForegroundColor DarkYellow
@@ -114,7 +116,18 @@ if (-not $SkipKeyVault) {
     }
 }
 
-if (-not $conflicting -and -not $deletedVaults) {
+# Check for soft-deleted Form Recognizer (Document Intelligence)
+if (-not $SkipDocumentIntelligence) {
+    $diName = "$Prefix-docintel-$Location"
+    $conflictingDI = $deletedAccounts | Where-Object { $_.name -eq $diName }
+    if ($conflictingDI) {
+        Write-Host "  Purging soft-deleted Document Intelligence '$diName'..." -ForegroundColor DarkYellow
+        az cognitiveservices account purge --name $diName --resource-group $ResourceGroup --location $Location 2>$null
+        Write-Host "  Purged." -ForegroundColor Green
+    }
+}
+
+if (-not $conflicting -and -not $deletedVaults -and -not $conflictingDI) {
     Write-Host "  No conflicting soft-deleted resources." -ForegroundColor Green
 }
 
@@ -148,6 +161,7 @@ $deployBody = @{
             allowAllIps = @{ value = [bool]$AllowAllIps }
             deployKeyVault = @{ value = -not [bool]$SkipKeyVault }
             deployMonitoring = @{ value = -not [bool]$SkipMonitoring }
+            deployDocumentIntelligence = @{ value = -not [bool]$SkipDocumentIntelligence }
             storageAllowSharedKeyAccess = @{ value = -not [bool]$DisableStorageSharedKey }
             deployContainerApps = @{ value = [bool]$DeployContainerApps }
             imageTag = @{ value = $ImageTag }
@@ -232,10 +246,14 @@ $keyVaultUri = $outputs.keyVaultUri.value
 $appInsightsConnectionString = $outputs.appInsightsConnectionString.value
 $appInsightsName = $outputs.appInsightsName.value
 
+$docIntelEndpoint = $outputs.documentIntelligenceEndpoint.value
+$docIntelName = $outputs.documentIntelligenceName.value
+
 Write-Host "  Outputs extracted:" -ForegroundColor DarkGray
 Write-Host "    Search: $searchEndpoint" -ForegroundColor DarkGray
 Write-Host "    OpenAI: $openAiEndpoint" -ForegroundColor DarkGray
 Write-Host "    SQL:    $sqlServerFqdn" -ForegroundColor DarkGray
+if ($docIntelEndpoint) { Write-Host "    Doc Intel: $docIntelEndpoint" -ForegroundColor DarkGray }
 if ($keyVaultUri) { Write-Host "    Key Vault: $keyVaultUri" -ForegroundColor DarkGray }
 if ($appInsightsName) { Write-Host "    App Insights: $appInsightsName" -ForegroundColor DarkGray }
 
@@ -262,6 +280,11 @@ if ($openAiResourceName -ne "external") {
 
 $storageKeys = (az storage account keys list --account-name $storageAccountName --resource-group $ResourceGroup --query "[0].value" -o tsv 2>$null)
 if (-not $storageKeys) { throw "Failed to retrieve Storage account key" }
+
+if ($docIntelName -ne "external" -and $docIntelName) {
+    $docIntelKey = (az cognitiveservices account keys list --name $docIntelName --resource-group $ResourceGroup --query key1 -o tsv 2>$null)
+    if (-not $docIntelKey) { Write-Host "  Warning: Failed to retrieve Document Intelligence key" -ForegroundColor DarkYellow }
+}
 
 # Reconstruct connection strings from non-secret outputs + retrieved secrets
 $sqlConnectionString = "Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Persist Security Info=False;User ID=sqladmin;Password=${SqlPassword};MultipleActiveResultSets=True;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
@@ -436,6 +459,14 @@ if ($appInsightsConnectionString) {
     }
 }
 
+# Add Document Intelligence section
+if ($docIntelEndpoint) {
+    $localSettings.AzureDocumentIntelligence = @{
+        Endpoint = $docIntelEndpoint
+        ApiKey = $docIntelKey
+    }
+}
+
 # Add Storage section with Azure connection string
 if ($storageConnection) {
     $localSettings.Storage = @{
@@ -501,6 +532,9 @@ Write-Host "  SQL Server:     $sqlServerFqdn"
 Write-Host "  OpenAI:         $openAiEndpoint"
 Write-Host "  AI Search:      $searchEndpoint"
 Write-Host "  Storage:        $storageAccountName"
+if ($docIntelEndpoint) {
+    Write-Host "  Doc Intel:      $docIntelEndpoint" -ForegroundColor White
+}
 if ($keyVaultName) {
     Write-Host "  Key Vault:      $keyVaultUri" -ForegroundColor White
 }

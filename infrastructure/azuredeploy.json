@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "13841542075120931143"
+      "templateHash": "14460149205335989523"
     }
   },
   "parameters": {
@@ -55,6 +55,27 @@
       "defaultValue": "",
       "metadata": {
         "description": "External OpenAI API key (required if deployOpenAI is false)"
+      }
+    },
+    "deployDocumentIntelligence": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Azure Document Intelligence for advanced document extraction (scanned PDFs, images, legacy Office formats)"
+      }
+    },
+    "externalDocIntelEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Document Intelligence endpoint (required if deployDocumentIntelligence is false)"
+      }
+    },
+    "externalDocIntelKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Document Intelligence API key (required if deployDocumentIntelligence is false)"
       }
     },
     "searchSku": {
@@ -190,7 +211,7 @@
     },
     "caDeploymentName": {
       "type": "string",
-      "defaultValue": "gpt-4o",
+      "defaultValue": "[parameters('chatDeploymentName')]",
       "metadata": {
         "description": "Chat model deployment name for Container Apps config"
       }
@@ -324,6 +345,22 @@
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.CognitiveServices/accounts/deployments', format('{0}-openai-{1}', parameters('prefix'), parameters('location')), 'gpt-5-mini')]"
       ]
+    },
+    {
+      "condition": "[parameters('deployDocumentIntelligence')]",
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "kind": "FormRecognizer",
+      "sku": {
+        "name": "S0"
+      },
+      "properties": {
+        "publicNetworkAccess": "Enabled",
+        "customSubDomainName": "[format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))]"
+      }
     },
     {
       "type": "Microsoft.Sql/servers",
@@ -523,6 +560,32 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location')))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureDocumentIntelligence--Endpoint')]",
+      "properties": {
+        "value": "[if(parameters('deployDocumentIntelligence'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalDocIntelEndpoint'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location')))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureDocumentIntelligence--ApiKey')]",
+      "properties": {
+        "value": "[if(parameters('deployDocumentIntelligence'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalDocIntelKey'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
       ]
     },
@@ -806,6 +869,10 @@
                   "secretRef": "storage-connection"
                 },
                 {
+                  "name": "Storage__Azure__ContainerName",
+                  "value": "selfhosted-files"
+                },
+                {
                   "name": "SelfHosted__ApiKey",
                   "secretRef": "selfhosted-apikey"
                 },
@@ -824,6 +891,14 @@
                 {
                   "name": "MCP__ServiceKey",
                   "value": "[variables('mcpServiceKey')]"
+                },
+                {
+                  "name": "AzureDocumentIntelligence__Endpoint",
+                  "value": "[if(parameters('deployDocumentIntelligence'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalDocIntelEndpoint'))]"
+                },
+                {
+                  "name": "AzureDocumentIntelligence__ApiKey",
+                  "value": "[if(parameters('deployDocumentIntelligence'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalDocIntelKey'))]"
                 }
               ]
             }
@@ -837,6 +912,7 @@
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.App/managedEnvironments', format('{0}-cae', parameters('prefix')))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))]",
         "[resourceId('Microsoft.Search/searchServices', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation')))]",
         "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]",
@@ -938,6 +1014,10 @@
                 {
                   "name": "API_UPSTREAM",
                   "value": "[reference(resourceId('Microsoft.App/containerApps', format('{0}-api', parameters('prefix'))), '2024-03-01').configuration.ingress.fqdn]"
+                },
+                {
+                  "name": "API_PROTOCOL",
+                  "value": "https"
                 }
               ]
             }
@@ -986,6 +1066,14 @@
     "embeddingDeploymentName": {
       "type": "string",
       "value": "[parameters('embeddingDeploymentName')]"
+    },
+    "documentIntelligenceEndpoint": {
+      "type": "string",
+      "value": "[if(parameters('deployDocumentIntelligence'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalDocIntelEndpoint'))]"
+    },
+    "documentIntelligenceName": {
+      "type": "string",
+      "value": "[if(parameters('deployDocumentIntelligence'), format('{0}-docintel-{1}', parameters('prefix'), parameters('location')), 'external')]"
     },
     "sqlServerFqdn": {
       "type": "string",
