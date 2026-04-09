@@ -599,7 +599,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             db.KnowledgeItems.Add(new Knowledge
             {
                 Id = knowledgeId, TenantId = TenantId,
-                Title = "Good Title", Content = "Only this content that needs summarization by the enrichment service"
+                Title = "Good Title", Content = "Only this content that needs summarization by the enrichment service and it must be long enough to exceed the short content threshold of twenty words for proper testing"
             });
             db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
             {
@@ -619,7 +619,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
 
         // Verify SummarizeAsync was called with just knowledge content
         await _enrichmentService.Received(1).SummarizeAsync(
-            "Only this content that needs summarization by the enrichment service",
+            "Only this content that needs summarization by the enrichment service and it must be long enough to exceed the short content threshold of twenty words for proper testing",
             Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
