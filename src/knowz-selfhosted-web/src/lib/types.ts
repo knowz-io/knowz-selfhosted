@@ -3,6 +3,7 @@ export interface KnowledgeItem {
   title: string
   content: string
   summary?: string
+  briefSummary?: string
   type: string
   source?: string
   filePath?: string
@@ -112,6 +113,7 @@ export interface CreateKnowledgeData {
   vaultId?: string
   tags?: string[]
   source?: string
+  attachmentFileRecordIds?: string[]
 }
 
 export interface UpdateKnowledgeData {

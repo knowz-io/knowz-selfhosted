@@ -699,6 +699,7 @@ public class KnowledgeService
 
     private static KnowledgeItemResponse MapToResponse(Knowledge item) => new(
         item.Id, item.Title, item.Content, item.Summary,
+        item.BriefSummary,
         item.Type.ToString(), item.Source, item.FilePath,
         item.Topic != null ? new TopicRef(item.Topic.Id, item.Topic.Name) : null,
         item.Tags.Select(t => t.Name),

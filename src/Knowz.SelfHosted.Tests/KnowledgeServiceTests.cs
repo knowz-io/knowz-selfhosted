@@ -255,4 +255,43 @@ public class KnowledgeServiceTests : IDisposable
         Assert.Single(tags);
         Assert.Equal(existingTag.Id, tags[0].Id);
     }
+
+    // --- BriefSummary: Exposed in KnowledgeItemResponse ---
+
+    [Fact]
+    public async Task GetKnowledgeItemAsync_ReturnsBriefSummary_WhenSet()
+    {
+        var item = new Knowledge
+        {
+            TenantId = TenantId,
+            Title = "Test",
+            Content = "Content",
+            BriefSummary = "A brief summary of the content"
+        };
+        _db.KnowledgeItems.Add(item);
+        await _db.SaveChangesAsync();
+
+        var result = await _svc.GetKnowledgeItemAsync(item.Id, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("A brief summary of the content", result!.BriefSummary);
+    }
+
+    [Fact]
+    public async Task GetKnowledgeItemAsync_ReturnsNullBriefSummary_WhenNotSet()
+    {
+        var item = new Knowledge
+        {
+            TenantId = TenantId,
+            Title = "Test",
+            Content = "Content"
+        };
+        _db.KnowledgeItems.Add(item);
+        await _db.SaveChangesAsync();
+
+        var result = await _svc.GetKnowledgeItemAsync(item.Id, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Null(result!.BriefSummary);
+    }
 }

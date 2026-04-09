@@ -1,11 +1,20 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
-import { ArrowLeft } from 'lucide-react'
-import { formatMarkdown } from '../lib/format-markdown'
+import { ArrowLeft, Upload, X, Loader2, Paperclip, CheckCircle2, AlertCircle } from 'lucide-react'
+import MarkdownContent from '../components/MarkdownContent'
+import { formatFileSize } from '../lib/format-utils'
 
 const KNOWLEDGE_TYPES = ['Note', 'Document', 'Email', 'Image', 'Audio', 'Video', 'Code', 'Link']
+
+interface PendingFile {
+  id: string
+  file: File
+  fileRecordId?: string
+  uploading: boolean
+  error?: string
+}
 
 export default function KnowledgeCreatePage() {
   const navigate = useNavigate()
@@ -19,15 +28,97 @@ export default function KnowledgeCreatePage() {
   const [source, setSource] = useState('')
   const [validationError, setValidationError] = useState('')
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write')
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const vaults = useQuery({
     queryKey: ['vaults', 'create'],
     queryFn: () => api.listVaults(false),
   })
 
+  const isAnyUploading = pendingFiles.some((f) => f.uploading)
+
+  const uploadFile = useCallback(async (pendingFile: PendingFile) => {
+    setPendingFiles((prev) =>
+      prev.map((f) => (f.id === pendingFile.id ? { ...f, uploading: true, error: undefined } : f)),
+    )
+
+    try {
+      const result = await api.uploadFile(pendingFile.file)
+      setPendingFiles((prev) =>
+        prev.map((f) =>
+          f.id === pendingFile.id ? { ...f, uploading: false, fileRecordId: result.fileRecordId } : f,
+        ),
+      )
+    } catch (err) {
+      setPendingFiles((prev) =>
+        prev.map((f) =>
+          f.id === pendingFile.id
+            ? { ...f, uploading: false, error: err instanceof Error ? err.message : 'Upload failed' }
+            : f,
+        ),
+      )
+    }
+  }, [])
+
+  const addFiles = useCallback(
+    (files: FileList | File[]) => {
+      const newPendingFiles: PendingFile[] = Array.from(files).map((file) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        uploading: false,
+      }))
+
+      setPendingFiles((prev) => [...prev, ...newPendingFiles])
+
+      // Start uploading each file immediately
+      newPendingFiles.forEach((pf) => uploadFile(pf))
+    },
+    [uploadFile],
+  )
+
+  const removeFile = useCallback((id: string) => {
+    setPendingFiles((prev) => prev.filter((f) => f.id !== id))
+  }, [])
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      addFiles(e.target.files)
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setIsDragOver(false)
+      if (e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files)
+      }
+    },
+    [addFiles],
+  )
+
   const createMut = useMutation({
-    mutationFn: () =>
-      api.createKnowledge({
+    mutationFn: () => {
+      const completedFileRecordIds = pendingFiles
+        .filter((f) => f.fileRecordId)
+        .map((f) => f.fileRecordId!)
+
+      return api.createKnowledge({
         title: title || undefined,
         content,
         type,
@@ -37,7 +128,9 @@ export default function KnowledgeCreatePage() {
           .map((t) => t.trim())
           .filter(Boolean),
         source: source || undefined,
-      }),
+        attachmentFileRecordIds: completedFileRecordIds.length > 0 ? completedFileRecordIds : undefined,
+      })
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['knowledge'] })
       navigate(`/knowledge/${data.id}`)
@@ -117,10 +210,7 @@ export default function KnowledgeCreatePage() {
             ) : (
               <div className="px-3 py-2 bg-card min-h-[288px]">
                 {content.trim() ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: formatMarkdown(content) }}
-                  />
+                  <MarkdownContent content={content} />
                 ) : (
                   <p className="text-muted-foreground text-sm italic">
                     Nothing to preview
@@ -131,6 +221,80 @@ export default function KnowledgeCreatePage() {
           </div>
           {validationError && (
             <p className="text-red-600 dark:text-red-400 text-sm mt-1">{validationError}</p>
+          )}
+        </div>
+
+        {/* File Upload Zone */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Attachments</label>
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+              isDragOver
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary/50 hover:bg-muted/30'
+            }`}
+          >
+            <Upload size={24} className="mx-auto text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Click to upload</span> or drag and drop
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Files will be uploaded immediately and attached on save
+            </p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Pending files list */}
+          {pendingFiles.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {pendingFiles.map((pf) => (
+                <div
+                  key={pf.id}
+                  className="flex items-center gap-3 px-3 py-2 bg-card border border-border/60 rounded-lg"
+                >
+                  <Paperclip size={14} className="text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{pf.file.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatFileSize(pf.file.size)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {pf.uploading && (
+                      <Loader2 size={14} className="animate-spin text-primary" />
+                    )}
+                    {pf.fileRecordId && !pf.uploading && (
+                      <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />
+                    )}
+                    {pf.error && (
+                      <span className="flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400">
+                        <AlertCircle size={12} />
+                        {pf.error}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeFile(pf.id)
+                      }}
+                      className="p-1 text-muted-foreground hover:text-red-600 rounded transition-colors"
+                      title="Remove"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -193,10 +357,10 @@ export default function KnowledgeCreatePage() {
 
         <button
           type="submit"
-          disabled={createMut.isPending}
+          disabled={createMut.isPending || isAnyUploading}
           className="px-6 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
-          {createMut.isPending ? 'Creating...' : 'Create'}
+          {createMut.isPending ? 'Creating...' : isAnyUploading ? 'Uploading files...' : 'Create'}
         </button>
       </form>
     </div>
