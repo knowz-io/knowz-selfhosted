@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Sparkles, Tag, Info, Paperclip, Calendar } from 'lucide-react'
+import { Tag, Info, Paperclip, Calendar, FolderOpen } from 'lucide-react'
 import SidebarCard from './SidebarCard'
 
 interface DetailSidebarProps {
@@ -16,31 +16,41 @@ interface DetailSidebarProps {
 }
 
 export default function DetailSidebar({
-  briefSummary,
   tags,
   type,
   vaults,
   source,
   createdAt,
   updatedAt,
-  isIndexed,
-  indexedAt,
   attachmentCount,
 }: DetailSidebarProps) {
   return (
     <div className="space-y-3">
-      {/* Brief Summary */}
-      {briefSummary && (
-        <SidebarCard
-          title="AI Summary"
-          icon={<Sparkles size={12} />}
-          defaultOpen
-        >
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {briefSummary}
-          </p>
-        </SidebarCard>
-      )}
+      {/* Vault */}
+      <SidebarCard
+        title="Vault"
+        icon={<FolderOpen size={12} />}
+        defaultOpen
+      >
+        {vaults.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {vaults.map((v) => (
+              <Link
+                key={v.id}
+                to={`/vaults/${v.id}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full hover:underline"
+              >
+                {v.name}
+                {v.isPrimary && (
+                  <span className="text-[9px] text-blue-500 dark:text-blue-400">(primary)</span>
+                )}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[10px] text-muted-foreground">No vault assigned</p>
+        )}
+      </SidebarCard>
 
       {/* Tags */}
       <SidebarCard
@@ -79,23 +89,6 @@ export default function DetailSidebar({
             </dd>
           </div>
 
-          {vaults.length > 0 && (
-            <div>
-              <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Vault</dt>
-              <dd className="mt-0.5 flex flex-wrap gap-1">
-                {vaults.map((v) => (
-                  <Link
-                    key={v.id}
-                    to={`/vaults/${v.id}`}
-                    className="text-blue-600 dark:text-blue-400 hover:underline text-[11px]"
-                  >
-                    {v.name}
-                  </Link>
-                ))}
-              </dd>
-            </div>
-          )}
-
           {source && (
             <div>
               <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Source</dt>
@@ -116,24 +109,6 @@ export default function DetailSidebar({
             <dd className="mt-0.5 flex items-center gap-1 text-muted-foreground">
               <Calendar size={10} />
               {new Date(updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-            </dd>
-          </div>
-
-          <div>
-            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Enrichment</dt>
-            <dd className="mt-0.5">
-              {isIndexed ? (
-                <span className="text-green-600 dark:text-green-400 text-[11px]">
-                  Indexed
-                  {indexedAt && (
-                    <span className="text-muted-foreground ml-1">
-                      {new Date(indexedAt).toLocaleDateString()}
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-muted-foreground text-[11px]">Pending</span>
-              )}
             </dd>
           </div>
         </dl>

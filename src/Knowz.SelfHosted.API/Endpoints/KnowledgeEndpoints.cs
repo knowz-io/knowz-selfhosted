@@ -3,7 +3,10 @@ using Knowz.SelfHosted.API.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Services;
+using Knowz.SelfHosted.Infrastructure.Data;
+using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace Knowz.SelfHosted.API.Endpoints;
 
@@ -428,6 +431,54 @@ public static class KnowledgeEndpoints
                 }
             });
         }).Produces<object>(200).Produces(400);
+
+        group.MapGet("/{id:guid}/enrichment-status", async (
+            SelfHostedDbContext db,
+            Guid id,
+            CancellationToken ct) =>
+        {
+            // Check knowledge item exists
+            var knowledge = await db.KnowledgeItems
+                .AsNoTracking()
+                .Where(k => k.Id == id)
+                .Select(k => new { k.IsIndexed, k.IndexedAt, k.UpdatedAt })
+                .FirstOrDefaultAsync(ct);
+
+            if (knowledge == null)
+                return Results.NotFound(new { error = "Knowledge item not found" });
+
+            // Check enrichment outbox for the latest status
+            var outboxItem = await db.EnrichmentOutbox
+                .AsNoTracking()
+                .Where(e => e.KnowledgeId == id)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+
+            string status;
+            if (outboxItem != null)
+            {
+                status = outboxItem.Status switch
+                {
+                    EnrichmentStatus.Pending => "pending",
+                    EnrichmentStatus.Processing => "processing",
+                    EnrichmentStatus.Completed => "completed",
+                    EnrichmentStatus.Failed => "failed",
+                    _ => "pending"
+                };
+            }
+            else
+            {
+                // No outbox entry: infer from knowledge item state
+                status = knowledge.IsIndexed ? "completed" : "pending";
+            }
+
+            return Results.Ok(new
+            {
+                status,
+                isIndexed = knowledge.IsIndexed,
+                updatedAt = knowledge.UpdatedAt != default ? knowledge.UpdatedAt.ToString("o") : knowledge.IndexedAt?.ToString("o")
+            });
+        }).Produces<object>().Produces(404);
     }
 
     /// <summary>

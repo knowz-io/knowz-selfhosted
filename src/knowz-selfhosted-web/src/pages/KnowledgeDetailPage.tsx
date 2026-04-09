@@ -5,12 +5,14 @@ import { api, ApiError } from '../lib/api-client'
 import {
   ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload,
   Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight,
-  Sparkles, FileText, PanelRightClose, PanelRightOpen,
+  Sparkles, FileText, PanelRightClose, PanelRightOpen, Eye,
 } from 'lucide-react'
 import CommentSection from '../components/CommentSection'
 import MarkdownContent from '../components/MarkdownContent'
 import ContentTabs from '../components/ContentTabs'
 import DetailSidebar from '../components/DetailSidebar'
+import EnrichmentBanner from '../components/EnrichmentBanner'
+import AttachmentViewer from '../components/AttachmentViewer'
 import type { TabId } from '../components/ContentTabs'
 import type { FileMetadataDto, KnowledgeVersion } from '../lib/types'
 import { formatFileSize } from '../lib/format-utils'
@@ -33,6 +35,7 @@ export default function KnowledgeDetailPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null)
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<number | null>(null)
+  const [viewingAttachment, setViewingAttachment] = useState<FileMetadataDto | null>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -58,6 +61,39 @@ export default function KnowledgeDetailPage() {
     queryFn: () => api.getVersionHistory(id!),
     enabled: !!id && activeTab === 'history',
   })
+
+  // Enrichment status polling — resilient to 404 if endpoint not yet deployed
+  const { data: enrichmentStatus } = useQuery({
+    queryKey: ['enrichment-status', id],
+    queryFn: async () => {
+      try {
+        return await api.getEnrichmentStatus(id!)
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return null
+        }
+        throw err
+      }
+    },
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'pending' || status === 'processing' ? 3000 : false
+    },
+    enabled: !!id,
+    retry: false,
+  })
+
+  // When enrichment completes, reload knowledge data to get fresh AI summary
+  const enrichmentStatusValue = enrichmentStatus?.status
+  const prevEnrichmentRef = useRef<string | undefined>(undefined)
+  if (
+    prevEnrichmentRef.current &&
+    (prevEnrichmentRef.current === 'pending' || prevEnrichmentRef.current === 'processing') &&
+    enrichmentStatusValue === 'completed'
+  ) {
+    queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+  }
+  prevEnrichmentRef.current = enrichmentStatusValue ?? undefined
 
   const restoreMut = useMutation({
     mutationFn: (versionNumber: number) => api.restoreVersion(id!, versionNumber),
@@ -347,6 +383,8 @@ export default function KnowledgeDetailPage() {
             </p>
           )}
 
+          <EnrichmentBanner status={enrichmentStatus?.status ?? null} />
+
           {/* Two-column grid */}
           <div className={`grid gap-6 ${sidebarOpen ? 'grid-cols-1 lg:grid-cols-[1fr_300px]' : 'grid-cols-1'}`}>
             {/* Left column: Content with tabs */}
@@ -384,6 +422,7 @@ export default function KnowledgeDetailPage() {
                     showAttachPicker={showAttachPicker}
                     setShowAttachPicker={setShowAttachPicker}
                     availableFiles={availableFiles}
+                    onViewAttachment={setViewingAttachment}
                   />
                 )}
 
@@ -457,6 +496,15 @@ export default function KnowledgeDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Attachment Viewer Modal */}
+      {viewingAttachment && (
+        <AttachmentViewer
+          file={viewingAttachment}
+          onClose={() => setViewingAttachment(null)}
+          onDownload={handleDownloadAttachment}
+        />
+      )}
     </div>
   )
 }
@@ -508,6 +556,7 @@ function AttachmentsTabContent({
   showAttachPicker,
   setShowAttachPicker,
   availableFiles,
+  onViewAttachment,
 }: {
   attachments: FileMetadataDto[] | undefined
   attachmentsLoading: boolean
@@ -520,6 +569,7 @@ function AttachmentsTabContent({
   showAttachPicker: boolean
   setShowAttachPicker: (v: boolean) => void
   availableFiles: { items: FileMetadataDto[] } | undefined
+  onViewAttachment: (file: FileMetadataDto) => void
 }) {
   return (
     <div className="space-y-4">
@@ -620,6 +670,13 @@ function AttachmentsTabContent({
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => onViewAttachment(file)}
+                  className="p-1.5 text-muted-foreground hover:text-purple-600 rounded hover:bg-muted transition-colors"
+                  title="View"
+                >
+                  <Eye size={14} />
+                </button>
                 <button
                   onClick={() => handleDownloadAttachment(file.id, file.fileName)}
                   className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted transition-colors"
