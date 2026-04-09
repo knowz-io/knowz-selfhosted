@@ -168,15 +168,27 @@ docker compose up --build
 
 ## Azure Deployment
 
-### One-Click Deploy
-
-Deploy the full Knowz stack to Azure with a single click:
+### Standard Deployment
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2FcreateUiDefinition.json)
+
+Deploys to a single resource group with public endpoints. Best for evaluation and small teams.
 
 This deploys: SQL Server, Azure OpenAI (optional), Azure AI Search, Storage, Key Vault, Application Insights, and 3 Container Apps (API, MCP, Web). Estimated cost: ~$90-100/month at basic SKUs.
 
 After deployment, access the Web UI at the URL shown in the deployment outputs. Default login: `admin` / your chosen password.
+
+### Enterprise Deployment (Azure Landing Zone)
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2Fselfhosted-enterprise.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fknowz-io%2Fknowz-selfhosted%2Fmain%2Finfrastructure%2FcreateUiDefinition.enterprise.json)
+
+Policy-compliant deployment with VNet isolation, private endpoints, Azure Front Door with WAF, AAD-only SQL authentication, and full diagnostic logging. Designed for Azure landing zones with CSPM/CSE security policies.
+
+Estimated cost: ~$200-300/month at standard SKUs with Front Door Premium.
+
+**Post-deployment steps:**
+1. Approve Front Door private link connections: `az network private-endpoint-connection list -g <rg> --type Microsoft.App/managedEnvironments` then approve each pending connection
+2. Access the application via the Front Door endpoint (shown in deployment outputs)
 
 ### Infrastructure Only (local dev against Azure resources)
 
