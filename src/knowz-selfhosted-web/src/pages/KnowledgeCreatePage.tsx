@@ -140,8 +140,10 @@ export default function KnowledgeCreatePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setValidationError('')
-    if (!content.trim()) {
-      setValidationError('Content is required.')
+    const hasContent = content.trim().length > 0
+    const hasFiles = pendingFiles.some((f) => f.fileRecordId)
+    if (!hasContent && !hasFiles) {
+      setValidationError('Content or at least one attachment is required.')
       return
     }
     createMut.mutate()
@@ -172,7 +174,7 @@ export default function KnowledgeCreatePage() {
 
         <div>
           <label className="block text-sm font-medium mb-1">
-            Content <span className="text-red-500">*</span>
+            Content
           </label>
           <div className="border border-input rounded-md overflow-hidden">
             <div className="flex border-b border-input bg-muted">

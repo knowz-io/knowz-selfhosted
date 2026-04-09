@@ -396,6 +396,8 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', knowledgeId] })
+      queryClient.invalidateQueries({ queryKey: ['knowledge', knowledgeId] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', knowledgeId] })
       setNewBody('')
       setReplyingTo(null)
       setReplyBody('')
@@ -417,6 +419,8 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
     mutationFn: (commentId: string) => api.deleteComment(commentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', knowledgeId] })
+      queryClient.invalidateQueries({ queryKey: ['knowledge', knowledgeId] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', knowledgeId] })
       setDeleteConfirmId(null)
     },
   })

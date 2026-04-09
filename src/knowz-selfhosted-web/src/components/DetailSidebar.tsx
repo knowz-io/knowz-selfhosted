@@ -100,7 +100,7 @@ export default function DetailSidebar({
             <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Created</dt>
             <dd className="mt-0.5 flex items-center gap-1 text-muted-foreground">
               <Calendar size={10} />
-              {new Date(createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+              {new Date(createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
             </dd>
           </div>
 
@@ -108,7 +108,7 @@ export default function DetailSidebar({
             <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Updated</dt>
             <dd className="mt-0.5 flex items-center gap-1 text-muted-foreground">
               <Calendar size={10} />
-              {new Date(updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+              {new Date(updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
             </dd>
           </div>
         </dl>

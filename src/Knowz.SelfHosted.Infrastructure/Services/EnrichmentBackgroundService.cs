@@ -153,12 +153,12 @@ public class EnrichmentBackgroundService : BackgroundService
                 }
 
                 // 3. Summarize (with attachment context, createdAt, authorName)
-                // Short-circuit: For very brief content with no attachments, use content as-is
+                // Short-circuit: For short content with no attachments, skip summary — the content itself is sufficient
                 var wordCount = contentForEnrichment.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries).Length;
-                if (wordCount <= 5 && string.IsNullOrEmpty(attachmentText))
+                if (wordCount <= 20 && string.IsNullOrEmpty(attachmentText))
                 {
-                    knowledge.Summary = contentForEnrichment.Trim();
-                    _logger.LogDebug("Short-circuit summary for knowledge {Id}: content has {Words} words", knowledge.Id, wordCount);
+                    knowledge.Summary = null; // Short content doesn't need a separate summary
+                    _logger.LogDebug("Short-circuit: no summary needed for knowledge {Id}: content has {Words} words", knowledge.Id, wordCount);
                 }
                 else
                 {

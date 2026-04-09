@@ -119,6 +119,7 @@ export default function KnowledgeDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', id] })
       setEditing(false)
     },
   })
@@ -150,6 +151,8 @@ export default function KnowledgeDetailPage() {
     mutationFn: (fileRecordId: string) => api.attachFileToKnowledge(id!, fileRecordId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge-attachments', id] })
+      queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', id] })
       setShowAttachPicker(false)
     },
   })
@@ -158,6 +161,8 @@ export default function KnowledgeDetailPage() {
     mutationFn: (fileRecordId: string) => api.detachFileFromKnowledge(id!, fileRecordId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge-attachments', id] })
+      queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', id] })
     },
   })
 
@@ -169,14 +174,22 @@ export default function KnowledgeDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge-attachments', id] })
+      queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', id] })
       queryClient.invalidateQueries({ queryKey: ['files'] })
     },
   })
 
-  const handleAttachUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAttachUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
-      Array.from(files).forEach((file) => uploadAndAttachMut.mutate(file))
+      for (const file of Array.from(files)) {
+        try {
+          await uploadAndAttachMut.mutateAsync(file)
+        } catch {
+          // Error is captured in uploadAndAttachMut.error for display
+        }
+      }
     }
     if (attachFileInputRef.current) {
       attachFileInputRef.current.value = ''
@@ -585,7 +598,7 @@ function AttachmentsTabContent({
   attachFileInputRef: React.RefObject<HTMLInputElement | null>
   handleAttachUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   handleDownloadAttachment: (fileId: string, fileName: string) => void
-  uploadAndAttachMut: { isPending: boolean }
+  uploadAndAttachMut: { isPending: boolean; error: Error | null }
   detachMut: { mutate: (id: string) => void }
   attachMut: { mutate: (id: string) => void; isPending: boolean }
   showAttachPicker: boolean
@@ -627,6 +640,12 @@ function AttachmentsTabContent({
           <Loader2 size={14} className="animate-spin" />
           Uploading and attaching...
         </div>
+      )}
+
+      {uploadAndAttachMut.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {uploadAndAttachMut.error instanceof Error ? uploadAndAttachMut.error.message : 'Upload failed'}
+        </p>
       )}
 
       {/* Attach from existing files picker */}

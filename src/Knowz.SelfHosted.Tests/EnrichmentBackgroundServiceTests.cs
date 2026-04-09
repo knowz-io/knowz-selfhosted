@@ -359,7 +359,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
                 Id = knowledgeId,
                 TenantId = TenantId,
                 Title = "Good Title",
-                Content = "Long content about various important topics that need summarization"
+                Content = "This is a longer piece of content about various important topics that need to be properly summarized by the enrichment service to produce a meaningful AI-generated summary for the user"
             });
             db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
             {
@@ -460,7 +460,7 @@ public class EnrichmentBackgroundServiceTests : IDisposable
                 Id = knowledgeId,
                 TenantId = TenantId,
                 Title = "Good Title",
-                Content = "This is a longer content that should trigger full summarization with multiple words to pass the threshold",
+                Content = "This is a longer content that should trigger full summarization with multiple words to pass the threshold and ensure the enrichment service generates a proper AI summary for display",
                 CreatedByUserId = userId,
                 CreatedAt = new DateTime(2026, 3, 15)
             });
