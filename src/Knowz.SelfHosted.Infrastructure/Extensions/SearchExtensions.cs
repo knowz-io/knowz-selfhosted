@@ -11,10 +11,11 @@ namespace Knowz.SelfHosted.Infrastructure.Extensions;
 public static class SearchExtensions
 {
     /// <summary>
-    /// Registers search services with three-tier priority:
+    /// Registers search services with four-tier priority:
     /// 1. KnowzPlatform:Enabled → PlatformSearchService (proxies to Knowz Platform API)
     /// 2. AzureAISearch configured → AzureSearchService (vector + keyword)
-    /// 3. Neither → NoOpSearchService
+    /// 3. AzureOpenAI configured → LocalVectorSearchService (local vector + keyword)
+    /// 4. Fallback → DatabaseSearchService (SQL LIKE keyword search)
     /// </summary>
     public static IServiceCollection AddSelfHostedSearch(
         this IServiceCollection services,
@@ -54,7 +55,17 @@ public static class SearchExtensions
             return services;
         }
 
-        // Tier 3: Database fallback — SQL LIKE keyword search (no vector/semantic)
+        // Tier 3: Local vector search (if OpenAI/embedding config present)
+        var openAiEndpoint = configuration["AzureOpenAI:Endpoint"];
+        var openAiDeployment = configuration["AzureOpenAI:DeploymentName"];
+
+        if (!string.IsNullOrWhiteSpace(openAiEndpoint) || !string.IsNullOrWhiteSpace(openAiDeployment))
+        {
+            services.AddScoped<ISearchService, LocalVectorSearchService>();
+            return services;
+        }
+
+        // Tier 4: Database fallback — SQL LIKE keyword search (no vector/semantic)
         services.AddScoped<ISearchService, DatabaseSearchService>();
         return services;
     }

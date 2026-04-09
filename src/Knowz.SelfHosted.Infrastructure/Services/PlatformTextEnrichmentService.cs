@@ -258,6 +258,23 @@ public class PlatformTextEnrichmentService : ITextEnrichmentService
         return request;
     }
 
+    public Task<string?> GenerateBriefSummaryAsync(string content, CancellationToken ct = default, Guid? tenantId = null)
+    {
+        // Platform already has its own brief summary capability; no separate call needed for proxy mode
+        _logger.LogDebug("Brief summary generation not implemented for platform proxy mode");
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<IList<string?>> GenerateChunkContextsAsync(
+        string documentTitle, string? documentSummary,
+        IList<(string Content, int Position)> chunks,
+        CancellationToken ct = default)
+    {
+        // Platform handles contextual retrieval internally
+        _logger.LogDebug("Chunk context generation not implemented for platform proxy mode");
+        return Task.FromResult<IList<string?>>(Array.Empty<string?>());
+    }
+
     // --- Internal DTOs ---
 
     internal record PlatformCompletionRequest(PlatformChatMessage[] Messages, int? MaxTokens = null);

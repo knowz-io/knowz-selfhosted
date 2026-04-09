@@ -44,14 +44,22 @@ public class LocalTextSearchService : ISearchService
 
         try
         {
-            var likePattern = $"%{query}%";
+            var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (terms.Length == 0)
+                return new List<SearchResultItem>();
 
-            // Base query with keyword filter (tenant-scoped via global query filter)
-            var baseQuery = _db.KnowledgeItems
-                .Where(k =>
-                    EF.Functions.Like(k.Title, likePattern) ||
-                    EF.Functions.Like(k.Content, likePattern) ||
-                    (k.Summary != null && EF.Functions.Like(k.Summary, likePattern)));
+            // Base query with per-term keyword filter including ContextSummary from ContentChunks
+            var baseQuery = _db.KnowledgeItems.AsQueryable();
+            foreach (var term in terms)
+            {
+                var pattern = $"%{term}%";
+                baseQuery = baseQuery.Where(k =>
+                    EF.Functions.Like(k.Title, pattern) ||
+                    EF.Functions.Like(k.Content, pattern) ||
+                    (k.Summary != null && EF.Functions.Like(k.Summary, pattern)) ||
+                    _db.ContentChunks.Any(c => c.KnowledgeId == k.Id &&
+                        c.ContextSummary != null && EF.Functions.Like(c.ContextSummary, pattern)));
+            }
 
             // Apply vault filter
             if (vaultId.HasValue)
@@ -113,10 +121,23 @@ public class LocalTextSearchService : ISearchService
                 })
                 .ToListAsync(cancellationToken);
 
-            // Compute synthetic scores and map to SearchResultItem
+            // Load ContextSummary from ContentChunks for matched items
+            var itemIds = items.Select(k => k.Id).ToList();
+            var contextSummaryMap = (await _db.ContentChunks
+                .Where(c => itemIds.Contains(c.KnowledgeId) && c.ContextSummary != null)
+                .Select(c => new { c.KnowledgeId, c.ContextSummary })
+                .ToListAsync(cancellationToken))
+                .GroupBy(c => c.KnowledgeId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => string.Join(" ", g.Select(c => c.ContextSummary)));
+
+            // Compute field-weighted scores using shared scoring logic
             var results = items.Select(k =>
             {
-                var score = ComputeSyntheticScore(k.Title, k.Summary, k.Content, query);
+                contextSummaryMap.TryGetValue(k.Id, out var contextSummary);
+                var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+                    k.Title, k.Summary, k.Content, contextSummary, query);
                 return new SearchResultItem
                 {
                     KnowledgeId = k.Id,
@@ -180,20 +201,4 @@ public class LocalTextSearchService : ISearchService
         return Task.CompletedTask;
     }
 
-    internal static double ComputeSyntheticScore(
-        string title, string? summary, string content, string query)
-    {
-        var score = 0.0;
-
-        if (title.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 1.0);
-
-        if (summary != null && summary.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 0.8);
-
-        if (content.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 0.6);
-
-        return score;
-    }
 }

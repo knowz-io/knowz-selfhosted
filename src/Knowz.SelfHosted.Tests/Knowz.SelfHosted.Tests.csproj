@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Knowz.SelfHosted.API\Knowz.SelfHosted.API.csproj" />
-    <PackageReference Include="Knowz.Core" Version="1.4.0" />
+    <PackageReference Include="Knowz.Core" Version="1.5.0" />
     <ProjectReference Include="..\Knowz.SelfHosted.Application\Knowz.SelfHosted.Application.csproj" />
     <ProjectReference Include="..\Knowz.SelfHosted.Infrastructure\Knowz.SelfHosted.Infrastructure.csproj" />
   </ItemGroup>

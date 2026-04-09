@@ -1,3 +1,4 @@
+using Knowz.Core.Entities;
 using Knowz.Core.Enums;
 using Knowz.Core.Models;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -11,10 +12,10 @@ public class SelfHostedChunkingServiceTests
     // ===== DetermineStrategy Tests =====
 
     [Theory]
-    [InlineData(KnowledgeType.Note, SelfHostedChunkingStrategy.Prose)]
-    [InlineData(KnowledgeType.Document, SelfHostedChunkingStrategy.Prose)]
-    [InlineData(KnowledgeType.QuestionAnswer, SelfHostedChunkingStrategy.Prose)]
-    [InlineData(KnowledgeType.Journal, SelfHostedChunkingStrategy.Prose)]
+    [InlineData(KnowledgeType.Note, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.Document, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.QuestionAnswer, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.Journal, SelfHostedChunkingStrategy.Markdown)]
     [InlineData(KnowledgeType.Transcript, SelfHostedChunkingStrategy.Sentence)]
     [InlineData(KnowledgeType.Video, SelfHostedChunkingStrategy.Sentence)]
     [InlineData(KnowledgeType.Audio, SelfHostedChunkingStrategy.Sentence)]
@@ -83,7 +84,7 @@ public class SelfHostedChunkingServiceTests
         var para3 = new string('c', 300);
         var content = $"{para1}\n\n{para2}\n\n{para3}";
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 400, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 100, OverlapTokens = 0, MinTokens = 25 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Prose, options);
 
         Assert.True(result.Count >= 2, $"Expected at least 2 chunks, got {result.Count}");
@@ -98,7 +99,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkProse_MergesSmallParagraphs()
     {
         var content = "Short para 1.\n\nShort para 2.\n\nShort para 3.";
-        var options = new SelfHostedChunkingOptions { MaxChars = 4000, OverlapChars = 0, MinChars = 10 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1000, OverlapTokens = 0, MinTokens = 2 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Prose, options);
 
         // All paragraphs fit in one chunk
@@ -116,7 +117,7 @@ public class SelfHostedChunkingServiceTests
             .ToList();
         var content = string.Join("", sentences);
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 200, OverlapChars = 0, MinChars = 50 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 50, OverlapTokens = 0, MinTokens = 12 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Prose, options);
 
         Assert.True(result.Count > 1, "Should produce multiple chunks");
@@ -136,7 +137,7 @@ public class SelfHostedChunkingServiceTests
         var section2 = new string('y', 300);
         var content = $"{section1}\n\n{section2}";
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 400, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 100, OverlapTokens = 0, MinTokens = 25 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Recursive, options);
 
         Assert.True(result.Count >= 2, $"Expected >= 2 chunks, got {result.Count}");
@@ -149,7 +150,7 @@ public class SelfHostedChunkingServiceTests
         var line2 = new string('y', 300);
         var content = $"{line1}\n{line2}";
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 400, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 100, OverlapTokens = 0, MinTokens = 25 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Recursive, options);
 
         Assert.True(result.Count >= 2, $"Expected >= 2 chunks, got {result.Count}");
@@ -165,7 +166,7 @@ public class SelfHostedChunkingServiceTests
             .ToList();
         var content = string.Join("", sentences);
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 200, OverlapChars = 0, MinChars = 50 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 50, OverlapTokens = 0, MinTokens = 12 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Sentence, options);
 
         Assert.True(result.Count > 1, "Should produce multiple chunks for long sentence content");
@@ -176,7 +177,7 @@ public class SelfHostedChunkingServiceTests
     {
         var content = "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence.";
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 5000, OverlapChars = 0, MinChars = 10 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1250, OverlapTokens = 0, MinTokens = 2 };
         var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Sentence, options);
 
         // All fits in one chunk
@@ -197,14 +198,14 @@ public class SelfHostedChunkingServiceTests
             .ToList();
         var content = string.Join("\n\n", paragraphs);
 
-        var options = new SelfHostedChunkingOptions { MaxChars = 500, OverlapChars = 50, MinChars = 50 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 125, OverlapTokens = 12, MinTokens = 12 };
         var result = _svc.ChunkContent(content, strategy, options);
 
         foreach (var chunk in result)
         {
-            // Allow some tolerance for forced splits
-            Assert.True(chunk.CharCount <= options.MaxChars * 1.5,
-                $"Chunk at position {chunk.Position} has {chunk.CharCount} chars, expected max ~{options.MaxChars}");
+            // Allow some tolerance for forced splits (MaxTokens * 4 = 500 chars approx)
+            Assert.True(chunk.CharCount <= options.MaxTokens * 4 * 1.5,
+                $"Chunk at position {chunk.Position} has {chunk.CharCount} chars, expected max ~{options.MaxTokens * 4}");
         }
     }
 
@@ -217,7 +218,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkContent_PositionsAreSequential(SelfHostedChunkingStrategy strategy)
     {
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string((char)('a' + i % 26), 500)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 600, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 150, OverlapTokens = 0, MinTokens = 25 };
         var result = _svc.ChunkContent(content, strategy, options);
 
         for (int i = 0; i < result.Count; i++)
@@ -243,7 +244,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkWithContext_MultiChunk_PrependsHeader()
     {
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string('x', 600)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 700, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 175, OverlapTokens = 0, MinTokens = 25 };
 
         var result = _svc.ChunkWithContext(
             content, "My Title", "A summary", new[] { "tag1", "tag2" },
@@ -265,7 +266,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkWithContext_NullSummary_OmitsSummaryLine()
     {
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string('x', 600)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 700, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 175, OverlapTokens = 0, MinTokens = 25 };
 
         var result = _svc.ChunkWithContext(
             content, "My Title", null, new[] { "tag1" },
@@ -282,7 +283,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkWithContext_NullTags_OmitsTagsLine()
     {
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string('x', 600)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 700, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 175, OverlapTokens = 0, MinTokens = 25 };
 
         var result = _svc.ChunkWithContext(
             content, "My Title", "A summary", null,
@@ -299,7 +300,7 @@ public class SelfHostedChunkingServiceTests
     public void ChunkWithContext_EmptyTags_OmitsTagsLine()
     {
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string('x', 600)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 700, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 175, OverlapTokens = 0, MinTokens = 25 };
 
         var result = _svc.ChunkWithContext(
             content, "My Title", "A summary", Array.Empty<string>(),
@@ -317,7 +318,7 @@ public class SelfHostedChunkingServiceTests
     {
         var tags = Enumerable.Range(1, 15).Select(i => $"ztag{i:D2}").ToList();
         var content = string.Join("\n\n", Enumerable.Range(1, 10).Select(i => new string('x', 600)));
-        var options = new SelfHostedChunkingOptions { MaxChars = 700, OverlapChars = 0, MinChars = 100 };
+        var options = new SelfHostedChunkingOptions { MaxTokens = 175, OverlapTokens = 0, MinTokens = 25 };
 
         var result = _svc.ChunkWithContext(
             content, "Title", null, tags,
@@ -419,6 +420,185 @@ public class SelfHostedChunkingServiceTests
         Assert.Equal(4000, options.MaxChars);
         Assert.Equal(400, options.OverlapChars);
         Assert.Equal(400, options.MinChars);
+        Assert.Equal(1024, options.MaxTokens);
+        Assert.Equal(128, options.OverlapTokens);
+        Assert.Equal(25, options.MinTokens);
+    }
+
+    // ===== Entity Schema Tests =====
+
+    [Fact]
+    public void ContentChunk_HasContextSummaryProperty()
+    {
+        var chunk = new ContentChunk();
+        Assert.Null(chunk.ContextSummary);
+        chunk.ContextSummary = "Test context";
+        Assert.Equal("Test context", chunk.ContextSummary);
+    }
+
+    [Fact]
+    public void ContentChunk_HasIsContextualEmbeddingProperty()
+    {
+        var chunk = new ContentChunk();
+        Assert.False(chunk.IsContextualEmbedding);
+        chunk.IsContextualEmbedding = true;
+        Assert.True(chunk.IsContextualEmbedding);
+    }
+
+    [Fact]
+    public void Knowledge_HasBriefSummaryProperty()
+    {
+        var knowledge = new Knowledge();
+        Assert.Null(knowledge.BriefSummary);
+        knowledge.BriefSummary = "Brief summary text";
+        Assert.Equal("Brief summary text", knowledge.BriefSummary);
+    }
+
+    // ===== Markdown Strategy Enum =====
+
+    [Fact]
+    public void SelfHostedChunkingStrategy_HasMarkdownValue()
+    {
+        Assert.Equal(3, (int)SelfHostedChunkingStrategy.Markdown);
+    }
+
+    // ===== DetermineStrategy: Markdown Routing =====
+
+    [Theory]
+    [InlineData(KnowledgeType.Note, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.Document, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.QuestionAnswer, SelfHostedChunkingStrategy.Markdown)]
+    [InlineData(KnowledgeType.Journal, SelfHostedChunkingStrategy.Markdown)]
+    public void DetermineStrategy_RoutesToMarkdown(KnowledgeType type, SelfHostedChunkingStrategy expected)
+    {
+        Assert.Equal(expected, _svc.DetermineStrategy(type));
+    }
+
+    [Theory]
+    [InlineData(KnowledgeType.Transcript, SelfHostedChunkingStrategy.Sentence)]
+    [InlineData(KnowledgeType.Video, SelfHostedChunkingStrategy.Sentence)]
+    [InlineData(KnowledgeType.Audio, SelfHostedChunkingStrategy.Sentence)]
+    public void DetermineStrategy_SentenceUnchanged(KnowledgeType type, SelfHostedChunkingStrategy expected)
+    {
+        Assert.Equal(expected, _svc.DetermineStrategy(type));
+    }
+
+    [Theory]
+    [InlineData(KnowledgeType.Code, SelfHostedChunkingStrategy.Recursive)]
+    [InlineData(KnowledgeType.Link, SelfHostedChunkingStrategy.Recursive)]
+    [InlineData(KnowledgeType.File, SelfHostedChunkingStrategy.Recursive)]
+    [InlineData(KnowledgeType.Prompt, SelfHostedChunkingStrategy.Recursive)]
+    [InlineData(KnowledgeType.Image, SelfHostedChunkingStrategy.Recursive)]
+    public void DetermineStrategy_RecursiveUnchanged(KnowledgeType type, SelfHostedChunkingStrategy expected)
+    {
+        Assert.Equal(expected, _svc.DetermineStrategy(type));
+    }
+
+    // ===== ChunkMarkdown Tests =====
+
+    [Fact]
+    public void ChunkMarkdown_SplitsAtHeaderBoundaries()
+    {
+        var content = "# Section 1\nContent for section one.\n\n# Section 2\nContent for section two.";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.Equal(2, result.Count);
+        Assert.StartsWith("# Section 1", result[0].Content);
+        Assert.StartsWith("# Section 2", result[1].Content);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_KeepsHeaderInChunk()
+    {
+        var content = "# My Header\nSome content here.";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.Single(result);
+        Assert.Contains("# My Header", result[0].Content);
+        Assert.Contains("Some content here.", result[0].Content);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_HandlesAllHeaderLevels()
+    {
+        var content = "# H1\nContent1\n## H2\nContent2\n### H3\nContent3\n#### H4\nContent4\n##### H5\nContent5\n###### H6\nContent6";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.Equal(6, result.Count);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_MergesSmallSections()
+    {
+        var content = "# A\nTiny.\n# B\nAlso tiny.";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 25 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        // Both sections are under MinTokens (25 tokens ~ 100 chars), should merge
+        Assert.Single(result);
+        Assert.Contains("# A", result[0].Content);
+        Assert.Contains("# B", result[0].Content);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_RecursivelySplitsOversizedSections()
+    {
+        var longContent = string.Join(". ", Enumerable.Range(1, 100).Select(i => $"Sentence {i} with more words to pad it out"));
+        var content = $"# Big Section\n{longContent}";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 50, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.True(result.Count > 1, $"Expected multiple chunks for oversized section, got {result.Count}");
+    }
+
+    [Fact]
+    public void ChunkMarkdown_NoHeaders_TreatsAsOneSection()
+    {
+        var content = "This is content with no markdown headers at all. Just regular paragraphs.\n\nAnother paragraph here.";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.Single(result);
+        Assert.Contains("This is content", result[0].Content);
+    }
+
+    [Fact]
+    public void ChunkMarkdown_NoHeaders_OversizedFallsBackToRecursive()
+    {
+        var longContent = string.Join("\n\n", Enumerable.Range(1, 50).Select(i => $"Paragraph {i} with enough content to matter."));
+        var options = new SelfHostedChunkingOptions { MaxTokens = 30, MinTokens = 1 };
+        var result = _svc.ChunkContent(longContent, SelfHostedChunkingStrategy.Markdown, options);
+
+        Assert.True(result.Count > 1, "Should split via recursive fallback when no headers and oversized");
+    }
+
+    [Fact]
+    public void ChunkMarkdown_PositionsAreSequential()
+    {
+        var content = "# S1\nContent1\n# S2\nContent2\n# S3\nContent3";
+        var options = new SelfHostedChunkingOptions { MaxTokens = 1024, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Markdown, options);
+
+        for (int i = 0; i < result.Count; i++)
+        {
+            Assert.Equal(i, result[i].Position);
+        }
+    }
+
+    // ===== Token-aware sizing =====
+
+    [Fact]
+    public void ChunkContent_TokenAwareSizing_UsesMaxTokens()
+    {
+        // MaxTokens = 50, which means ~200 chars. Content > 200 chars should split.
+        var content = string.Join("\n\n", Enumerable.Range(1, 20).Select(i => $"Paragraph {i} with some additional content here."));
+        var options = new SelfHostedChunkingOptions { MaxTokens = 50, MinTokens = 1 };
+        var result = _svc.ChunkContent(content, SelfHostedChunkingStrategy.Prose, options);
+
+        Assert.True(result.Count > 1, "Should split based on token-aware sizing");
     }
 
     // ===== TextChunker Updated Defaults =====

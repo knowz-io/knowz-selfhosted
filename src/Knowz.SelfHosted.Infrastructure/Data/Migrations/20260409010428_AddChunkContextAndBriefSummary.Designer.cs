@@ -4,6 +4,7 @@ using Knowz.SelfHosted.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(SelfHostedDbContext))]
-    partial class SelfHostedDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260409010428_AddChunkContextAndBriefSummary")]
+    partial class AddChunkContextAndBriefSummary
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

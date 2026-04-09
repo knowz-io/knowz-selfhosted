@@ -27,4 +27,19 @@ public class NoOpTextEnrichmentService : ITextEnrichmentService
         _logger.LogDebug("OpenAI not configured. Tag extraction unavailable.");
         return Task.FromResult(new List<string>());
     }
+
+    public Task<string?> GenerateBriefSummaryAsync(string content, CancellationToken ct = default, Guid? tenantId = null)
+    {
+        _logger.LogDebug("OpenAI not configured. Brief summary generation unavailable.");
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<IList<string?>> GenerateChunkContextsAsync(
+        string documentTitle, string? documentSummary,
+        IList<(string Content, int Position)> chunks,
+        CancellationToken ct = default)
+    {
+        _logger.LogDebug("OpenAI not configured. Chunk context generation unavailable.");
+        return Task.FromResult<IList<string?>>(Array.Empty<string?>());
+    }
 }

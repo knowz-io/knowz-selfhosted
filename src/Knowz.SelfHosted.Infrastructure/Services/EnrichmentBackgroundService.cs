@@ -135,7 +135,24 @@ public class EnrichmentBackgroundService : BackgroundService
                     ? knowledge.Content
                     : $"{knowledge.Content}\n\n{attachmentText}";
 
-                // 3. Summarize (with attachment context)
+                // 2b. Resolve author name for summary context
+                string? authorName = null;
+                if (knowledge.CreatedByUserId.HasValue)
+                {
+                    try
+                    {
+                        authorName = await db.Users
+                            .Where(u => u.Id == knowledge.CreatedByUserId)
+                            .Select(u => u.DisplayName ?? u.Username)
+                            .FirstOrDefaultAsync(ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to resolve author name for knowledge {Id}", knowledge.Id);
+                    }
+                }
+
+                // 3. Summarize (with attachment context, createdAt, authorName)
                 // Short-circuit: For very brief content with no attachments, use content as-is
                 var wordCount = contentForEnrichment.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries).Length;
                 if (wordCount <= 5 && string.IsNullOrEmpty(attachmentText))
@@ -145,12 +162,40 @@ public class EnrichmentBackgroundService : BackgroundService
                 }
                 else
                 {
-                    var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, 100, ct, workItem.TenantId);
-                    if (summary != null)
+                    // Use concrete TextEnrichmentService overload if available (for createdAt/authorName)
+                    if (enrichmentService is TextEnrichmentService concreteService)
                     {
-                        knowledge.Summary = summary;
-                        _logger.LogDebug("Generated summary for knowledge {Id}", knowledge.Id);
+                        var summary = await concreteService.SummarizeAsync(
+                            contentForEnrichment, 100, ct, workItem.TenantId,
+                            knowledge.CreatedAt, authorName);
+                        if (summary != null)
+                        {
+                            knowledge.Summary = summary;
+                            _logger.LogDebug("Generated summary for knowledge {Id}", knowledge.Id);
+                        }
                     }
+                    else
+                    {
+                        var summary = await enrichmentService.SummarizeAsync(contentForEnrichment, 100, ct, workItem.TenantId);
+                        if (summary != null)
+                        {
+                            knowledge.Summary = summary;
+                            _logger.LogDebug("Generated summary for knowledge {Id}", knowledge.Id);
+                        }
+                    }
+                }
+
+                // 3.5. Generate BriefSummary
+                try
+                {
+                    var briefSummary = await enrichmentService.GenerateBriefSummaryAsync(contentForEnrichment, ct, workItem.TenantId);
+                    knowledge.BriefSummary = briefSummary;
+                    _logger.LogDebug("Generated brief summary for knowledge {Id}: {HasValue}", knowledge.Id, briefSummary != null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to generate brief summary for knowledge {Id}", knowledge.Id);
+                    // Non-blocking: BriefSummary remains null
                 }
 
                 // 4. Extract tags (with attachment context)
@@ -167,7 +212,7 @@ public class EnrichmentBackgroundService : BackgroundService
                 // Re-index in search (non-critical)
                 try
                 {
-                    await ReindexAsync(db, knowledge, searchService, openAIService, chunkingService, ct);
+                    await ReindexAsync(db, knowledge, searchService, openAIService, chunkingService, enrichmentService, ct);
                 }
                 catch (Exception ex)
                 {
@@ -367,7 +412,8 @@ public class EnrichmentBackgroundService : BackgroundService
 
     internal static async Task ReindexAsync(SelfHostedDbContext db, Knowledge knowledge,
         ISearchService searchService, IOpenAIService openAIService,
-        ISelfHostedChunkingService chunkingService, CancellationToken ct)
+        ISelfHostedChunkingService chunkingService, ITextEnrichmentService enrichmentService,
+        CancellationToken ct)
     {
         var primaryKv = await db.KnowledgeVaults
             .Include(kv => kv.Vault)
@@ -393,14 +439,17 @@ public class EnrichmentBackgroundService : BackgroundService
             .FirstOrDefaultAsync(ct);
 
         var currentTags = knowledge.Tags.Select(t => t.Name).ToList();
+        var tagsString = currentTags.Count > 0 ? string.Join(", ", currentTags) : null;
 
-        // Load existing chunks for embedding cache
+        // Load existing chunks for embedding cache and delta comparison
         var existingChunks = await db.ContentChunks
             .Where(c => c.KnowledgeId == knowledge.Id)
             .ToListAsync(ct);
-        var existingHashMap = existingChunks
-            .Where(c => c.EmbeddingVectorJson != null)
-            .ToDictionary(c => c.ContentHash, c => c.EmbeddingVectorJson!);
+        var existingHashMap = new Dictionary<string, ContentChunk>();
+        foreach (var c in existingChunks.Where(c => c.EmbeddingVectorJson != null))
+        {
+            existingHashMap.TryAdd(c.ContentHash, c);
+        }
 
         // Gather attachment text for indexing
         var attachmentText = string.Empty;
@@ -411,7 +460,7 @@ public class EnrichmentBackgroundService : BackgroundService
         catch (Exception ex)
         {
             // Non-critical: proceed with knowledge content only
-            _ = ex; // suppress unused variable warning in static context
+            _ = ex;
         }
 
         var contentForChunking = string.IsNullOrEmpty(attachmentText)
@@ -426,34 +475,74 @@ public class EnrichmentBackgroundService : BackgroundService
             contentForChunking, knowledge.Title, knowledge.Summary,
             currentTags, strategy);
 
-        var chunkData = new Dictionary<int, (string Hash, string? EmbeddingJson)>();
-
-        foreach (var chunk in chunks)
+        // Generate chunk contexts (contextual retrieval)
+        IList<string?> chunkContexts;
+        try
         {
-            var hash = ContentHasher.Hash(chunk.Content);
+            var chunkTuples = chunks.Select(c => (c.Content, c.Position)).ToList();
+            chunkContexts = await enrichmentService.GenerateChunkContextsAsync(
+                knowledge.Title, knowledge.Summary, chunkTuples, ct);
+        }
+        catch (Exception)
+        {
+            // Non-blocking: proceed without contextual retrieval
+            chunkContexts = new string?[chunks.Count];
+        }
+
+        // Resolve BriefSummary fallback
+        var briefSummary = knowledge.BriefSummary
+            ?? TextEnrichmentService.GetFallbackBriefSummary(knowledge.Summary);
+
+        // Delta chunking: compare new chunk hashes against existing
+        var newHashes = chunks.Select(c => ContentHasher.Hash(c.Content)).ToList();
+        var existingHashSet = new HashSet<string>(existingHashMap.Keys);
+        var matchCount = newHashes.Count(h => existingHashSet.Contains(h));
+        var matchRatio = chunks.Count > 0 ? (double)matchCount / chunks.Count : 0;
+        var useDelta = matchRatio >= 0.75;
+
+        var chunkData = new Dictionary<int, (string Hash, string? EmbeddingJson, string? ContextSummary, bool IsContextual)>();
+
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            var chunk = chunks[i];
+            var hash = newHashes[i];
+            var contextSummary = i < chunkContexts.Count ? chunkContexts[i] : null;
+
+            // Build embedding text with new prefix format
+            var prefix = TextEnrichmentService.BuildEmbeddingPrefix(
+                knowledge.Title, briefSummary, contextSummary, tagsString);
+            var embeddingText = $"{prefix}\n\n{chunk.Content}";
+
             float[]? embedding;
             string? embeddingJson;
+            bool isContextual = contextSummary != null;
 
-            if (existingHashMap.TryGetValue(hash, out var cachedVector))
+            // Delta chunking: reuse existing embedding for unchanged chunks
+            // Force re-embed if existing chunk lacks contextual embedding (upgrade path)
+            if (useDelta && existingHashMap.TryGetValue(hash, out var existingChunk)
+                && existingChunk.IsContextualEmbedding)
             {
-                embeddingJson = cachedVector;
+                // Preserve existing embedding and context if chunk content unchanged
+                embeddingJson = existingChunk.EmbeddingVectorJson;
+                contextSummary = existingChunk.ContextSummary ?? contextSummary;
+                isContextual = existingChunk.IsContextualEmbedding || isContextual;
                 try
                 {
-                    embedding = JsonSerializer.Deserialize<float[]>(cachedVector);
+                    embedding = JsonSerializer.Deserialize<float[]>(embeddingJson!);
                 }
                 catch (JsonException)
                 {
-                    embedding = await openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                    embedding = await openAIService.GenerateEmbeddingAsync(embeddingText, ct);
                     embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
                 }
             }
             else
             {
-                embedding = await openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
+                embedding = await openAIService.GenerateEmbeddingAsync(embeddingText, ct);
                 embeddingJson = embedding != null ? JsonSerializer.Serialize(embedding) : null;
             }
 
-            chunkData[chunk.Position] = (hash, embeddingJson);
+            chunkData[chunk.Position] = (hash, embeddingJson, contextSummary, isContextual);
 
             await searchService.IndexDocumentAsync(
                 knowledge.Id, knowledge.Title, chunk.Content, knowledge.Summary,
@@ -464,13 +553,13 @@ public class EnrichmentBackgroundService : BackgroundService
                 cancellationToken: ct);
         }
 
-        // Replace persisted chunks (now includes freshly generated embeddings)
+        // Replace persisted chunks with contextual data
         try
         {
             db.ContentChunks.RemoveRange(existingChunks);
             foreach (var chunk in chunks)
             {
-                var (hash, embeddingJson) = chunkData[chunk.Position];
+                var (hash, embeddingJson, contextSummary, isContextual) = chunkData[chunk.Position];
                 db.ContentChunks.Add(new ContentChunk
                 {
                     TenantId = knowledge.TenantId,
@@ -479,6 +568,8 @@ public class EnrichmentBackgroundService : BackgroundService
                     Content = chunk.Content,
                     ContentHash = hash,
                     EmbeddingVectorJson = embeddingJson,
+                    ContextSummary = contextSummary,
+                    IsContextualEmbedding = isContextual,
                     EmbeddedAt = embeddingJson != null ? DateTime.UtcNow : null
                 });
             }

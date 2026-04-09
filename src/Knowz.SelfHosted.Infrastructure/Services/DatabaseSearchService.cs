@@ -37,12 +37,18 @@ public class DatabaseSearchService : ISearchService
         if (string.IsNullOrWhiteSpace(query))
             return [];
 
-        var pattern = $"%{query}%";
+        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        var dbQuery = _db.KnowledgeItems
-            .Where(k => EF.Functions.Like(k.Title, pattern)
-                     || (k.Content != null && EF.Functions.Like(k.Content, pattern))
-                     || (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+        // Match any term in any field (OR across terms, OR across fields)
+        var dbQuery = _db.KnowledgeItems.AsQueryable();
+        foreach (var term in terms)
+        {
+            var pattern = $"%{term}%";
+            dbQuery = dbQuery.Where(k =>
+                EF.Functions.Like(k.Title, pattern)
+                || (k.Content != null && EF.Functions.Like(k.Content, pattern))
+                || (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+        }
 
         if (vaultId.HasValue)
         {
@@ -56,9 +62,7 @@ public class DatabaseSearchService : ISearchService
         if (endDate.HasValue)
             dbQuery = dbQuery.Where(k => k.CreatedAt <= endDate.Value);
 
-        var results = await dbQuery
-            .OrderByDescending(k => k.UpdatedAt)
-            .Take(maxResults)
+        var items = await dbQuery
             .Select(k => new
             {
                 k.Id,
@@ -74,19 +78,27 @@ public class DatabaseSearchService : ISearchService
             })
             .ToListAsync(cancellationToken);
 
-        return results.Select((r, i) => new SearchResultItem
+        return items.Select((r, i) =>
         {
-            KnowledgeId = r.Id,
-            Title = r.Title,
-            Content = Truncate(r.Content, 500),
-            Summary = r.Summary,
-            VaultName = r.VaultName,
-            KnowledgeType = r.Type.ToString(),
-            FilePath = r.FilePath,
-            Score = 1.0 - (i * 0.01), // simple position-based scoring
-            Position = i,
-            DocumentType = "database",
-        }).ToList();
+            var score = LocalVectorSearchService.ComputeFieldWeightedScore(
+                r.Title, r.Summary, r.Content, null, query);
+            return new SearchResultItem
+            {
+                KnowledgeId = r.Id,
+                Title = r.Title,
+                Content = Truncate(r.Content, 500),
+                Summary = r.Summary,
+                VaultName = r.VaultName,
+                KnowledgeType = r.Type.ToString(),
+                FilePath = r.FilePath,
+                Score = score,
+                Position = i,
+                DocumentType = "database",
+            };
+        })
+        .OrderByDescending(r => r.Score)
+        .Take(maxResults)
+        .ToList();
     }
 
     public Task IndexDocumentAsync(

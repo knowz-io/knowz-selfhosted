@@ -107,15 +107,16 @@ public class LocalVectorSearchService : ISearchService
             if (knowledgeIds.Count == 0)
                 return new List<SearchResultItem>();
 
-            // Load chunks with embeddings for matching knowledge items
+            // Load chunks for matching knowledge items (include ContextSummary for keyword scoring)
             var chunks = await _db.ContentChunks
-                .Where(c => knowledgeIds.Contains(c.KnowledgeId) && c.EmbeddingVectorJson != null)
+                .Where(c => knowledgeIds.Contains(c.KnowledgeId))
                 .Select(c => new
                 {
                     c.KnowledgeId,
                     c.Content,
                     c.EmbeddingVectorJson,
-                    c.Position
+                    c.Position,
+                    c.ContextSummary
                 })
                 .ToListAsync(cancellationToken);
 
@@ -134,19 +135,28 @@ public class LocalVectorSearchService : ISearchService
 
             var knowledgeMap = knowledgeItems.ToDictionary(k => k.Id);
 
+            // Aggregate best ContextSummary per knowledge item from chunks
+            var contextSummaryMap = chunks
+                .Where(c => c.ContextSummary != null)
+                .GroupBy(c => c.KnowledgeId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => string.Join(" ", g.Select(c => c.ContextSummary)));
+
             // Score each knowledge item using vector similarity + keyword matching
             var scoredResults = new Dictionary<Guid, (double VectorScore, double KeywordScore)>();
 
             foreach (var item in knowledgeItems)
             {
-                var keywordScore = ComputeKeywordScore(item.Title, item.Summary, item.Content, query);
+                contextSummaryMap.TryGetValue(item.Id, out var contextSummary);
+                var keywordScore = ComputeFieldWeightedScore(item.Title, item.Summary, item.Content, contextSummary, query);
                 scoredResults[item.Id] = (0.0, keywordScore);
             }
 
-            // Compute vector scores from chunks
+            // Compute vector scores from chunks (only those with embeddings)
             if (queryEmbedding != null && chunks.Count > 0)
             {
-                foreach (var chunk in chunks)
+                foreach (var chunk in chunks.Where(c => c.EmbeddingVectorJson != null))
                 {
                     float[]? chunkEmbedding;
                     try
@@ -285,23 +295,62 @@ public class LocalVectorSearchService : ISearchService
     }
 
     /// <summary>
-    /// Computes a keyword-based score (same logic as LocalTextSearchService).
+    /// Computes a term-frequency field-weighted score.
+    /// Splits query into terms, counts occurrences per field, normalizes by field length,
+    /// applies field boost weights, and averages across terms.
+    /// Field boosts: title=3.0, content=2.5, summary=2.0, contextSummary=1.5.
     /// </summary>
-    internal static double ComputeKeywordScore(
-        string title, string? summary, string content, string query)
+    internal static double ComputeFieldWeightedScore(
+        string title, string? summary, string content, string? contextSummary, string query)
     {
-        var score = 0.0;
+        if (string.IsNullOrWhiteSpace(query))
+            return 0.0;
 
-        if (title.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 1.0);
+        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (terms.Length == 0)
+            return 0.0;
 
-        if (summary != null && summary.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 0.8);
+        var totalScore = 0.0;
 
-        if (content.Contains(query, StringComparison.OrdinalIgnoreCase))
-            score = Math.Max(score, 0.6);
+        foreach (var term in terms)
+        {
+            var termScore = 0.0;
+            termScore += ComputeFieldTermScore(title, term, 3.0);
+            termScore += ComputeFieldTermScore(content, term, 2.5);
+            termScore += ComputeFieldTermScore(summary, term, 2.0);
+            termScore += ComputeFieldTermScore(contextSummary, term, 1.5);
+            totalScore += termScore;
+        }
 
-        return score;
+        return totalScore / terms.Length;
+    }
+
+    private static double ComputeFieldTermScore(string? field, string term, double boost)
+    {
+        if (string.IsNullOrEmpty(field))
+            return 0.0;
+
+        var occurrences = CountOccurrences(field, term);
+        if (occurrences == 0)
+            return 0.0;
+
+        // Normalize: occurrences per 100 characters of field length
+        var normalizedLength = Math.Max(field.Length / 100.0, 1.0);
+        var termFrequency = occurrences / normalizedLength;
+
+        return termFrequency * boost;
+    }
+
+    private static int CountOccurrences(string text, string term)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(term, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            count++;
+            index += term.Length;
+        }
+        return count;
     }
 
     /// <summary>
@@ -318,13 +367,19 @@ public class LocalVectorSearchService : ISearchService
         int maxResults,
         CancellationToken cancellationToken)
     {
-        var likePattern = $"%{query}%";
+        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (terms.Length == 0)
+            return new List<SearchResultItem>();
 
-        var baseQuery = _db.KnowledgeItems
-            .Where(k =>
-                EF.Functions.Like(k.Title, likePattern) ||
-                EF.Functions.Like(k.Content, likePattern) ||
-                (k.Summary != null && EF.Functions.Like(k.Summary, likePattern)));
+        var baseQuery = _db.KnowledgeItems.AsQueryable();
+        foreach (var term in terms)
+        {
+            var pattern = $"%{term}%";
+            baseQuery = baseQuery.Where(k =>
+                EF.Functions.Like(k.Title, pattern) ||
+                EF.Functions.Like(k.Content, pattern) ||
+                (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+        }
 
         if (vaultId.HasValue)
         {
@@ -371,7 +426,7 @@ public class LocalVectorSearchService : ISearchService
 
         return items.Select(k =>
             {
-                var score = ComputeKeywordScore(k.Title, k.Summary, k.Content, query);
+                var score = ComputeFieldWeightedScore(k.Title, k.Summary, k.Content, null, query);
                 return new SearchResultItem
                 {
                     KnowledgeId = k.Id,

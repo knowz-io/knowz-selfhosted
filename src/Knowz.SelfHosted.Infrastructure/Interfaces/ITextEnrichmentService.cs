@@ -38,4 +38,19 @@ public interface ITextEnrichmentService
     /// <param name="tenantId">Optional tenant ID for prompt resolution. When provided, resolves
     /// configurable prompts via PromptResolutionService instead of using hardcoded defaults.</param>
     Task<List<string>> ExtractTagsAsync(string title, string content, int maxTags = 5, CancellationToken ct = default, Guid? tenantId = null);
+
+    /// <summary>
+    /// Generates a brief 2-3 sentence summary (under 40 words) optimized for embedding prefixes.
+    /// Returns null if generation fails or AI is unavailable.
+    /// </summary>
+    Task<string?> GenerateBriefSummaryAsync(string content, CancellationToken ct = default, Guid? tenantId = null);
+
+    /// <summary>
+    /// Generates per-chunk contextual summaries using bounded concurrency.
+    /// Returns null for any failed individual chunk (non-blocking).
+    /// </summary>
+    Task<IList<string?>> GenerateChunkContextsAsync(
+        string documentTitle, string? documentSummary,
+        IList<(string Content, int Position)> chunks,
+        CancellationToken ct = default);
 }

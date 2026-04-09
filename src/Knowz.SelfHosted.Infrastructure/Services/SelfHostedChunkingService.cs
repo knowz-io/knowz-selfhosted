@@ -8,6 +8,12 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 public class SelfHostedChunkingService : ISelfHostedChunkingService
 {
     private static readonly Regex SentenceEndRegex = new(@"[.!?]\s+", RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeaderRegex = new(@"^#{1,6}\s+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Approximate token count: 1 token ~ 4 characters.
+    /// </summary>
+    internal static int ApproxTokenCount(string s) => s.Length / 4;
 
     public List<SelfHostedChunkResult> ChunkContent(
         string content,
@@ -15,6 +21,7 @@ public class SelfHostedChunkingService : ISelfHostedChunkingService
         SelfHostedChunkingOptions? options = null)
     {
         options ??= new SelfHostedChunkingOptions();
+        ResolveTokenSizing(options);
 
         if (string.IsNullOrWhiteSpace(content) || content.Length <= options.MinChars)
         {
@@ -26,6 +33,7 @@ public class SelfHostedChunkingService : ISelfHostedChunkingService
             SelfHostedChunkingStrategy.Prose => ChunkProse(content, options),
             SelfHostedChunkingStrategy.Sentence => ChunkSentence(content, options),
             SelfHostedChunkingStrategy.Recursive => ChunkRecursive(content, options),
+            SelfHostedChunkingStrategy.Markdown => ChunkMarkdown(content, options),
             _ => ChunkRecursive(content, options)
         };
     }
@@ -56,10 +64,10 @@ public class SelfHostedChunkingService : ISelfHostedChunkingService
     {
         return knowledgeType switch
         {
-            KnowledgeType.Note => SelfHostedChunkingStrategy.Prose,
-            KnowledgeType.Document => SelfHostedChunkingStrategy.Prose,
-            KnowledgeType.QuestionAnswer => SelfHostedChunkingStrategy.Prose,
-            KnowledgeType.Journal => SelfHostedChunkingStrategy.Prose,
+            KnowledgeType.Note => SelfHostedChunkingStrategy.Markdown,
+            KnowledgeType.Document => SelfHostedChunkingStrategy.Markdown,
+            KnowledgeType.QuestionAnswer => SelfHostedChunkingStrategy.Markdown,
+            KnowledgeType.Journal => SelfHostedChunkingStrategy.Markdown,
             KnowledgeType.Transcript => SelfHostedChunkingStrategy.Sentence,
             KnowledgeType.Video => SelfHostedChunkingStrategy.Sentence,
             KnowledgeType.Audio => SelfHostedChunkingStrategy.Sentence,
@@ -89,7 +97,121 @@ public class SelfHostedChunkingService : ISelfHostedChunkingService
         return string.Join("\n", parts);
     }
 
+    /// <summary>
+    /// Converts MaxTokens to char-based sizing (MaxChars/OverlapChars/MinChars)
+    /// when MaxTokens is set, using the chars/4 approximation.
+    /// </summary>
+    private static void ResolveTokenSizing(SelfHostedChunkingOptions options)
+    {
+        if (options.MaxTokens > 0)
+        {
+            options.MaxChars = options.MaxTokens * 4;
+            options.OverlapChars = options.OverlapTokens * 4;
+            options.MinChars = options.MinTokens * 4;
+        }
+    }
+
     // --- Strategy implementations ---
+
+    private static List<SelfHostedChunkResult> ChunkMarkdown(string content, SelfHostedChunkingOptions options)
+    {
+        var lines = content.Split('\n');
+        var sections = new List<string>();
+        var currentSection = new List<string>();
+
+        foreach (var line in lines)
+        {
+            if (MarkdownHeaderRegex.IsMatch(line.TrimStart()))
+            {
+                // Flush current section
+                if (currentSection.Count > 0)
+                {
+                    var sectionText = string.Join("\n", currentSection).Trim();
+                    if (!string.IsNullOrWhiteSpace(sectionText))
+                        sections.Add(sectionText);
+                    currentSection.Clear();
+                }
+            }
+            currentSection.Add(line);
+        }
+
+        // Flush final section
+        if (currentSection.Count > 0)
+        {
+            var sectionText = string.Join("\n", currentSection).Trim();
+            if (!string.IsNullOrWhiteSpace(sectionText))
+                sections.Add(sectionText);
+        }
+
+        // If only one section (no headers or single header), check if oversized
+        if (sections.Count <= 1)
+        {
+            var singleContent = sections.Count == 1 ? sections[0] : content;
+            if (singleContent.Length > options.MaxChars)
+                return ChunkRecursive(singleContent, options);
+            return [new SelfHostedChunkResult(0, singleContent, singleContent, singleContent.Length)];
+        }
+
+        // Merge small sections (under MinTokens) with their neighbors
+        var merged = new List<string>();
+        var pending = "";
+
+        foreach (var section in sections)
+        {
+            if (pending.Length == 0)
+            {
+                pending = section;
+            }
+            else
+            {
+                var combined = $"{pending}\n\n{section}";
+                // If pending is small, try to merge
+                if (ApproxTokenCount(pending) < options.MinTokens)
+                {
+                    pending = combined;
+                }
+                else
+                {
+                    merged.Add(pending);
+                    pending = section;
+                }
+            }
+        }
+        if (pending.Length > 0)
+        {
+            // If the last pending section is still small, merge with previous
+            if (merged.Count > 0 && ApproxTokenCount(pending) < options.MinTokens)
+            {
+                merged[^1] = $"{merged[^1]}\n\n{pending}";
+            }
+            else
+            {
+                merged.Add(pending);
+            }
+        }
+
+        // Split oversized sections via recursive, collect final chunks
+        var results = new List<SelfHostedChunkResult>();
+        var position = 0;
+
+        foreach (var section in merged)
+        {
+            if (section.Length > options.MaxChars)
+            {
+                var subChunks = ChunkRecursive(section, options);
+                foreach (var sub in subChunks)
+                {
+                    results.Add(sub with { Position = position++ });
+                }
+            }
+            else
+            {
+                results.Add(new SelfHostedChunkResult(position++, section, section, section.Length));
+            }
+        }
+
+        return results;
+    }
 
     private static List<SelfHostedChunkResult> ChunkProse(string content, SelfHostedChunkingOptions options)
     {
