@@ -22,7 +22,7 @@ public class TextEnrichmentService : ITextEnrichmentService
     private readonly PromptResolutionService _promptResolution;
     private readonly ILogger<TextEnrichmentService> _logger;
 
-    internal const int MaxContentChars = 12_000;
+    internal const int MaxContentChars = 50_000;
 
     public TextEnrichmentService(
         AzureOpenAIClient client,
@@ -83,7 +83,7 @@ public class TextEnrichmentService : ITextEnrichmentService
             var systemPrompt = tenantId.HasValue
                 ? await _promptResolution.ResolvePromptAsync(
                     PromptKeys.SummarizePrompt, tenantId.Value, formatArgs: new object[] { maxWords }, ct: ct)
-                : string.Format(SummarizeSystemPrompt, maxWords);
+                : string.Format(DetailedSummarizeSystemPrompt, maxWords);
 
             // Build user message with optional context prefix
             var prefix = BuildUserMessagePrefix(createdAt, authorName);
@@ -97,7 +97,7 @@ public class TextEnrichmentService : ITextEnrichmentService
 
             var options = new ChatCompletionOptions();
             if (!IsUnsupportedMaxTokens())
-                options.MaxOutputTokenCount = maxWords * 2;
+                options.MaxOutputTokenCount = Math.Max(maxWords * 3, 500);
 
             var result = await chatClient.CompleteChatAsync(messages, options, ct);
             var summary = result.Value.Content[0].Text.Trim();
@@ -400,6 +400,8 @@ public class TextEnrichmentService : ITextEnrichmentService
         "- Correlate transcript and visual descriptions into a cohesive narrative\n\n" +
 
         "Return ONLY the summary text, nothing else.";
+
+    internal const string DetailedSummarizeSystemPrompt = DefaultPrompts.DetailedSummarizePrompt;
 
     internal const string TagsSystemPrompt =
         "You are a tag extraction assistant. Extract up to {0} relevant tags or keywords from the content below. Return ONLY a JSON array of lowercase strings. Example: [\"machine-learning\", \"python\", \"data-analysis\"]";

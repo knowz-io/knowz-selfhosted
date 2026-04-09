@@ -818,6 +818,10 @@ export const api = {
       method: 'POST',
     }),
 
+  // --- Enrichment Status ---
+  getEnrichmentStatus: (knowledgeId: string) =>
+    request<{ status: string; updatedAt?: string }>(`/api/v1/knowledge/${knowledgeId}/enrichment-status`),
+
   // --- Knowledge Versioning ---
   getVersionHistory: (knowledgeId: string) =>
     request<KnowledgeVersion[]>(`/api/v1/knowledge/${knowledgeId}/versions`),
