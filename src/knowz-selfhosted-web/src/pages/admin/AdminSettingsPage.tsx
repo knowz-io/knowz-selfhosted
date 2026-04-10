@@ -21,6 +21,7 @@ import type {
   ConfigEntryUpdateDto,
   ServiceHealthResult,
 } from '../../lib/types'
+import { parseAsUtc, formatDate } from '../../lib/format-utils'
 
 const TAB_ORDER = [
   'ConnectionStrings',
@@ -427,7 +428,7 @@ function ConfigEntryField({
 
       {entry.lastModifiedAt && (
         <p className="text-xs text-muted-foreground mt-1.5">
-          Last modified: {new Date(entry.lastModifiedAt).toLocaleDateString()}{' '}
+          Last modified: {formatDate(entry.lastModifiedAt)}{' '}
           {entry.lastModifiedBy ? `by ${entry.lastModifiedBy}` : ''}
         </p>
       )}
@@ -500,7 +501,7 @@ function HealthBadge({ result }: { result: ServiceHealthResult }) {
 }
 
 function formatUptime(startupTime: string): string {
-  const start = new Date(startupTime).getTime()
+  const start = parseAsUtc(startupTime).getTime()
   const now = Date.now()
   const diff = now - start
 

@@ -18,4 +18,11 @@ public class UserDto
     public string? ApiKey { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }
+
+    /// <summary>
+    /// User's preferred IANA timezone (e.g. "America/New_York"). Null means
+    /// no preference has been set — clients should fall back to their default
+    /// (typically "America/New_York") rather than UTC.
+    /// </summary>
+    public string? TimeZonePreference { get; set; }
 }

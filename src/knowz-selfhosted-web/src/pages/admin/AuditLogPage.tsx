@@ -10,6 +10,7 @@ import {
   Filter,
 } from 'lucide-react'
 import { api } from '../../lib/api-client'
+import { useFormatters } from '../../hooks/useFormatters'
 
 const ENTITY_TYPES = [
   { value: '', label: 'All Types' },
@@ -26,6 +27,7 @@ const ENTITY_TYPES = [
 const PAGE_SIZE = 25
 
 export default function AuditLogPage() {
+  const fmt = useFormatters()
   const [page, setPage] = useState(1)
   const [entityType, setEntityType] = useState('')
   const [entityIdSearch, setEntityIdSearch] = useState('')
@@ -167,7 +169,7 @@ export default function AuditLogPage() {
                 {data.items.map((entry) => (
                   <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                      {new Date(entry.timestamp).toLocaleString()}
+                      {fmt.dateTime(entry.timestamp)}
                     </td>
                     <td className="px-4 py-3">
                       <ActionBadge action={entry.action} />

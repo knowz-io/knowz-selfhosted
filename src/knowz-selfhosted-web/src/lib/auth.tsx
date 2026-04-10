@@ -18,6 +18,8 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<MultiTenantLoginResponse>
   loginWithToken: (token: string) => Promise<void>
   logout: () => void
+  /** Re-fetches the current user from the server (for preference updates, etc.). */
+  refreshUser: () => Promise<void>
   /** Active tenant override (SuperAdmin only). null = use own tenant. */
   activeTenantId: string | null
   setActiveTenantId: (tenantId: string | null) => void
@@ -29,7 +31,7 @@ interface AuthContextValue {
   pendingUserId: string | null
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
@@ -167,6 +169,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setActiveTenantIdState(tenantId)
   }, [])
 
+  /**
+   * Re-fetches the current user via /api/v1/auth/me so the context picks
+   * up any server-side changes (e.g. timezone preference, display name).
+   * Silently ignores failures — the existing user stays in context.
+   */
+  const refreshUser = useCallback(async () => {
+    if (!token) return
+    try {
+      const userData = await api.getMe()
+      setUser(userData)
+    } catch {
+      // Intentional: keep the stale user rather than blowing up the UI.
+    }
+  }, [token])
+
   const isAuthenticated = !!token && !!user
 
   return (
@@ -179,6 +196,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         loginWithToken,
         logout,
+        refreshUser,
         activeTenantId,
         setActiveTenantId,
         availableTenants,

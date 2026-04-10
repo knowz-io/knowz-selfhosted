@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../lib/api-client'
 import type { TenantDto, CreateTenantData, UpdateTenantData } from '../../lib/types'
+import { useFormatters } from '../../hooks/useFormatters'
 
 function slugify(text: string): string {
   return text
@@ -23,6 +24,7 @@ function slugify(text: string): string {
 
 export default function TenantsPage() {
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editTenant, setEditTenant] = useState<TenantDto | null>(null)
@@ -177,7 +179,7 @@ export default function TenantsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-muted-foreground">
-                      {new Date(tenant.createdAt).toLocaleDateString()}
+                      {fmt.date(tenant.createdAt)}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">

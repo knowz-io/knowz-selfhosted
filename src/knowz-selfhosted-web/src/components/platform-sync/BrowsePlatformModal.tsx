@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError } from '../../lib/api-client'
 import { useDebounce } from '../../hooks/useDebounce'
+import { useFormatters } from '../../hooks/useFormatters'
 import type {
   PlatformVaultDto,
   PlatformKnowledgeSummaryDto,
@@ -547,6 +548,7 @@ function KnowledgeRow({
   onPreview: () => void
   isPreviewing: boolean
 }) {
+  const fmt = useFormatters()
   return (
     <div
       className={`flex items-start gap-2 px-4 py-3 border-b border-border/40 hover:bg-muted/30 ${
@@ -567,7 +569,7 @@ function KnowledgeRow({
         )}
         <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-2">
           {item.createdBy && <span>{item.createdBy}</span>}
-          {item.updatedAt && <span>{new Date(item.updatedAt).toLocaleDateString()}</span>}
+          {item.updatedAt && <span>{fmt.date(item.updatedAt)}</span>}
         </div>
       </div>
       <button

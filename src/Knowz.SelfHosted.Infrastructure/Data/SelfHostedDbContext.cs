@@ -58,6 +58,9 @@ public class SelfHostedDbContext : DbContext
     public DbSet<UserPermissions> UserPermissions => Set<UserPermissions>();
     public DbSet<UserVaultAccess> UserVaultAccess => Set<UserVaultAccess>();
 
+    // User preferences — cosmetic/UX settings (timezone, etc.) per user
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+
     // Prompt templates (no tenant query filter — scoping done in PromptResolutionService)
     public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
 
@@ -236,6 +239,21 @@ public class SelfHostedDbContext : DbContext
             entity.HasOne(up => up.User)
                 .WithOne()
                 .HasForeignKey<UserPermissions>(up => up.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --- UserPreference entity configuration (NO query filter — admin-level) ---
+        modelBuilder.Entity<UserPreference>(entity =>
+        {
+            entity.HasKey(up => up.Id);
+            entity.HasIndex(up => up.UserId).IsUnique(); // One preference record per user
+            entity.HasIndex(up => up.TenantId);
+
+            entity.Property(up => up.TimeZonePreference).HasMaxLength(100);
+
+            entity.HasOne(up => up.User)
+                .WithOne()
+                .HasForeignKey<UserPreference>(up => up.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

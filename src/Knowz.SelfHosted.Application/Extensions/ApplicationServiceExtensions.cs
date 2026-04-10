@@ -38,6 +38,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<InboxService>();
         services.AddScoped<FileStorageService>();
         services.AddScoped<CommentService>();
+        services.AddScoped<IUserPreferencesService, UserPreferencesService>();
 
         // Portability services
         services.AddScoped<IPortableExportService, PortableExportService>();

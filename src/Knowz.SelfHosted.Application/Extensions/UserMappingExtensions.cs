@@ -5,7 +5,7 @@ namespace Knowz.SelfHosted.Application.Extensions;
 
 public static class UserMappingExtensions
 {
-    public static UserDto ToDto(this User user)
+    public static UserDto ToDto(this User user, string? timeZonePreference = null)
     {
         return new UserDto
         {
@@ -19,7 +19,8 @@ public static class UserMappingExtensions
             IsActive = user.IsActive,
             ApiKey = user.ApiKey,
             CreatedAt = user.CreatedAt,
-            LastLoginAt = user.LastLoginAt
+            LastLoginAt = user.LastLoginAt,
+            TimeZonePreference = timeZonePreference,
         };
     }
 }

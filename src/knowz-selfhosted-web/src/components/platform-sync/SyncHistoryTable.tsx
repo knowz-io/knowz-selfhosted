@@ -14,6 +14,8 @@ import type {
   PlatformSyncRunStatus,
   VaultSyncStatusDto,
 } from '../../lib/types'
+import { parseAsUtc } from '../../lib/format-utils'
+import { useFormatters } from '../../hooks/useFormatters'
 
 interface SyncHistoryTableProps {
   history: PlatformSyncRunDto[]
@@ -40,6 +42,7 @@ export default function SyncHistoryTable({
   onLinkFilterChange,
   links,
 }: SyncHistoryTableProps) {
+  const fmt = useFormatters()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const toggleExpand = (id: string) => {
@@ -139,8 +142,8 @@ export default function SyncHistoryTable({
                 const duration =
                   run.completedAt && run.startedAt
                     ? Math.round(
-                        (new Date(run.completedAt).getTime() -
-                          new Date(run.startedAt).getTime()) /
+                        (parseAsUtc(run.completedAt).getTime() -
+                          parseAsUtc(run.startedAt).getTime()) /
                           1000,
                       )
                     : null
@@ -169,7 +172,7 @@ export default function SyncHistoryTable({
                       </td>
                       <td className="px-4 py-2 text-muted-foreground">{run.itemCount}</td>
                       <td className="px-4 py-2 text-muted-foreground text-xs whitespace-nowrap">
-                        {new Date(run.startedAt).toLocaleString()}
+                        {fmt.dateTime(run.startedAt)}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground text-xs">
                         {duration != null ? `${duration}s` : '—'}

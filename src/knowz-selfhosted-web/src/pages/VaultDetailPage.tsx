@@ -3,11 +3,13 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api-client'
 import { ArrowLeft, BookOpen, Pencil, Trash2, X, GitBranch, RefreshCw, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react'
+import { useFormatters } from '../hooks/useFormatters'
 
 export default function VaultDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
 
   const [showEdit, setShowEdit] = useState(false)
   const [editName, setEditName] = useState('')
@@ -247,7 +249,7 @@ export default function VaultDetailPage() {
               {item.type}
             </span>
             <span className="text-xs text-muted-foreground flex-shrink-0">
-              {new Date(item.createdAt).toLocaleDateString()}
+              {fmt.date(item.createdAt)}
             </span>
           </Link>
         ))}
@@ -294,6 +296,7 @@ function GitSyncStatusBadge({ status }: { status: string }) {
 }
 
 function GitSyncPanel({ vaultId }: { vaultId: string }) {
+  const fmt = useFormatters()
   const queryClient = useQueryClient()
 
   const [showSetup, setShowSetup] = useState(false)
@@ -438,7 +441,7 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
               {syncStatus.lastSyncAt && (
                 <div>
                   <span className="text-muted-foreground">Last Sync: </span>
-                  <span className="text-xs">{new Date(syncStatus.lastSyncAt).toLocaleString()}</span>
+                  <span className="text-xs">{fmt.dateTime(syncStatus.lastSyncAt)}</span>
                 </div>
               )}
               {syncStatus.lastSyncCommitSha && (
@@ -494,7 +497,7 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
                           )}
                         </div>
                         <span className="text-muted-foreground flex-shrink-0">
-                          {new Date(entry.timestamp).toLocaleString()}
+                          {fmt.dateTime(entry.timestamp)}
                         </span>
                       </div>
                     ))}

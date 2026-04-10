@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { Users, MapPin, Calendar, Plus, Pencil, Trash2, X, Check } from 'lucide-react'
 import type { EntityItem } from '../lib/types'
+import { useFormatters } from '../hooks/useFormatters'
 
 const entityTabs = [
   { type: 'person', label: 'Persons', icon: Users },
@@ -14,6 +15,7 @@ type EntityType = (typeof entityTabs)[number]['type']
 
 export default function EntitiesPage() {
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
   const [activeTab, setActiveTab] = useState<EntityType>('person')
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -204,7 +206,7 @@ export default function EntitiesPage() {
                   <>
                     <span className="flex-1 font-medium text-sm">{entity.name}</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(entity.createdAt).toLocaleDateString()}
+                      {fmt.date(entity.createdAt)}
                     </span>
                     <button
                       onClick={() => {

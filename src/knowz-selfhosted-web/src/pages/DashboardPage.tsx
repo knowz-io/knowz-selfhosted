@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { BookOpen, Archive, Calendar, RefreshCw } from 'lucide-react'
+import { useFormatters } from '../hooks/useFormatters'
 
 export default function DashboardPage() {
+  const fmt = useFormatters()
   const stats = useQuery({ queryKey: ['stats'], queryFn: () => api.getStats() })
   const vaults = useQuery({
     queryKey: ['vaults', 'dashboard'],
@@ -84,8 +86,8 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-muted-foreground">Date Range</span>
             </div>
             <p className="text-sm font-medium">
-              {new Date(s.dateRange.earliest).toLocaleDateString()} &mdash;{' '}
-              {new Date(s.dateRange.latest).toLocaleDateString()}
+              {fmt.date(s.dateRange.earliest)} &mdash;{' '}
+              {fmt.date(s.dateRange.latest)}
             </p>
           </div>
         )}

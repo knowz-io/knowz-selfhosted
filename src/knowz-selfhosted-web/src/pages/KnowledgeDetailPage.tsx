@@ -17,6 +17,7 @@ import AttachmentViewer from '../components/AttachmentViewer'
 import type { TabId } from '../components/ContentTabs'
 import type { FileMetadataDto, KnowledgeVersion } from '../lib/types'
 import { formatFileSize } from '../lib/format-utils'
+import { useFormatters } from '../hooks/useFormatters'
 
 export default function KnowledgeDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -835,6 +836,7 @@ function VersionHistoryPanel({
   onShowRestoreConfirm: (vn: number | null) => void
   restoreMut: { mutate: (vn: number) => void; isPending: boolean; error: Error | null }
 }) {
+  const fmt = useFormatters()
   const [diffVersionNum, setDiffVersionNum] = useState<number | null>(null)
 
   if (isLoading) {
@@ -909,7 +911,7 @@ function VersionHistoryPanel({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(version.createdAt).toLocaleString()}
+                    {fmt.dateTime(version.createdAt)}
                     {version.changeDescription && ` - ${version.changeDescription}`}
                   </p>
                 </div>

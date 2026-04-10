@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError } from '../../lib/api-client'
 import type { VaultSyncStatusDto } from '../../lib/types'
+import { useFormatters } from '../../hooks/useFormatters'
 
 type SyncDirection = 'Full' | 'PullOnly' | 'PushOnly'
 
@@ -29,6 +30,7 @@ export default function VaultLinksTable({
   onBrowsePlatform,
 }: VaultLinksTableProps) {
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [busyLinkId, setBusyLinkId] = useState<string | null>(null)
   const [busyDirection, setBusyDirection] = useState<SyncDirection | null>(null)
@@ -144,7 +146,7 @@ export default function VaultLinksTable({
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground text-xs">
                       {link.lastSyncCompletedAt
-                        ? new Date(link.lastSyncCompletedAt).toLocaleString()
+                        ? fmt.dateTime(link.lastSyncCompletedAt)
                         : 'Never'}
                     </td>
                     <td className="px-4 py-2.5">
