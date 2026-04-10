@@ -25,5 +25,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Only run unit tests under src/. The `tests/` directory holds Playwright
+    // end-to-end specs which use a different test runner and will fail to
+    // parse if vitest tries to load them.
+    include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    exclude: ['node_modules', 'dist', 'tests'],
   },
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from './test-utils'
 import KnowledgeDetailPage from '../pages/KnowledgeDetailPage'
 
@@ -25,6 +25,9 @@ vi.mock('../lib/api-client', () => ({
     detachFileFromKnowledge: vi.fn(),
     uploadFile: vi.fn(),
     downloadFile: vi.fn(),
+    getVersionHistory: vi.fn().mockResolvedValue([]),
+    getEnrichmentStatus: vi.fn().mockResolvedValue({ status: 'completed' }),
+    reprocessKnowledge: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number
@@ -45,6 +48,21 @@ import { api } from '../lib/api-client'
 
 const mockGetKnowledge = vi.mocked(api.getKnowledge)
 const mockGetAttachments = vi.mocked(api.getKnowledgeAttachments)
+
+/**
+ * The Attachments UI lives inside a tab on KnowledgeDetailPage. To verify
+ * attachment content, we have to click the Attachments tab first — the
+ * tab panel is only rendered when it is active.
+ */
+async function openAttachmentsTab() {
+  // The Attachments text appears both as a tab label and in the DetailSidebar
+  // metadata panel, so we use the count-bearing tab button to disambiguate.
+  const tabButtons = await screen.findAllByText('Attachments')
+  // The first match is always the tab (rendered before the sidebar in DOM order).
+  const tabButton = tabButtons[0].closest('button')
+  expect(tabButton).not.toBeNull()
+  fireEvent.click(tabButton!)
+}
 
 describe('KnowledgeDetailPage - Attachments', () => {
   beforeEach(() => {
@@ -78,33 +96,39 @@ describe('KnowledgeDetailPage - Attachments', () => {
     vi.clearAllMocks()
   })
 
-  it('Should_ShowAttachmentsSection_WhenKnowledgeLoaded', async () => {
+  it('Should_RenderAttachmentsTab_WhenKnowledgeLoaded', async () => {
     renderWithProviders(<KnowledgeDetailPage />)
     await waitFor(() => {
-      expect(screen.getByText('Attachments')).toBeInTheDocument()
+      const matches = screen.getAllByText('Attachments')
+      expect(matches.length).toBeGreaterThan(0)
     })
   })
 
-  it('Should_DisplayAttachedFiles_WhenAttachmentsExist', async () => {
+  it('Should_DisplayAttachedFiles_WhenAttachmentsTabOpened', async () => {
     renderWithProviders(<KnowledgeDetailPage />)
+    await openAttachmentsTab()
     await waitFor(() => {
       expect(screen.getByText('attached-doc.pdf')).toBeInTheDocument()
     })
   })
 
-  it('Should_ShowAttachButton_WhenKnowledgeLoaded', async () => {
+  it('Should_ShowUploadAndAttachButton_WhenAttachmentsTabOpened', async () => {
     renderWithProviders(<KnowledgeDetailPage />)
+    await openAttachmentsTab()
     await waitFor(() => {
-      expect(screen.getByText('Attach File')).toBeInTheDocument()
+      expect(screen.getByText(/upload & attach/i)).toBeInTheDocument()
     })
   })
 
   it('Should_ShowEmptyAttachmentsMessage_WhenNoAttachments', async () => {
     mockGetAttachments.mockResolvedValue([])
     renderWithProviders(<KnowledgeDetailPage />)
+    await openAttachmentsTab()
+    // With no attachments, the Upload & Attach button is still present
+    // and the attached file list is empty.
     await waitFor(() => {
-      expect(screen.getByText('Attachments')).toBeInTheDocument()
+      expect(screen.getByText(/upload & attach/i)).toBeInTheDocument()
     })
-    expect(screen.getByText(/no attachments/i)).toBeInTheDocument()
+    expect(screen.queryByText('attached-doc.pdf')).not.toBeInTheDocument()
   })
 })
