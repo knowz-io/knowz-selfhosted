@@ -32,4 +32,38 @@ public interface IPlatformSyncClient
     Task<PlatformImportResponse> ImportDeltaAsync(
         VaultSyncLink link, PortableExportPackage package,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Read-only proxy: list all vaults visible to the configured platform API key.
+    /// Thin DTO — platform response is validated and unknown fields stripped (V-SEC-12).
+    /// </summary>
+    Task<PlatformVaultListDto> ListPlatformVaultsAsync(
+        string platformApiUrl, string apiKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Read-only proxy: list knowledge items in a remote platform vault.
+    /// <paramref name="search"/> is optional; when provided it is capped at 200 characters and
+    /// forwarded as a <c>?search=</c> query parameter to the platform list endpoint.
+    /// </summary>
+    Task<PlatformKnowledgeListDto> ListPlatformKnowledgeAsync(
+        string platformApiUrl, string apiKey,
+        Guid vaultId, int page, int pageSize,
+        string? search = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Read-only proxy: fetch a single knowledge item (title + content + metadata) from the platform.
+    /// </summary>
+    Task<PlatformKnowledgeDetailDto> GetPlatformKnowledgeAsync(
+        string platformApiUrl, string apiKey,
+        Guid knowledgeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Export a single knowledge item from the platform vault as a portable package
+    /// containing exactly one primary entity. Used by single-item pull (V-SEC-09/11/12).
+    /// Returns null when the platform returns 404.
+    /// </summary>
+    Task<PortableExportPackage?> ExportItemAsync(
+        VaultSyncLink link, Guid remoteKnowledgeId,
+        CancellationToken ct = default);
 }

@@ -31,6 +31,118 @@ public class VaultScopedExportService
     }
 
     /// <summary>
+    /// Export a single knowledge item from the given local vault as a portable package
+    /// (NodeID PlatformSyncItemOps). Throws <see cref="InvalidOperationException"/> when
+    /// the knowledge item is not in the given vault. Excludes credential entities (V-SEC).
+    /// </summary>
+    public async Task<PortableExportPackage> ExportSingleItemAsync(
+        Guid localVaultId, Guid localKnowledgeId, CancellationToken ct = default)
+    {
+        var tenantId = _tenantProvider.TenantId;
+        var serverTimestamp = DateTime.UtcNow;
+
+        var isInVault = await _db.KnowledgeVaults
+            .IgnoreQueryFilters()
+            .AnyAsync(kv => kv.VaultId == localVaultId && kv.KnowledgeId == localKnowledgeId, ct);
+
+        if (!isInVault)
+            throw new InvalidOperationException(
+                $"Knowledge {localKnowledgeId} is not a member of vault {localVaultId}");
+
+        var knowledge = await _db.KnowledgeItems
+            .IgnoreQueryFilters()
+            .Where(k => k.TenantId == tenantId && k.Id == localKnowledgeId && !k.IsDeleted)
+            .Include(k => k.KnowledgePersons)
+            .Include(k => k.KnowledgeLocations)
+            .Include(k => k.KnowledgeEvents)
+            .Include(k => k.Tags)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(ct);
+
+        if (knowledge == null)
+            throw new InvalidOperationException($"Knowledge {localKnowledgeId} not found or deleted");
+
+        var topics = knowledge.TopicId.HasValue
+            ? await _db.Topics.IgnoreQueryFilters()
+                .Where(t => t.TenantId == tenantId && t.Id == knowledge.TopicId)
+                .AsNoTracking().ToListAsync(ct)
+            : new List<Topic>();
+
+        var tagIds = knowledge.Tags.Select(t => t.Id).ToHashSet();
+        var tags = tagIds.Count > 0
+            ? await _db.Tags.IgnoreQueryFilters()
+                .Where(t => t.TenantId == tenantId && tagIds.Contains(t.Id))
+                .AsNoTracking().ToListAsync(ct)
+            : new List<Tag>();
+
+        var personIds = knowledge.KnowledgePersons.Select(kp => kp.PersonId).ToHashSet();
+        var persons = personIds.Count > 0
+            ? await _db.Persons.IgnoreQueryFilters()
+                .Where(p => p.TenantId == tenantId && personIds.Contains(p.Id))
+                .AsNoTracking().ToListAsync(ct)
+            : new List<Person>();
+
+        var locationIds = knowledge.KnowledgeLocations.Select(kl => kl.LocationId).ToHashSet();
+        var locations = locationIds.Count > 0
+            ? await _db.Locations.IgnoreQueryFilters()
+                .Where(l => l.TenantId == tenantId && locationIds.Contains(l.Id))
+                .AsNoTracking().ToListAsync(ct)
+            : new List<Location>();
+
+        var eventIds = knowledge.KnowledgeEvents.Select(ke => ke.EventId).ToHashSet();
+        var events = eventIds.Count > 0
+            ? await _db.Events.IgnoreQueryFilters()
+                .Where(e => e.TenantId == tenantId && eventIds.Contains(e.Id))
+                .AsNoTracking().ToListAsync(ct)
+            : new List<Event>();
+
+        var comments = await _db.Comments.IgnoreQueryFilters()
+            .Where(c => c.TenantId == tenantId && c.KnowledgeId == localKnowledgeId)
+            .AsNoTracking().ToListAsync(ct);
+
+        var package = new PortableExportPackage
+        {
+            SchemaVersion = CoreSchema.Version,
+            SourceEdition = "selfhosted",
+            SourceTenantId = tenantId,
+            ExportedAt = serverTimestamp,
+            IsIncrementalSync = false,
+            SyncCursor = serverTimestamp,
+            Tombstones = null,
+            Metadata = new PortableExportMetadata
+            {
+                TotalVaults = 0,
+                TotalKnowledgeItems = 1,
+                TotalTopics = topics.Count,
+                TotalTags = tags.Count,
+                TotalPersons = persons.Count,
+                TotalLocations = locations.Count,
+                TotalEvents = events.Count,
+                TotalComments = comments.Count,
+                TotalFileRecords = 0,
+            },
+            Data = new PortableExportData
+            {
+                Vaults = new(),
+                KnowledgeItems = new List<PortableKnowledge> { MapKnowledge(knowledge, localVaultId) },
+                Topics = topics.Select(MapTopic).ToList(),
+                Tags = tags.Select(MapTag).ToList(),
+                Persons = persons.Select(MapPerson).ToList(),
+                Locations = locations.Select(MapLocation).ToList(),
+                Events = events.Select(MapEvent).ToList(),
+                Comments = comments.Select(MapComment).ToList(),
+                FileRecords = new(),
+            },
+        };
+
+        _logger.LogInformation(
+            "Single-item export for knowledge {KnowledgeId} in vault {VaultId}",
+            localKnowledgeId, localVaultId);
+
+        return package;
+    }
+
+    /// <summary>
     /// Export a vault-scoped delta package for push to platform.
     /// </summary>
     public async Task<PortableExportPackage> ExportDeltaAsync(

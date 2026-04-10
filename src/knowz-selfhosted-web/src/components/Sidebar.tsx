@@ -20,6 +20,7 @@ import {
   Sun,
   Moon,
   ClipboardList,
+  Cloud,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api-client'
@@ -64,6 +65,7 @@ const adminItems = [
   { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
   { path: '/admin/users', label: 'Users', icon: Users },
   { path: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
+  { path: '/admin/platform-sync', label: 'Platform Sync', icon: Cloud },
   { path: '/admin/sso', label: 'SSO', icon: Shield },
   { path: '/admin/settings', label: 'Configuration', icon: Wrench },
 ]

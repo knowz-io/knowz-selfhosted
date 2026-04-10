@@ -2,6 +2,7 @@ namespace Knowz.SelfHosted.Application.Services;
 
 using System.Diagnostics;
 using Knowz.Core.Interfaces;
+using Knowz.Core.Portability;
 using Knowz.Core.Schema;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
@@ -17,11 +18,22 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 public class VaultSyncOrchestrator : IVaultSyncOrchestrator
 {
+    /// <summary>
+    /// Hard cap on the number of knowledge items a single SyncAsync run will process (V-SEC-09).
+    /// When exceeded, the run completes with <see cref="VaultSyncResult.Partial"/>=true and
+    /// the user must re-run to continue from the cursor.
+    /// </summary>
+    public const int BulkItemCap = 100;
+
     private readonly SelfHostedDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly IPlatformSyncClient _platformClient;
     private readonly VaultScopedExportService _exportService;
     private readonly FileSyncService _fileSyncService;
+    private readonly IPlatformAuditLog? _auditLog;
+    private readonly IPortableImportService? _importService;
+    private readonly IPlatformSyncRateLimiter? _rateLimiter;
+    private readonly IPlatformConnectionService? _connectionService;
     private readonly ILogger<VaultSyncOrchestrator> _logger;
 
     public VaultSyncOrchestrator(
@@ -30,13 +42,21 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         IPlatformSyncClient platformClient,
         VaultScopedExportService exportService,
         FileSyncService fileSyncService,
-        ILogger<VaultSyncOrchestrator> logger)
+        ILogger<VaultSyncOrchestrator> logger,
+        IPlatformAuditLog? auditLog = null,
+        IPortableImportService? importService = null,
+        IPlatformSyncRateLimiter? rateLimiter = null,
+        IPlatformConnectionService? connectionService = null)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _platformClient = platformClient;
         _exportService = exportService;
         _fileSyncService = fileSyncService;
+        _auditLog = auditLog;
+        _importService = importService;
+        _rateLimiter = rateLimiter;
+        _connectionService = connectionService;
         _logger = logger;
     }
 
@@ -76,6 +96,56 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
             return result;
         }
 
+        // V-SEC-09: rate limit check BEFORE any platform HTTP call (cheap fail-fast).
+        Guid? rateLimitOpId = null;
+        if (_rateLimiter != null)
+        {
+            var decision = await _rateLimiter.CheckAsync(_tenantProvider.TenantId, itemCount: BulkItemCap, ct);
+            if (!decision.Allowed)
+            {
+                result.Success = false;
+                result.Error = decision.Reason switch
+                {
+                    RateLimitReason.HourlyQuotaExceeded => "Rate limit exceeded (10 runs per hour).",
+                    RateLimitReason.ConcurrentRunInProgress => "Another sync is already in progress for this tenant.",
+                    RateLimitReason.ItemLimitExceeded => "Run exceeds the 100-item-per-run limit.",
+                    _ => "Rate limit exceeded.",
+                };
+                result.Duration = sw.Elapsed;
+                throw new RateLimitExceededException(
+                    decision.Reason!.Value, decision.RetryAfter, result.Error);
+            }
+            rateLimitOpId = await _rateLimiter.RecordOperationAsync(
+                _tenantProvider.TenantId, "SyncAsync", ct);
+        }
+
+        // V-SEC-07: begin audit row for a real platform sync run. Short-circuits above
+        // (no link / disabled / already in-progress) are intentionally not audited —
+        // the history tracks committed runs, not request validation failures.
+        Guid? auditRunId = null;
+        if (_auditLog != null)
+        {
+            var (auditOp, auditDir) = direction switch
+            {
+                SyncDirection.PullOnly => (PlatformSyncOperation.PullVault, PlatformSyncDirection.Pull),
+                SyncDirection.PushOnly => (PlatformSyncOperation.PushVault, PlatformSyncDirection.Push),
+                _ => (PlatformSyncOperation.PullVault, PlatformSyncDirection.Pull),
+            };
+            try
+            {
+                auditRunId = await _auditLog.StartAsync(new PlatformSyncRunStart(
+                    UserId: Guid.Empty,
+                    UserEmail: null,
+                    Operation: auditOp,
+                    Direction: auditDir,
+                    VaultSyncLinkId: link.Id), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PlatformAuditLog.StartAsync failed for vault {VaultId}", localVaultId);
+            }
+        }
+
         // Mark as in progress
         link.LastSyncStatus = VaultSyncStatus.InProgress;
         link.LastSyncError = null;
@@ -92,33 +162,48 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                     $"Platform schema v{schema.Version} is not compatible. Local supports {CoreSchema.GetCompatibilityInfo()}.");
             }
 
+            var itemBudget = BulkItemCap;
+
             // Step 1: Pull (remote → local)
             if (direction is SyncDirection.Full or SyncDirection.PullOnly)
             {
-                var pullResult = await PullAsync(link, ct);
+                var pullResult = await PullAsync(link, ct, itemBudget);
                 result.PullAccepted = pullResult.Accepted;
                 result.PullSkipped = pullResult.Skipped;
                 result.TombstonesApplied += pullResult.TombstonesApplied;
                 result.Details.AddRange(pullResult.Details);
+                itemBudget -= pullResult.Accepted + pullResult.Skipped;
+                if (pullResult.HitItemCap)
+                    result.Partial = true;
             }
 
-            // Step 2: Push (local → remote)
-            if (direction is SyncDirection.Full or SyncDirection.PushOnly)
+            // Step 2: Push (local → remote). Skip when budget already exhausted.
+            if (direction is SyncDirection.Full or SyncDirection.PushOnly && itemBudget > 0)
             {
-                var pushResult = await PushAsync(link, ct);
+                var pushResult = await PushAsync(link, ct, itemBudget);
                 result.PushAccepted = pushResult.Accepted;
                 result.PushSkipped = pushResult.Skipped;
                 result.Details.AddRange(pushResult.Details);
+                if (pushResult.HitItemCap)
+                    result.Partial = true;
+            }
+            else if (direction is SyncDirection.Full or SyncDirection.PushOnly)
+            {
+                result.Partial = true;
+                result.Details.Add("Push skipped — 100-item limit reached during pull. Re-run to continue.");
             }
 
-            // Step 3: File sync (after entity sync)
-            if (direction == SyncDirection.Full)
+            // Step 3: File sync (after entity sync). Skipped on partial runs to keep run bounded.
+            if (direction == SyncDirection.Full && !result.Partial)
             {
                 var fileResult = await _fileSyncService.SyncFilesAsync(link, ct);
                 result.Details.Add($"Files: {fileResult.Downloaded} downloaded, {fileResult.Uploaded} uploaded, {fileResult.Skipped} skipped");
                 if (fileResult.Errors.Count > 0)
                     result.Details.AddRange(fileResult.Errors.Select(e => $"File error: {e}"));
             }
+
+            if (result.Partial)
+                result.Details.Add($"Reached {BulkItemCap}-item limit — run again to continue.");
 
             // Step 4: Finalize
             link.LastSyncStatus = VaultSyncStatus.Succeeded;
@@ -131,6 +216,25 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
             _logger.LogInformation(
                 "Vault sync completed for {VaultId}: pull={PullAccepted}/{PullSkipped}, push={PushAccepted}/{PushSkipped}",
                 localVaultId, result.PullAccepted, result.PullSkipped, result.PushAccepted, result.PushSkipped);
+
+            if (_auditLog != null && auditRunId.HasValue)
+            {
+                try
+                {
+                    var total = result.PullAccepted + result.PullSkipped + result.PushAccepted + result.PushSkipped;
+                    await _auditLog.CompleteAsync(
+                        auditRunId.Value,
+                        new PlatformSyncRunResult(
+                            ItemCount: total,
+                            BytesTransferred: 0,
+                            Status: PlatformSyncRunStatus.Succeeded),
+                        ct);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "PlatformAuditLog.CompleteAsync failed for run {RunId}", auditRunId);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -143,13 +247,31 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
 
             result.Success = false;
             result.Error = ex.Message;
+
+            if (_auditLog != null && auditRunId.HasValue)
+            {
+                try
+                {
+                    await _auditLog.FailAsync(auditRunId.Value, ex.Message, ct);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "PlatformAuditLog.FailAsync failed for run {RunId}", auditRunId);
+                }
+            }
+        }
+        finally
+        {
+            if (_rateLimiter != null && rateLimitOpId.HasValue)
+                await _rateLimiter.CompleteOperationAsync(rateLimitOpId.Value, ct);
         }
 
         result.Duration = sw.Elapsed;
         return result;
     }
 
-    private async Task<SyncDeltaImportResult> PullAsync(VaultSyncLink link, CancellationToken ct)
+    private async Task<SyncDeltaImportResult> PullAsync(
+        VaultSyncLink link, CancellationToken ct, int itemBudget = int.MaxValue)
     {
         var totalResult = new SyncDeltaImportResult { Success = true };
         var page = 1;
@@ -158,6 +280,12 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         // Paginated pull
         while (true)
         {
+            if (itemBudget <= 0)
+            {
+                totalResult.HitItemCap = true;
+                break;
+            }
+
             var package = await _platformClient.ExportDeltaAsync(link, link.LastPullCursor, page, 500, ct);
 
             if (package.Data.KnowledgeItems.Count == 0 &&
@@ -165,12 +293,20 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                 page > 1)
                 break;
 
+            // Apply remaining budget — truncate so import never exceeds the cap.
+            if (package.Data.KnowledgeItems.Count > itemBudget)
+            {
+                package.Data.KnowledgeItems = package.Data.KnowledgeItems.Take(itemBudget).ToList();
+                totalResult.HitItemCap = true;
+            }
+
             // Import using last-write-wins
             var importResult = await ImportSyncDeltaLocallyAsync(package, link.LocalVaultId, ct);
             totalResult.Accepted += importResult.Accepted;
             totalResult.Skipped += importResult.Skipped;
             totalResult.TombstonesApplied += importResult.TombstonesApplied;
             totalResult.Details.AddRange(importResult.Details);
+            itemBudget -= (importResult.Accepted + importResult.Skipped);
 
             // Track cursor from first page
             if (page == 1 && package.SyncCursor.HasValue)
@@ -180,11 +316,16 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
             if (package.Data.KnowledgeItems.Count < 500)
                 break;
 
+            if (totalResult.HitItemCap)
+                break;
+
             page++;
         }
 
-        // Update pull cursor
-        if (newCursor.HasValue)
+        // Update pull cursor only when a full pass completed (no partial truncation).
+        // A partial run keeps the previous cursor so the next invocation re-pulls the
+        // items that were skipped.
+        if (newCursor.HasValue && !totalResult.HitItemCap)
         {
             link.LastPullCursor = newCursor;
             await _db.SaveChangesAsync(ct);
@@ -194,7 +335,8 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         return totalResult;
     }
 
-    private async Task<SyncDeltaImportResult> PushAsync(VaultSyncLink link, CancellationToken ct)
+    private async Task<SyncDeltaImportResult> PushAsync(
+        VaultSyncLink link, CancellationToken ct, int itemBudget = int.MaxValue)
     {
         var result = new SyncDeltaImportResult { Success = true };
 
@@ -206,6 +348,15 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         {
             result.Details.Add("Push: nothing to push");
             return result;
+        }
+
+        // V-SEC-09: apply remaining item budget. Truncate and mark Partial so the caller
+        // leaves the cursor where the remaining items can be picked up on the next run.
+        if (package.Data.KnowledgeItems.Count > itemBudget)
+        {
+            package.Data.KnowledgeItems = package.Data.KnowledgeItems.Take(itemBudget).ToList();
+            package.Metadata.TotalKnowledgeItems = package.Data.KnowledgeItems.Count;
+            result.HitItemCap = true;
         }
 
         // Push to platform
@@ -224,9 +375,13 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
             st.PropagatedAt = DateTime.UtcNow;
         }
 
-        // Update push cursor
-        link.LastPushCursor = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        // Update push cursor only when a full pass completed. A partial run keeps the
+        // previous cursor so the next invocation re-exports the remaining items.
+        if (!result.HitItemCap)
+        {
+            link.LastPushCursor = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
 
         result.Details.Add($"Push complete: {result.Accepted} accepted, {result.Skipped} skipped");
         return result;
@@ -563,39 +718,126 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         if (existing != null)
             throw new InvalidOperationException($"Vault {request.LocalVaultId} already has a sync link");
 
-        var link = new VaultSyncLink
+        // V-SEC-07: audit the Connect operation.
+        Guid? auditRunId = null;
+        if (_auditLog != null)
         {
-            LocalVaultId = request.LocalVaultId,
-            RemoteVaultId = request.RemoteVaultId,
-            RemoteTenantId = Guid.Empty, // Will be populated on first sync
-            PlatformApiUrl = request.PlatformApiUrl.TrimEnd('/'),
-            ApiKeyEncrypted = request.ApiKey, // TODO: encrypt
-        };
+            try
+            {
+                auditRunId = await _auditLog.StartAsync(new PlatformSyncRunStart(
+                    UserId: Guid.Empty,
+                    UserEmail: null,
+                    Operation: PlatformSyncOperation.Connect,
+                    Direction: PlatformSyncDirection.None,
+                    VaultSyncLinkId: null), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PlatformAuditLog.StartAsync failed for Connect");
+            }
+        }
 
-        _db.VaultSyncLinks.Add(link);
-
-        // Register as sync partner on platform
         try
         {
-            await _platformClient.RegisterPartnerAsync(link, $"selfhosted-{vault.Name}", ct);
+            // Resolve or create the per-tenant PlatformConnection (replaces the
+            // plaintext VaultSyncLink.ApiKeyEncrypted column and the Guid.Empty
+            // RemoteTenantId hack).
+            var tenantId = _tenantProvider.TenantId;
+            var connection = await _db.PlatformConnections
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId, ct);
+
+            if (connection is null && _connectionService is not null)
+            {
+                await _connectionService.UpsertAsync(
+                    new UpsertPlatformConnectionRequest(
+                        request.PlatformApiUrl,
+                        DisplayName: null,
+                        ApiKey: request.ApiKey),
+                    createdByUserId: Guid.Empty,
+                    ct);
+
+                connection = await _db.PlatformConnections
+                    .FirstOrDefaultAsync(c => c.TenantId == tenantId, ct);
+            }
+
+            // Fallback for bootstrapped scenarios where no connection service is wired
+            // (e.g. tests constructing the orchestrator directly) — write the legacy columns.
+            var link = new VaultSyncLink
+            {
+                LocalVaultId = request.LocalVaultId,
+                RemoteVaultId = request.RemoteVaultId,
+                PlatformConnectionId = connection?.Id,
+#pragma warning disable CS0618 // Legacy columns retained until follow-up drop migration.
+                PlatformApiUrl = request.PlatformApiUrl.TrimEnd('/'),
+                ApiKeyEncrypted = connection is null ? request.ApiKey : string.Empty,
+#pragma warning restore CS0618
+            };
+
+            _db.VaultSyncLinks.Add(link);
+            await _db.SaveChangesAsync(ct);
+
+            // Register as sync partner AND capture RemoteTenantId from the test response
+            // (replaces the Guid.Empty hack).
+            try
+            {
+                await _platformClient.RegisterPartnerAsync(link, $"selfhosted-{vault.Name}", ct);
+
+                if (_connectionService is not null)
+                {
+                    var testResult = await _connectionService.TestAsync(ct: ct);
+                    if (testResult.Status == PlatformConnectionTestStatus.Ok && testResult.RemoteTenantId is Guid rid)
+                    {
+                        link.RemoteTenantId = rid;
+                        await _db.SaveChangesAsync(ct);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to register sync partner on platform (will retry on first sync)");
+            }
+
+            if (_auditLog != null && auditRunId.HasValue)
+            {
+                try
+                {
+                    await _auditLog.CompleteAsync(
+                        auditRunId.Value,
+                        new PlatformSyncRunResult(ItemCount: 0, BytesTransferred: 0, Status: PlatformSyncRunStatus.Succeeded),
+                        ct);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "PlatformAuditLog.CompleteAsync failed for Connect run {RunId}", auditRunId);
+                }
+            }
+
+            return new VaultSyncStatusDto
+            {
+                LinkId = link.Id,
+                LocalVaultId = link.LocalVaultId,
+                LocalVaultName = vault.Name,
+                RemoteVaultId = link.RemoteVaultId,
+                PlatformApiUrl = link.PlatformApiUrl,
+                Status = link.LastSyncStatus.ToString(),
+                SyncEnabled = link.SyncEnabled,
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to register sync partner on platform (will retry on first sync)");
+            if (_auditLog != null && auditRunId.HasValue)
+            {
+                try
+                {
+                    await _auditLog.FailAsync(auditRunId.Value, ex.Message, ct);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(auditEx, "PlatformAuditLog.FailAsync failed for Connect run {RunId}", auditRunId);
+                }
+            }
+            throw;
         }
-
-        await _db.SaveChangesAsync(ct);
-
-        return new VaultSyncStatusDto
-        {
-            LinkId = link.Id,
-            LocalVaultId = link.LocalVaultId,
-            LocalVaultName = vault.Name,
-            RemoteVaultId = link.RemoteVaultId,
-            PlatformApiUrl = link.PlatformApiUrl,
-            Status = link.LastSyncStatus.ToString(),
-            SyncEnabled = link.SyncEnabled,
-        };
     }
 
     public async Task<bool> RemoveLinkAsync(Guid localVaultId, CancellationToken ct = default)
@@ -614,5 +856,304 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         _db.VaultSyncLinks.Remove(link);
         await _db.SaveChangesAsync(ct);
         return true;
+    }
+
+    // ------------------------------------------------------------------------
+    // Single-item sync (NodeID PlatformSyncItemOps) — V-SEC-09, V-SEC-11, V-SEC-12
+    // ------------------------------------------------------------------------
+
+    public async Task<SyncItemResult> SyncItemAsync(
+        Guid vaultSyncLinkId,
+        Guid knowledgeId,
+        SyncItemDirection direction,
+        bool overwriteLocal = false,
+        CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        // V-SEC-12: GUIDs are route-validated; belt-and-braces check at service boundary.
+        if (knowledgeId == Guid.Empty)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.Failed,
+                Message = "Invalid knowledge id.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        var link = await _db.VaultSyncLinks
+            .FirstOrDefaultAsync(l => l.Id == vaultSyncLinkId, ct);
+        if (link == null)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.NotFound,
+                Message = "Sync link not found.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        if (!link.SyncEnabled)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.PermissionDenied,
+                Message = "Sync is disabled for this link.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        // V-SEC-09: rate limit check BEFORE any platform HTTP call.
+        Guid? rateLimitOpId = null;
+        if (_rateLimiter != null)
+        {
+            var decision = await _rateLimiter.CheckAsync(_tenantProvider.TenantId, itemCount: 1, ct);
+            if (!decision.Allowed)
+            {
+                var message = decision.Reason switch
+                {
+                    RateLimitReason.HourlyQuotaExceeded => "Rate limit exceeded (10 runs per hour).",
+                    RateLimitReason.ConcurrentRunInProgress => "Another sync is already in progress for this tenant.",
+                    RateLimitReason.ItemLimitExceeded => "Item limit exceeded.",
+                    _ => "Rate limit exceeded.",
+                };
+                throw new RateLimitExceededException(decision.Reason!.Value, decision.RetryAfter, message);
+            }
+            rateLimitOpId = await _rateLimiter.RecordOperationAsync(
+                _tenantProvider.TenantId, $"SyncItem.{direction}", ct);
+        }
+
+        // Begin audit row when Node 4's audit log is wired in.
+        Guid? auditRunId = null;
+        if (_auditLog != null)
+        {
+            try
+            {
+                auditRunId = await _auditLog.StartAsync(new PlatformSyncRunStart(
+                    UserId: Guid.Empty,
+                    UserEmail: null,
+                    Operation: direction == SyncItemDirection.Pull
+                        ? PlatformSyncOperation.PullItem
+                        : PlatformSyncOperation.PushItem,
+                    Direction: direction == SyncItemDirection.Pull
+                        ? PlatformSyncDirection.Pull
+                        : PlatformSyncDirection.Push,
+                    VaultSyncLinkId: link.Id,
+                    KnowledgeId: knowledgeId), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PlatformAuditLog.StartAsync failed for SyncItemAsync");
+            }
+        }
+
+        SyncItemResult result;
+        try
+        {
+            result = direction == SyncItemDirection.Pull
+                ? await SyncItemPullAsync(link, knowledgeId, overwriteLocal, sw, ct)
+                : await SyncItemPushAsync(link, knowledgeId, sw, ct);
+        }
+        catch (RateLimitExceededException)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Platform unreachable during SyncItemAsync {Direction}", direction);
+            result = new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.Failed,
+                Message = "Platform is unreachable",
+                Duration = sw.Elapsed,
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "SyncItemAsync {Direction} failed", direction);
+            result = new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.Failed,
+                Message = ex.Message.Contains("invalid data", StringComparison.OrdinalIgnoreCase)
+                    ? "Platform returned invalid data"
+                    : ex.Message,
+                Duration = sw.Elapsed,
+            };
+        }
+        finally
+        {
+            if (_rateLimiter != null && rateLimitOpId.HasValue)
+                await _rateLimiter.CompleteOperationAsync(rateLimitOpId.Value, ct);
+        }
+
+        // Close out the audit row.
+        if (_auditLog != null && auditRunId.HasValue)
+        {
+            try
+            {
+                if (result.Success)
+                {
+                    await _auditLog.CompleteAsync(
+                        auditRunId.Value,
+                        new PlatformSyncRunResult(
+                            ItemCount: 1,
+                            BytesTransferred: 0,
+                            Status: PlatformSyncRunStatus.Succeeded),
+                        ct);
+                }
+                else
+                {
+                    await _auditLog.FailAsync(
+                        auditRunId.Value,
+                        result.Message ?? "Unknown failure",
+                        ct);
+                }
+            }
+            catch (Exception auditEx)
+            {
+                _logger.LogWarning(auditEx, "PlatformAuditLog finalization failed for SyncItemAsync");
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<SyncItemResult> SyncItemPullAsync(
+        VaultSyncLink link, Guid remoteKnowledgeId, bool overwriteLocal, Stopwatch sw, CancellationToken ct)
+    {
+        var package = await _platformClient.ExportItemAsync(link, remoteKnowledgeId, ct);
+        if (package == null)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.NotFound,
+                Message = "Item not found on platform.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        // V-SEC-12: payload must contain the exact id we asked for.
+        if (package.Data.KnowledgeItems.Count != 1 ||
+            package.Data.KnowledgeItems[0].Id != remoteKnowledgeId)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.Failed,
+                Message = "Platform returned invalid data",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        var tenantId = _tenantProvider.TenantId;
+        var existing = await _db.KnowledgeItems
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.Id == remoteKnowledgeId, ct);
+
+        // V-SEC-11: Skip-by-default when local exists. Overwrite only when explicit.
+        if (existing != null && !overwriteLocal)
+        {
+            return new SyncItemResult
+            {
+                Success = true,
+                Outcome = SyncItemOutcome.Skipped,
+                LocalKnowledgeId = existing.Id,
+                Message = "Local copy exists — set overwriteLocal=true to overwrite.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        // Prefer the strategy-aware PortableImportService. Fall back to the orchestrator's
+        // internal last-write-wins import only when DI hasn't wired it (legacy tests).
+        var strategy = overwriteLocal ? ImportConflictStrategy.Overwrite : ImportConflictStrategy.Skip;
+        if (_importService != null)
+        {
+            var importResult = await _importService.ImportAsync(package, strategy, ct);
+            if (!importResult.Success)
+            {
+                return new SyncItemResult
+                {
+                    Success = false,
+                    Outcome = SyncItemOutcome.Failed,
+                    Message = importResult.Error ?? "Import failed.",
+                    Duration = sw.Elapsed,
+                };
+            }
+        }
+        else
+        {
+            var importResult = await ImportSyncDeltaLocallyAsync(package, link.LocalVaultId, ct);
+            if (!importResult.Success)
+            {
+                return new SyncItemResult
+                {
+                    Success = false,
+                    Outcome = SyncItemOutcome.Failed,
+                    Message = importResult.Error ?? "Import failed.",
+                    Duration = sw.Elapsed,
+                };
+            }
+        }
+
+        return new SyncItemResult
+        {
+            Success = true,
+            Outcome = existing == null ? SyncItemOutcome.Created : SyncItemOutcome.Updated,
+            LocalKnowledgeId = remoteKnowledgeId,
+            Duration = sw.Elapsed,
+        };
+    }
+
+    private async Task<SyncItemResult> SyncItemPushAsync(
+        VaultSyncLink link, Guid localKnowledgeId, Stopwatch sw, CancellationToken ct)
+    {
+        var isInVault = await _db.KnowledgeVaults
+            .IgnoreQueryFilters()
+            .AnyAsync(kv => kv.VaultId == link.LocalVaultId && kv.KnowledgeId == localKnowledgeId, ct);
+
+        if (!isInVault)
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.NotFound,
+                Message = "Knowledge item is not in this vault.",
+                Duration = sw.Elapsed,
+            };
+        }
+
+        PortableExportPackage package;
+        try
+        {
+            package = await _exportService.ExportSingleItemAsync(
+                link.LocalVaultId, localKnowledgeId, ct);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SyncItemResult
+            {
+                Success = false,
+                Outcome = SyncItemOutcome.NotFound,
+                Message = ex.Message,
+                Duration = sw.Elapsed,
+            };
+        }
+
+        var platformResponse = await _platformClient.ImportDeltaAsync(link, package, ct);
+
+        return new SyncItemResult
+        {
+            Success = true,
+            LocalKnowledgeId = localKnowledgeId,
+            Outcome = platformResponse.Accepted > 0 ? SyncItemOutcome.Updated : SyncItemOutcome.Unchanged,
+            Duration = sw.Elapsed,
+        };
     }
 }

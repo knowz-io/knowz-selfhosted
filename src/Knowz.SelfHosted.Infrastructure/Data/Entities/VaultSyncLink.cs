@@ -23,13 +23,25 @@ public class VaultSyncLink
     public Guid RemoteTenantId { get; set; }
 
     /// <summary>
-    /// Platform API base URL (e.g., "https://api.knowz.io").
+    /// FK → PlatformConnection. Per-tenant credential store that holds the encrypted
+    /// API key and platform URL. Nullable during data-copy migration for legacy rows;
+    /// populated for all new links.
     /// </summary>
+    public Guid? PlatformConnectionId { get; set; }
+
+    /// <summary>
+    /// Legacy: platform API base URL. Moved to <c>PlatformConnection.PlatformApiUrl</c>.
+    /// Retained for backwards compatibility during the data-copy migration window.
+    /// </summary>
+    [Obsolete("Use PlatformConnection.PlatformApiUrl via PlatformConnectionId. Removed in a future migration.")]
     public string PlatformApiUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Encrypted platform API key for authentication.
+    /// Legacy: plaintext API key stored despite the column name. Moved to
+    /// <c>PlatformConnection.ApiKeyProtected</c> (DataProtection ciphertext).
+    /// Retained for backwards compatibility during the data-copy migration window.
     /// </summary>
+    [Obsolete("Use PlatformConnection.ApiKeyProtected via PlatformConnectionId. Removed in a future migration.")]
     public string ApiKeyEncrypted { get; set; } = string.Empty;
 
     /// <summary>
