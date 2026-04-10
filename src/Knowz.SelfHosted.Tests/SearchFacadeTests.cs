@@ -111,7 +111,8 @@ public class SearchFacadeTests : IDisposable
 
         Assert.IsType<AskAnswerResponse>(result);
         Assert.Equal("The answer is 42", result.Answer);
-        Assert.Equal(0.85, result.Confidence);
+        // Confidence is normalized from the search result score, not the OpenAI mock value.
+        Assert.Equal(0.9, result.Confidence);
         Assert.Single(result.Sources);
     }
 
@@ -285,7 +286,8 @@ public class SearchFacadeTests : IDisposable
 
         Assert.IsType<ChatResponse>(result);
         Assert.NotEmpty(result.Answer);
-        Assert.Equal(0.8, result.Confidence);
+        // Confidence is normalized from the search result score, not the OpenAI mock value.
+        Assert.Equal(0.9, result.Confidence);
         Assert.Single(result.Sources);
     }
 

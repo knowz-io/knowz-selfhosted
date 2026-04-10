@@ -163,6 +163,20 @@ public class KnowledgeService
             _logger.LogWarning(ex, "Failed to index knowledge item {Id} in search", item.Id);
         }
 
+        // Create initial version 1 so version history starts non-empty.
+        // Without this, history is empty until the first edit, which is confusing.
+        if (_versioningService != null)
+        {
+            try
+            {
+                await _versioningService.CreateVersionAsync(item.Id, createdByUserId, "Initial version", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create initial version for knowledge {Id}", item.Id);
+            }
+        }
+
         // Enqueue for background AI enrichment (title, summary, tags)
         try
         {
@@ -190,18 +204,9 @@ public class KnowledgeService
         if (item == null)
             return null;
 
-        // Create version snapshot before applying changes
-        if (_versioningService != null)
-        {
-            try
-            {
-                await _versioningService.CreateVersionAsync(id, updatedByUserId, "Pre-update snapshot", ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to create version snapshot for knowledge {Id}", id);
-            }
-        }
+        // Capture original values for change-summary computation (post-update snapshot)
+        var originalTitle = item.Title;
+        var originalContent = item.Content;
 
         if (title != null) item.Title = title;
         if (content != null) item.Content = content;
@@ -251,12 +256,59 @@ public class KnowledgeService
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
+        // Snapshot the post-update state so the latest version row reflects current content.
+        // Compute a meaningful change description from what actually changed.
+        if (_versioningService != null)
+        {
+            try
+            {
+                var changeDescription = BuildChangeDescription(
+                    titleChanged: title != null && originalTitle != item.Title,
+                    contentChanged: content != null && originalContent != item.Content,
+                    tagsChanged: tagNames != null,
+                    vaultChanged: vaultChanged,
+                    originalContent: originalContent,
+                    newContent: item.Content);
+
+                await _versioningService.CreateVersionAsync(id, updatedByUserId, changeDescription, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create version snapshot for knowledge {Id}", id);
+            }
+        }
+
         if (content != null || title != null || vaultChanged)
         {
             await ReindexAndEnrichAsync(item, ct);
         }
 
         return new UpdateKnowledgeResult(item.Id, item.Title, true);
+    }
+
+    /// <summary>
+    /// Builds a human-readable change description summarizing what was modified in an update.
+    /// </summary>
+    internal static string BuildChangeDescription(
+        bool titleChanged, bool contentChanged, bool tagsChanged, bool vaultChanged,
+        string? originalContent, string? newContent)
+    {
+        var parts = new List<string>();
+        if (titleChanged) parts.Add("title");
+        if (contentChanged)
+        {
+            var oldLen = originalContent?.Length ?? 0;
+            var newLen = newContent?.Length ?? 0;
+            var delta = newLen - oldLen;
+            var sign = delta >= 0 ? "+" : "";
+            parts.Add($"content ({sign}{delta} chars)");
+        }
+        if (tagsChanged) parts.Add("tags");
+        if (vaultChanged) parts.Add("vault");
+
+        return parts.Count == 0
+            ? "Updated"
+            : "Updated " + string.Join(", ", parts);
     }
 
     public async Task<BatchMoveResult> BatchMoveToVaultAsync(

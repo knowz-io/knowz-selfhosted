@@ -106,20 +106,20 @@ public class PdfContentExtractorTests
     // =============================================
 
     [Fact]
-    public async Task ExtractAsync_TruncatesWhenExceeding1MB()
+    public async Task ExtractAsync_TruncatesWhenExceedingMaxChars()
     {
         // VERIFY_PDF_04
-        // Create a PDF with a huge text page
+        // Create a PDF with a huge text page exceeding the 2MB extraction cap
         var record = MakeRecord("application/pdf");
-        var largeText = new string('A', 600_000); // 600K chars, will exceed 524_288 limit
+        var largeText = new string('A', PdfContentExtractor.MaxExtractionChars + 100_000);
         using var stream = CreatePdfWithText(largeText);
 
         var result = await _extractor.ExtractAsync(record, stream);
 
         Assert.True(result.Success);
         Assert.NotNull(result.ExtractedText);
-        Assert.True(result.ExtractedText.Length <= 524_288,
-            $"Expected <= 524288 chars but got {result.ExtractedText.Length}");
+        Assert.True(result.ExtractedText.Length <= PdfContentExtractor.MaxExtractionChars,
+            $"Expected <= {PdfContentExtractor.MaxExtractionChars} chars but got {result.ExtractedText.Length}");
     }
 
     // =============================================
