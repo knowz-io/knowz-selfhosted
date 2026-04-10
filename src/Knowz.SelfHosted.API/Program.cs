@@ -73,7 +73,6 @@ builder.Services.AddSingleton(Channel.CreateBounded<EnrichmentWorkItem>(
         SingleReader = true
     }));
 builder.Services.AddHostedService<EnrichmentBackgroundService>();
-builder.Services.AddHostedService<EnrichmentOutboxCleanupService>();
 
 // Git sync pipeline: bounded channel + background service
 builder.Services.AddSingleton(Channel.CreateBounded<GitSyncWorkItem>(
@@ -83,6 +82,10 @@ builder.Services.AddSingleton(Channel.CreateBounded<GitSyncWorkItem>(
         SingleReader = true
     }));
 builder.Services.AddHostedService<GitSyncBackgroundService>();
+
+// One-shot data-copy migration: backfills PlatformConnection rows from the legacy per-link
+// columns on VaultSyncLink. Idempotent — safe to run on every boot.
+builder.Services.AddHostedService<PlatformConnectionMigrationService>();
 
 // Configure multipart form options (100MB upload limit)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
@@ -110,6 +113,18 @@ builder.Services.AddScoped<IUserManagementService, UserManagementService>();
 // SSO service
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<ISelfHostedSSOService, SelfHostedSSOService>();
+
+// Platform sync HTTP client (NodeID PlatformSyncConnection) — used by PlatformSyncClient
+// and PlatformConnectionService. 30s timeout, 50 MB hard response cap, no redirects (SSRF).
+builder.Services.AddHttpClient("KnowzPlatformSync", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.MaxResponseContentBufferSize = 50 * 1024 * 1024; // 50 MB
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Knowz-SelfHosted/1.0");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = false
+});
 
 // JSON enum serialization: accept both "User" and 2 for all enum properties
 builder.Services.ConfigureHttpJsonOptions(options =>

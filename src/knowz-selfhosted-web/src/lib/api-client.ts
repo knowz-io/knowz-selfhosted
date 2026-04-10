@@ -58,6 +58,15 @@ import type {
   AuditLogEntry,
   GitSyncStatus,
   GitSyncHistoryEntry,
+  PlatformConnectionDto,
+  UpsertPlatformConnectionRequest,
+  PlatformConnectionTestResult,
+  PlatformVaultListDto,
+  PlatformKnowledgeListDto,
+  PlatformKnowledgeDetailDto,
+  SyncItemResult,
+  VaultSyncStatusDto,
+  PlatformSyncRunDto,
 } from './types'
 
 const getApiUrl = (): string =>
@@ -867,4 +876,92 @@ export const api = {
     request<void>(`/api/v1/vaults/${vaultId}/git-sync`, {
       method: 'DELETE',
     }),
+
+  // --- Platform Sync: Connection ---
+  getPlatformConnection: () =>
+    request<PlatformConnectionDto>('/api/v1/sync/connection'),
+
+  upsertPlatformConnection: (body: UpsertPlatformConnectionRequest) =>
+    request<PlatformConnectionDto>('/api/v1/sync/connection', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deletePlatformConnection: () =>
+    request<void>('/api/v1/sync/connection', {
+      method: 'DELETE',
+    }),
+
+  testPlatformConnection: () =>
+    request<PlatformConnectionTestResult>('/api/v1/sync/connection/test', {
+      method: 'POST',
+    }),
+
+  testPlatformConnectionCandidate: (platformApiUrl: string, apiKey: string) =>
+    request<PlatformConnectionTestResult>('/api/v1/sync/connection/test-candidate', {
+      method: 'POST',
+      body: JSON.stringify({ platformApiUrl, apiKey }),
+    }),
+
+  // --- Platform Sync: Browsing ---
+  listPlatformVaults: () =>
+    request<PlatformVaultListDto>('/api/v1/sync/platform/vaults'),
+
+  listPlatformKnowledge: (
+    vaultId: string,
+    page: number = 1,
+    pageSize: number = 25,
+    search?: string,
+  ) =>
+    request<PlatformKnowledgeListDto>(
+      `/api/v1/sync/platform/vaults/${vaultId}/knowledge${buildQuery({
+        page: String(page),
+        pageSize: String(pageSize),
+        search,
+      })}`,
+    ),
+
+  getPlatformKnowledge: (knowledgeId: string) =>
+    request<PlatformKnowledgeDetailDto>(`/api/v1/sync/platform/knowledge/${knowledgeId}`),
+
+  // --- Platform Sync: Links & Item Ops ---
+  listSyncLinks: () =>
+    request<VaultSyncStatusDto[]>('/api/v1/sync/links'),
+
+  removeSyncLink: (localVaultId: string) =>
+    request<void>(`/api/v1/sync/links/${localVaultId}`, {
+      method: 'DELETE',
+    }),
+
+  runSyncLink: (localVaultId: string, direction: 'Full' | 'PullOnly' | 'PushOnly' = 'Full') =>
+    request<unknown>(`/api/v1/sync/run/${localVaultId}`, {
+      method: 'POST',
+      body: JSON.stringify({ direction }),
+    }),
+
+  pullPlatformItem: (linkId: string, knowledgeId: string, overwriteLocal: boolean) =>
+    request<SyncItemResult>(`/api/v1/sync/links/${linkId}/pull-item`, {
+      method: 'POST',
+      body: JSON.stringify({ knowledgeId, overwriteLocal }),
+    }),
+
+  pushPlatformItem: (linkId: string, knowledgeId: string) =>
+    request<SyncItemResult>(`/api/v1/sync/links/${linkId}/push-item`, {
+      method: 'POST',
+      body: JSON.stringify({ knowledgeId, overwriteLocal: false }),
+    }),
+
+  // --- Platform Sync: History ---
+  getPlatformSyncHistory: (
+    page: number = 1,
+    pageSize: number = 50,
+    vaultSyncLinkId?: string,
+  ) =>
+    request<PlatformSyncRunDto[]>(
+      `/api/v1/sync/history${buildQuery({
+        page: String(page),
+        pageSize: String(pageSize),
+        vaultSyncLinkId,
+      })}`,
+    ),
 }

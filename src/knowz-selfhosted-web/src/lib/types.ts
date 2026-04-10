@@ -591,6 +591,148 @@ export interface GitSyncHistoryEntry {
   details?: string
 }
 
+// --- Platform Sync Types ---
+
+export type PlatformConnectionTestStatus =
+  | 'Untested'
+  | 'Ok'
+  | 'Unauthorized'
+  | 'NetworkError'
+  | 'SchemaIncompatible'
+
+export interface PlatformConnectionDto {
+  platformApiUrl: string
+  displayName: string | null
+  hasApiKey: boolean
+  apiKeyMask: string | null
+  remoteTenantId: string | null
+  lastTestedAt: string | null
+  lastTestStatus: PlatformConnectionTestStatus
+  lastTestError: string | null
+  updatedAt: string
+}
+
+export interface UpsertPlatformConnectionRequest {
+  platformApiUrl: string
+  displayName?: string | null
+  apiKey?: string | null
+}
+
+export interface PlatformConnectionTestResult {
+  status: PlatformConnectionTestStatus
+  message: string | null
+  remoteTenantId: string | null
+  schemaVersion: string | null
+}
+
+export interface PlatformVaultDto {
+  id: string
+  name: string
+  description: string | null
+  knowledgeCount: number
+  updatedAt: string | null
+}
+
+export interface PlatformVaultListDto {
+  vaults: PlatformVaultDto[]
+  totalCount: number
+}
+
+export interface PlatformKnowledgeSummaryDto {
+  id: string
+  title: string
+  summary: string | null
+  updatedAt: string | null
+  createdBy: string | null
+}
+
+export interface PlatformKnowledgeListDto {
+  items: PlatformKnowledgeSummaryDto[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface PlatformKnowledgeDetailDto {
+  id: string
+  title: string
+  content: string | null
+  summary: string | null
+  tags: string | null
+  updatedAt: string | null
+  createdBy: string | null
+}
+
+export type SyncConflictStrategy = 'Skip' | 'Overwrite'
+
+export interface SyncItemRequest {
+  knowledgeId: string
+  overwriteLocal: boolean
+}
+
+export type SyncItemOutcome =
+  | 'Created'
+  | 'Updated'
+  | 'Skipped'
+  | 'Unchanged'
+  | 'Failed'
+  | 'RateLimited'
+  | 'PermissionDenied'
+  | 'NotFound'
+
+export interface SyncItemResult {
+  success: boolean
+  outcome: SyncItemOutcome
+  localKnowledgeId: string | null
+  message: string | null
+  duration: string
+}
+
+export interface VaultSyncStatusDto {
+  linkId: string
+  localVaultId: string
+  localVaultName: string
+  remoteVaultId: string
+  platformApiUrl: string
+  status: string
+  lastSyncError: string | null
+  lastSyncCompletedAt: string | null
+  lastPullCursor: string | null
+  lastPushCursor: string | null
+  syncEnabled: boolean
+}
+
+export type PlatformSyncOperation =
+  | 'Connect'
+  | 'Disconnect'
+  | 'TestConnection'
+  | 'BrowseVaults'
+  | 'BrowseKnowledge'
+  | 'PullItem'
+  | 'PushItem'
+  | 'PullVault'
+  | 'PushVault'
+
+export type PlatformSyncDirection = 'None' | 'Pull' | 'Push'
+
+export type PlatformSyncRunStatus = 'InProgress' | 'Succeeded' | 'Failed' | 'Partial'
+
+export interface PlatformSyncRunDto {
+  id: string
+  vaultSyncLinkId: string | null
+  userId: string
+  userEmail: string | null
+  operation: PlatformSyncOperation
+  direction: PlatformSyncDirection
+  knowledgeId: string | null
+  itemCount: number
+  bytesTransferred: number
+  status: PlatformSyncRunStatus
+  errorMessage: string | null
+  startedAt: string
+  completedAt: string | null
+}
+
 // --- SSE Streaming Types ---
 
 export interface SSESourcesEvent {

@@ -1,6 +1,7 @@
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Services;
+using Knowz.SelfHosted.Application.Validators;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -45,9 +46,15 @@ public static class ApplicationServiceExtensions
         // Vault sync services
         services.AddScoped<IVaultSyncOrchestrator, VaultSyncOrchestrator>();
         services.AddScoped<IPlatformSyncClient, PlatformSyncClient>();
+        services.AddScoped<IPlatformAuditLog, PlatformAuditLogService>();
+        // Per-tenant platform credential store (NodeID: PlatformSyncConnection).
+        services.AddScoped<IPlatformConnectionService, PlatformConnectionService>();
+        services.AddSingleton<IUrlValidator, PlatformUrlValidator>();
+        // Rate limiter is a singleton — sliding-window state must persist across requests
+        // (V-SEC-09). NodeID PlatformSyncItemOps.
+        services.AddSingleton<IPlatformSyncRateLimiter, PlatformSyncRateLimiter>();
         services.AddScoped<VaultScopedExportService>();
         services.AddScoped<FileSyncService>();
-        services.AddHttpClient("PlatformSync");
 
         // Content extraction — composite pattern (routes by content type)
         // Native extractors handle common formats directly via OpenXml/PdfPig

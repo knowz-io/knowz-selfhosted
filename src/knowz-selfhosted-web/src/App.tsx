@@ -24,6 +24,7 @@ import UsersPage from './pages/admin/UsersPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
 import SSOSettingsPage from './pages/admin/SSOSettingsPage'
 import AuditLogPage from './pages/admin/AuditLogPage'
+import PlatformSyncPage from './pages/admin/PlatformSyncPage'
 import SSOCallbackPage from './pages/SSOCallbackPage'
 
 export default function App() {
@@ -112,6 +113,14 @@ export default function App() {
                       <SuperAdminRoute>
                         <SSOSettingsPage />
                       </SuperAdminRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/platform-sync"
+                    element={
+                      <AdminRoute>
+                        <PlatformSyncPage />
+                      </AdminRoute>
                     }
                   />
 

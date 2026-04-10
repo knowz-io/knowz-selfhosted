@@ -67,6 +67,8 @@ public class SelfHostedDbContext : DbContext
     // Vault sync entities (no query filters — admin-level)
     public DbSet<VaultSyncLink> VaultSyncLinks => Set<VaultSyncLink>();
     public DbSet<SyncTombstone> SyncTombstones => Set<SyncTombstone>();
+    public DbSet<PlatformConnection> PlatformConnections => Set<PlatformConnection>();
+    public DbSet<PlatformSyncRun> PlatformSyncRuns => Set<PlatformSyncRun>();
 
     // Knowledge versioning and audit logging
     public DbSet<KnowledgeVersion> KnowledgeVersions => Set<KnowledgeVersion>();
@@ -262,9 +264,25 @@ public class SelfHostedDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.LocalVaultId).IsUnique();
-            entity.Property(e => e.PlatformApiUrl).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.ApiKeyEncrypted).IsRequired().HasMaxLength(1000);
+            entity.HasIndex(e => e.PlatformConnectionId);
+#pragma warning disable CS0618 // Obsolete properties retained during data-copy migration window
+            entity.Property(e => e.PlatformApiUrl).IsRequired(false).HasMaxLength(500);
+            entity.Property(e => e.ApiKeyEncrypted).IsRequired(false).HasMaxLength(1000);
+#pragma warning restore CS0618
             entity.Property(e => e.LastSyncError).HasMaxLength(2000);
+        });
+
+        // --- PlatformConnection entity configuration (NO query filter — admin-level) ---
+        modelBuilder.Entity<PlatformConnection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TenantId).IsUnique();
+            entity.Property(e => e.PlatformApiUrl).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ApiKeyProtected).IsRequired().HasMaxLength(4000);
+            entity.Property(e => e.ApiKeyLast4).HasMaxLength(8);
+            entity.Property(e => e.DisplayName).HasMaxLength(100);
+            entity.Property(e => e.LastTestError).HasMaxLength(2000);
+            entity.Property(e => e.LastTestStatus).HasConversion<int>();
         });
 
         // --- SyncTombstone entity configuration (NO query filter — admin-level) ---
@@ -279,6 +297,37 @@ public class SelfHostedDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.VaultSyncLinkId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --- PlatformSyncRun entity configuration (NO query filter — admin-level audit log) ---
+        modelBuilder.Entity<PlatformSyncRun>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // History page query: WHERE TenantId = @t ORDER BY StartedAt DESC
+            entity.HasIndex(e => new { e.TenantId, e.StartedAt })
+                .HasDatabaseName("IX_PlatformSyncRuns_TenantId_StartedAt");
+
+            // Concurrency + rate limiter path: WHERE TenantId = @t AND Status = InProgress
+            entity.HasIndex(e => new { e.TenantId, e.Status })
+                .HasDatabaseName("IX_PlatformSyncRuns_TenantId_Status");
+
+            // Filtered index for fast in-progress lookups: WHERE CompletedAt IS NULL.
+            // Matches the CountInProgressAsync / concurrency-guard read path without forcing a
+            // full scan when the table grows. Keyed on TenantId so concurrent tenants don't collide.
+            entity.HasIndex(e => e.TenantId)
+                .HasDatabaseName("IX_PlatformSyncRuns_TenantId_InProgress")
+                .HasFilter("[CompletedAt] IS NULL");
+
+            // Per-link drill-down
+            entity.HasIndex(e => e.VaultSyncLinkId)
+                .HasDatabaseName("IX_PlatformSyncRuns_VaultSyncLinkId");
+
+            entity.Property(e => e.UserEmail).HasMaxLength(255);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.Operation).HasConversion<int>();
+            entity.Property(e => e.Direction).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
         });
 
         // EnrichmentOutbox (no query filter — infrastructure entity)
