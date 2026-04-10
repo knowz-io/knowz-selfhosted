@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
+import { parseAsUtc } from '../lib/format-utils'
+import { useFormatters } from '../hooks/useFormatters'
 import {
   Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw,
   Search, StickyNote, FileText, Mail, Image, AudioLines, Video, Code2, Link2,
@@ -25,8 +27,9 @@ const PAGE_SIZES = [10, 20, 50, 100] as const
 
 function relativeTime(dateStr: string): string {
   const now = Date.now()
-  const date = new Date(dateStr).getTime()
-  const diffMs = now - date
+  // parseAsUtc handles naive selfhosted timestamps that lack a Z suffix.
+  const date = parseAsUtc(dateStr).getTime()
+  const diffMs = Math.max(0, now - date)
   const diffMin = Math.floor(diffMs / 60000)
   if (diffMin < 1) return 'just now'
   if (diffMin < 60) return `${diffMin}m ago`
@@ -43,6 +46,7 @@ export default function KnowledgeListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
 
   const page = Number(searchParams.get('page') || '1')
   const pageSize = Number(searchParams.get('pageSize') || '20')
@@ -440,7 +444,7 @@ export default function KnowledgeListPage() {
                       <td
                         className="py-2.5 px-3 text-xs text-muted-foreground"
                         onClick={() => navigate(`/knowledge/${item.id}`)}
-                        title={new Date(item.createdAt).toLocaleString()}
+                        title={fmt.dateTime(item.createdAt)}
                       >
                         {relativeTime(item.createdAt)}
                       </td>

@@ -12,6 +12,7 @@ import {
 import { api } from '../../lib/api-client'
 import { useAuth } from '../../lib/auth'
 import { UserRole } from '../../lib/types'
+import { parseAsUtc } from '../../lib/format-utils'
 
 export default function AdminDashboardPage() {
   const { user } = useAuth()
@@ -71,11 +72,11 @@ export default function AdminDashboardPage() {
   const adminCount = users.filter((u) => u.role === UserRole.Admin).length
 
   const recentUsers = [...users]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => parseAsUtc(b.createdAt).getTime() - parseAsUtc(a.createdAt).getTime())
     .slice(0, 5)
 
   const recentTenants = [...tenants]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => parseAsUtc(b.createdAt).getTime() - parseAsUtc(a.createdAt).getTime())
     .slice(0, 5)
 
   return (

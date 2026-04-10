@@ -20,12 +20,13 @@ import {
   Mic,
   FileSearch,
 } from 'lucide-react'
-import { formatFileSize } from '../lib/format-utils'
+import { formatFileSize, parseAsUtc, formatDate } from '../lib/format-utils'
 
 function relativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  // parseAsUtc handles naive selfhosted timestamps that lack a Z suffix.
+  const date = parseAsUtc(dateStr)
   const now = new Date()
-  const diff = now.getTime() - date.getTime()
+  const diff = Math.max(0, now.getTime() - date.getTime())
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`
@@ -33,7 +34,7 @@ function relativeTime(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
-  return date.toLocaleDateString()
+  return formatDate(date)
 }
 
 function contentTypeBadgeClass(contentType?: string): string {

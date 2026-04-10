@@ -18,6 +18,8 @@ import type {
   SwitchTenantData,
   TenantMembershipDto,
   UserDto,
+  UserPreferencesDto,
+  UpdateUserPreferencesRequest,
   TenantDto,
   CreateTenantData,
   UpdateTenantData,
@@ -699,6 +701,16 @@ export const api = {
     request<{ message: string }>('/api/v1/account/change-password', {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  // --- User Preferences ---
+  getUserPreferences: () =>
+    request<UserPreferencesDto>('/api/v1/account/preferences'),
+
+  updateUserPreferences: (req: UpdateUserPreferencesRequest) =>
+    request<UserPreferencesDto>('/api/v1/account/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(req),
     }),
 
   // --- Personal API Key ---

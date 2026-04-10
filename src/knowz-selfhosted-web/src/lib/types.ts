@@ -163,6 +163,20 @@ export interface UserDto {
   apiKey: string | null
   createdAt: string
   lastLoginAt: string | null
+  /**
+   * User's preferred IANA timezone (e.g. "America/New_York"). Null/undefined
+   * means no preference has been set — the UI should fall back to
+   * DEFAULT_USER_TIMEZONE from useFormatters.
+   */
+  timeZonePreference?: string | null
+}
+
+export interface UserPreferencesDto {
+  timeZonePreference: string | null
+}
+
+export interface UpdateUserPreferencesRequest {
+  timeZonePreference: string | null
 }
 
 export interface TenantDto {

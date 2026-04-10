@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Tag, Info, Paperclip, Calendar, FolderOpen } from 'lucide-react'
 import SidebarCard from './SidebarCard'
+import { useFormatters } from '../hooks/useFormatters'
 
 interface DetailSidebarProps {
   briefSummary?: string
@@ -24,6 +25,7 @@ export default function DetailSidebar({
   updatedAt,
   attachmentCount,
 }: DetailSidebarProps) {
+  const fmt = useFormatters()
   return (
     <div className="space-y-3">
       {/* Vault */}
@@ -100,7 +102,7 @@ export default function DetailSidebar({
             <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Created</dt>
             <dd className="mt-0.5 flex items-center gap-1 text-muted-foreground">
               <Calendar size={10} />
-              {new Date(createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              {fmt.dateTime(createdAt)}
             </dd>
           </div>
 
@@ -108,7 +110,7 @@ export default function DetailSidebar({
             <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Updated</dt>
             <dd className="mt-0.5 flex items-center gap-1 text-muted-foreground">
               <Calendar size={10} />
-              {new Date(updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              {fmt.dateTime(updatedAt)}
             </dd>
           </div>
         </dl>

@@ -98,7 +98,13 @@ public class AuthService : IAuthService
             return null;
         }
 
-        return user.ToDto();
+        var timeZonePreference = await _db.UserPreferences
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Select(p => p.TimeZonePreference)
+            .FirstOrDefaultAsync();
+
+        return user.ToDto(timeZonePreference);
     }
 
     public async Task EnsureSuperAdminExistsAsync()
@@ -368,11 +374,13 @@ public class AuthService : IAuthService
         var expiresAt = DateTime.UtcNow.AddMinutes(_options.JwtExpirationMinutes);
         var token = GenerateJwtToken(user, expiresAt);
 
+        var timeZonePreference = LookupTimeZonePreference(user.Id);
+
         return new AuthResult
         {
             Token = token,
             ExpiresAt = expiresAt,
-            User = user.ToDto()
+            User = user.ToDto(timeZonePreference)
         };
     }
 
@@ -381,6 +389,8 @@ public class AuthService : IAuthService
         var expiresAt = DateTime.UtcNow.AddMinutes(_options.JwtExpirationMinutes);
         var displayName = string.IsNullOrWhiteSpace(user.DisplayName) ? user.Username : user.DisplayName;
         var token = JwtTokenHelper.GenerateToken(user.Id, displayName, tenantId, role, expiresAt, _options.JwtSecret, _options.JwtIssuer, _logger);
+
+        var timeZonePreference = LookupTimeZonePreference(user.Id);
 
         return new AuthResult
         {
@@ -398,9 +408,35 @@ public class AuthService : IAuthService
                 IsActive = user.IsActive,
                 ApiKey = user.ApiKey,
                 CreatedAt = user.CreatedAt,
-                LastLoginAt = user.LastLoginAt
+                LastLoginAt = user.LastLoginAt,
+                TimeZonePreference = timeZonePreference
             }
         };
+    }
+
+    /// <summary>
+    /// Synchronously loads the user's timezone preference. Runs inside
+    /// sync auth-result builders, so we use a blocking query. The
+    /// UserPreferences table is tiny (one row per user) and reads are
+    /// indexed by UserId — this adds ~1ms to login, acceptable.
+    /// Returns null if the user has no saved preference.
+    /// </summary>
+    private string? LookupTimeZonePreference(Guid userId)
+    {
+        try
+        {
+            return _db.UserPreferences
+                .AsNoTracking()
+                .Where(p => p.UserId == userId)
+                .Select(p => p.TimeZonePreference)
+                .FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            // Never let a preference-read failure break login.
+            _logger.LogWarning(ex, "Failed to load timezone preference for user {UserId}", userId);
+            return null;
+        }
     }
 
     private string GenerateJwtToken(User user, DateTime expiresAt) =>

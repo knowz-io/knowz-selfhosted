@@ -4,6 +4,7 @@ import { api } from '../lib/api-client'
 import { useAuth } from '../lib/auth'
 import { UserRole } from '../lib/types'
 import type { InboxItemDto, Vault } from '../lib/types'
+import { parseAsUtc, formatDate } from '../lib/format-utils'
 import {
   Inbox,
   Plus,
@@ -209,9 +210,10 @@ export default function InboxPage() {
   const preview = (body: string) => (body.length > 80 ? body.slice(0, 80) + '...' : body)
 
   const relativeTime = (dateStr: string) => {
-    const date = new Date(dateStr)
+    // parseAsUtc handles naive selfhosted timestamps that lack a Z suffix.
+    const date = parseAsUtc(dateStr)
     const now = new Date()
-    const diff = now.getTime() - date.getTime()
+    const diff = Math.max(0, now.getTime() - date.getTime())
     const minutes = Math.floor(diff / 60000)
     if (minutes < 1) return 'just now'
     if (minutes < 60) return `${minutes}m ago`
@@ -219,7 +221,7 @@ export default function InboxPage() {
     if (hours < 24) return `${hours}h ago`
     const days = Math.floor(hours / 24)
     if (days < 30) return `${days}d ago`
-    return date.toLocaleDateString()
+    return formatDate(date)
   }
 
   const typeBadgeClass = (type: string) => {

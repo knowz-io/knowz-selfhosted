@@ -14,6 +14,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { api, ApiError } from '../../lib/api-client'
+import { useFormatters } from '../../hooks/useFormatters'
 import type {
   PlatformConnectionDto,
   PlatformConnectionTestResult,
@@ -34,6 +35,7 @@ interface Banner {
 
 export default function ConnectionCard({ connection, linkCount }: ConnectionCardProps) {
   const queryClient = useQueryClient()
+  const fmt = useFormatters()
   const isConnected = !!connection && connection.hasApiKey
   const [isEditing, setIsEditing] = useState(!isConnected)
   const [url, setUrl] = useState(connection?.platformApiUrl ?? '')
@@ -195,7 +197,7 @@ export default function ConnectionCard({ connection, linkCount }: ConnectionCard
             {connection.lastTestedAt && (
               <FieldRow
                 label="Last Tested"
-                value={new Date(connection.lastTestedAt).toLocaleString()}
+                value={fmt.dateTime(connection.lastTestedAt)}
               />
             )}
             {connection.lastTestError && (

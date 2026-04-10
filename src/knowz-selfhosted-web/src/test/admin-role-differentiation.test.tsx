@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createContext } from 'react'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from './test-utils'
 import { UserRole } from '../lib/types'
@@ -39,6 +40,20 @@ function mockAuth(user: UserDto | null, overrides: Record<string, unknown> = {})
   }
 }
 
+
+/**
+ * Builds a complete mock of the `../lib/auth` module, including the
+ * `AuthContext` export. `useFormatters` (used by components under test)
+ * reads `AuthContext` directly, so the mock must provide it or rendering
+ * will throw during test setup.
+ */
+function authModuleMock(authValue: ReturnType<typeof mockAuth>) {
+  return {
+    useAuth: () => authValue,
+    AuthContext: createContext(authValue),
+  }
+}
+
 // ---- SuperAdminRoute Tests ----
 // Test the SuperAdminRoute logic directly by verifying the contract:
 // - SuperAdmin -> render children
@@ -52,9 +67,7 @@ describe('SuperAdminRoute', () => {
   })
 
   it('Should_RenderChildren_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     // Build an inline component that replicates SuperAdminRoute logic using mocked useAuth
     const { useAuth } = await import('../lib/auth')
 
@@ -75,9 +88,7 @@ describe('SuperAdminRoute', () => {
   })
 
   it('Should_RedirectToAdmin_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     const { useAuth } = await import('../lib/auth')
 
     function TestSuperAdminRoute({ children }: { children: React.ReactNode }) {
@@ -97,9 +108,7 @@ describe('SuperAdminRoute', () => {
   })
 
   it('Should_RedirectToLogin_WhenNotAuthenticated', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(null),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(null)))
     const { useAuth } = await import('../lib/auth')
 
     function TestSuperAdminRoute({ children }: { children: React.ReactNode }) {
@@ -119,9 +128,7 @@ describe('SuperAdminRoute', () => {
   })
 
   it('Should_ShowLoadingSpinner_WhenAuthIsLoading', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser(), { isLoading: true }),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser(), { isLoading: true })))
     const { useAuth } = await import('../lib/auth')
 
     function TestSuperAdminRoute({ children }: { children: React.ReactNode }) {
@@ -157,9 +164,7 @@ describe('Sidebar Admin Nav Filtering', () => {
   })
 
   it('Should_ShowAllAdminItems_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -176,9 +181,7 @@ describe('Sidebar Admin Nav Filtering', () => {
   })
 
   it('Should_ShowOnlyOverviewAndUsers_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -195,9 +198,7 @@ describe('Sidebar Admin Nav Filtering', () => {
   })
 
   it('Should_NotShowAdminSection_WhenUserIsRegularUser', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.User })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.User }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -210,9 +211,7 @@ describe('Sidebar Admin Nav Filtering', () => {
   })
 
   it('Should_NotShowTenantSelector_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -233,9 +232,7 @@ describe('AdminDashboardPage Role Differentiation', () => {
   })
 
   it('Should_ShowTenantManagementLink_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([
@@ -255,9 +252,7 @@ describe('AdminDashboardPage Role Differentiation', () => {
   })
 
   it('Should_HideTenantManagementLink_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -275,9 +270,7 @@ describe('AdminDashboardPage Role Differentiation', () => {
   })
 
   it('Should_HideRecentTenantsSection_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([]),
@@ -294,9 +287,7 @@ describe('AdminDashboardPage Role Differentiation', () => {
   })
 
   it('Should_ShowRecentTenantsSection_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listTenants: vi.fn().mockResolvedValue([
@@ -323,9 +314,7 @@ describe('UsersPage Role Differentiation', () => {
   })
 
   it('Should_ShowTenantFilterDropdown_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listUsers: vi.fn().mockResolvedValue([]),
@@ -343,9 +332,7 @@ describe('UsersPage Role Differentiation', () => {
   })
 
   it('Should_HideTenantFilterDropdown_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listUsers: vi.fn().mockResolvedValue([]),
@@ -361,9 +348,7 @@ describe('UsersPage Role Differentiation', () => {
   })
 
   it('Should_ShowTenantColumnInTable_WhenUserIsSuperAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.SuperAdmin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listUsers: vi.fn().mockResolvedValue([
@@ -382,9 +367,7 @@ describe('UsersPage Role Differentiation', () => {
   })
 
   it('Should_HideTenantColumnInTable_WhenUserIsAdmin', async () => {
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listUsers: vi.fn().mockResolvedValue([
@@ -408,9 +391,7 @@ describe('UsersPage Role Differentiation', () => {
     const adminUser = makeMockUser({ id: 'u2', username: 'admin-user', role: UserRole.Admin, tenantName: 'Test Tenant' })
     const regularUser = makeMockUser({ id: 'u3', username: 'regular-user', role: UserRole.User, tenantName: 'Test Tenant' })
 
-    vi.doMock('../lib/auth', () => ({
-      useAuth: () => mockAuth(makeMockUser({ role: UserRole.Admin })),
-    }))
+    vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
         listUsers: vi.fn().mockResolvedValue([adminUser, regularUser]),

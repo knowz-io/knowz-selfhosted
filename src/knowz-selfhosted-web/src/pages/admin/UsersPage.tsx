@@ -28,6 +28,7 @@ import type {
   CreateUserData,
   UpdateUserData,
 } from '../../lib/types'
+import { useFormatters } from '../../hooks/useFormatters'
 
 const roleLabels: Record<number, string> = {
   [UserRole.SuperAdmin]: 'SuperAdmin',
@@ -43,6 +44,7 @@ const roleStyles: Record<number, string> = {
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth()
+  const fmt = useFormatters()
   const isSuperAdmin = currentUser?.role === UserRole.SuperAdmin
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
@@ -258,7 +260,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {fmt.date(user.createdAt)}
                     </td>
                     <td className="px-5 py-3">
                       {(isSuperAdmin || user.role < UserRole.Admin) && (

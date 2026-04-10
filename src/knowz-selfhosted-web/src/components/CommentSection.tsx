@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { MessageSquare, Paperclip, Loader2, X, Download, Image } from 'lucide-react'
 import MarkdownContent from './MarkdownContent'
-import { formatFileSize } from '../lib/format-utils'
+import { formatFileSize, parseAsUtc, formatDate } from '../lib/format-utils'
 import type { Comment, FileMetadataDto } from '../lib/types'
 
 interface CommentSectionProps {
@@ -12,7 +12,8 @@ interface CommentSectionProps {
 
 function timeAgo(dateStr: string): string {
   const now = Date.now()
-  const then = new Date(dateStr).getTime()
+  // parseAsUtc handles naive selfhosted timestamps that lack a Z suffix.
+  const then = parseAsUtc(dateStr).getTime()
   const seconds = Math.floor((now - then) / 1000)
   if (seconds < 60) return 'just now'
   const minutes = Math.floor(seconds / 60)
@@ -21,7 +22,7 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
-  return new Date(dateStr).toLocaleDateString()
+  return formatDate(dateStr)
 }
 
 function getInitials(name: string): string {
