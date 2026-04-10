@@ -1,3 +1,4 @@
+using Knowz.Core.Entities;
 using Knowz.Core.Enums;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.API.Models;
@@ -483,6 +484,160 @@ public static class KnowledgeEndpoints
                 isIndexed = knowledge.IsIndexed,
                 updatedAt = knowledge.UpdatedAt != default ? knowledge.UpdatedAt.ToString("o") : knowledge.IndexedAt?.ToString("o")
             });
+        }).Produces<object>().Produces(404);
+
+        // --- Relationship endpoints ---
+
+        group.MapGet("/{id:guid}/relationships", async (
+            SelfHostedDbContext db,
+            Guid id,
+            CancellationToken ct) =>
+        {
+            // Verify the knowledge item exists (query filter scopes by tenant)
+            var exists = await db.KnowledgeItems.AnyAsync(k => k.Id == id, ct);
+            if (!exists)
+                return Results.NotFound(new { error = "Knowledge item not found" });
+
+            var relationships = await db.KnowledgeRelationships
+                .AsNoTracking()
+                .Where(r => r.SourceKnowledgeId == id || r.TargetKnowledgeId == id)
+                .Select(r => new
+                {
+                    r.Id,
+                    r.SourceKnowledgeId,
+                    r.TargetKnowledgeId,
+                    RelationshipType = r.RelationshipType.ToString(),
+                    r.Confidence,
+                    r.Weight,
+                    r.IsBidirectional,
+                    r.IsAutoDetected,
+                    r.Metadata,
+                    r.CreatedAt,
+                    r.UpdatedAt,
+                    SourceTitle = r.SourceKnowledge != null ? r.SourceKnowledge.Title : null,
+                    TargetTitle = r.TargetKnowledge != null ? r.TargetKnowledge.Title : null
+                })
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync(ct);
+
+            return Results.Ok(new { data = relationships, total = relationships.Count });
+        }).Produces<object>().Produces(404);
+
+        group.MapPost("/{id:guid}/relationships", async (
+            SelfHostedDbContext db,
+            ITenantProvider tenantProvider,
+            Guid id,
+            CreateRelationshipRequest req,
+            CancellationToken ct) =>
+        {
+            // Verify source knowledge exists
+            var sourceExists = await db.KnowledgeItems.AnyAsync(k => k.Id == id, ct);
+            if (!sourceExists)
+                return Results.NotFound(new { error = "Source knowledge item not found" });
+
+            // Verify target knowledge exists
+            var targetExists = await db.KnowledgeItems.AnyAsync(k => k.Id == req.TargetKnowledgeId, ct);
+            if (!targetExists)
+                return Results.NotFound(new { error = "Target knowledge item not found" });
+
+            if (id == req.TargetKnowledgeId)
+                return Results.BadRequest(new { error = "Cannot create a relationship to itself" });
+
+            // Parse relationship type
+            var relType = KnowledgeRelationshipType.RelatedTo;
+            if (!string.IsNullOrWhiteSpace(req.RelationshipType) &&
+                !Enum.TryParse<KnowledgeRelationshipType>(req.RelationshipType, ignoreCase: true, out relType))
+            {
+                return Results.BadRequest(new { error = $"Invalid relationship type: {req.RelationshipType}" });
+            }
+
+            // Symmetric normalization: always store smaller GUID as source for bidirectional
+            var isBidirectional = req.IsBidirectional ?? true;
+            var sourceId = id;
+            var targetId = req.TargetKnowledgeId;
+            if (isBidirectional && sourceId.CompareTo(targetId) > 0)
+            {
+                (sourceId, targetId) = (targetId, sourceId);
+            }
+
+            // Idempotent upsert: check if relationship already exists
+            var existing = await db.KnowledgeRelationships
+                .FirstOrDefaultAsync(r => r.SourceKnowledgeId == sourceId && r.TargetKnowledgeId == targetId, ct);
+
+            if (existing != null)
+            {
+                // Update existing relationship
+                existing.RelationshipType = relType;
+                existing.Confidence = req.Confidence ?? existing.Confidence;
+                existing.Weight = req.Weight ?? existing.Weight;
+                existing.IsBidirectional = isBidirectional;
+                existing.Metadata = req.Metadata ?? existing.Metadata;
+                existing.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
+                return Results.Ok(new
+                {
+                    id = existing.Id,
+                    sourceKnowledgeId = existing.SourceKnowledgeId,
+                    targetKnowledgeId = existing.TargetKnowledgeId,
+                    relationshipType = existing.RelationshipType.ToString(),
+                    existing.Confidence,
+                    existing.Weight,
+                    existing.IsBidirectional,
+                    existing.IsAutoDetected,
+                    existing.Metadata,
+                    existing.CreatedAt,
+                    existing.UpdatedAt
+                });
+            }
+
+            var relationship = new KnowledgeRelationship
+            {
+                TenantId = tenantProvider.TenantId,
+                SourceKnowledgeId = sourceId,
+                TargetKnowledgeId = targetId,
+                RelationshipType = relType,
+                Confidence = req.Confidence ?? 1.0,
+                Weight = req.Weight ?? 1.0,
+                IsBidirectional = isBidirectional,
+                Metadata = req.Metadata
+            };
+
+            db.KnowledgeRelationships.Add(relationship);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Created($"/api/v1/knowledge/{id}/relationships", new
+            {
+                relationship.Id,
+                relationship.SourceKnowledgeId,
+                relationship.TargetKnowledgeId,
+                RelationshipType = relationship.RelationshipType.ToString(),
+                relationship.Confidence,
+                relationship.Weight,
+                relationship.IsBidirectional,
+                relationship.IsAutoDetected,
+                relationship.Metadata,
+                relationship.CreatedAt,
+                relationship.UpdatedAt
+            });
+        }).Produces<object>(201).Produces(400).Produces(404);
+
+        group.MapDelete("/relationships/{relationshipId:guid}", async (
+            SelfHostedDbContext db,
+            Guid relationshipId,
+            CancellationToken ct) =>
+        {
+            var relationship = await db.KnowledgeRelationships
+                .FirstOrDefaultAsync(r => r.Id == relationshipId, ct);
+
+            if (relationship is null)
+                return Results.NotFound(new { error = "Relationship not found" });
+
+            relationship.IsDeleted = true;
+            relationship.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new { deleted = true, id = relationshipId });
         }).Produces<object>().Produces(404);
     }
 
