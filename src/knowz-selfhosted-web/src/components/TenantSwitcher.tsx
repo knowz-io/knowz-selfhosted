@@ -22,8 +22,8 @@ export default function TenantSwitcher() {
   const [switching, setSwitching] = useState(false)
   const [open, setOpen] = useState(false)
 
-  // Only show if user has 2+ tenants
-  if (!user || availableTenants.length < 2) return null
+  // Only show if user has 2+ tenants (tolerate undefined availableTenants from legacy callers/mocks)
+  if (!user || !availableTenants || availableTenants.length < 2) return null
 
   const currentTenant = availableTenants.find(t => t.tenantId === user.tenantId)
   const otherTenants = availableTenants.filter(t => t.tenantId !== user.tenantId)

@@ -86,7 +86,6 @@ local.settings.json
 node_modules/
 dist/
 *.tsbuildinfo
-package-lock.json
 
 # Python
 .venv/
