@@ -273,6 +273,62 @@ az deployment group create -g rg-knowz-selfhosted \
      jwtSecret='your-jwt-secret'
 ```
 
+## Updating
+
+### Azure Container Apps
+
+Update all container apps to the latest version:
+
+**PowerShell:**
+```powershell
+.\infrastructure\selfhosted-update.ps1 -ResourceGroup "rg-knowz-selfhosted"
+```
+
+**Bash:**
+```bash
+./infrastructure/selfhosted-update.sh --resource-group "rg-knowz-selfhosted"
+```
+
+**Specific version:**
+```powershell
+.\infrastructure\selfhosted-update.ps1 -ResourceGroup "rg-knowz-selfhosted" -Version "0.6.0"
+```
+
+**Dry run (preview changes):**
+```powershell
+.\infrastructure\selfhosted-update.ps1 -ResourceGroup "rg-knowz-selfhosted" -DryRun
+```
+
+### Docker Compose
+
+```bash
+git pull origin main
+docker compose up --build -d
+```
+
+Or use the helper script:
+
+```bash
+./infrastructure/selfhosted-update-compose.sh
+./infrastructure/selfhosted-update-compose.sh --version 0.6.0
+```
+
+### Terraform
+
+```bash
+cd terraform/standard  # or terraform/enterprise
+terraform plan -var="image_tag=0.6.0"
+terraform apply -var="image_tag=0.6.0"
+```
+
+### What Happens During Update
+
+- Container images are pulled from GHCR (public registry, no auth needed)
+- Database migrations run automatically on API startup
+- No data loss -- database and storage are preserved
+- Brief downtime (~30 seconds) while containers restart
+- Health checks verify all services are running after update
+
 ## API Reference
 
 The API exposes 20 endpoint groups. Full Swagger docs available at `/swagger` when running.

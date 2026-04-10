@@ -1,4 +1,5 @@
 using Knowz.Core.Entities;
+using Knowz.Core.Enums;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,9 @@ public class SelfHostedDbContext : DbContext
     public DbSet<FileRecord> FileRecords => Set<FileRecord>();
     public DbSet<FileAttachment> FileAttachments => Set<FileAttachment>();
     public DbSet<PortableArchive> PortableArchives => Set<PortableArchive>();
+
+    // Knowledge relationships (tenant-scoped with query filter)
+    public DbSet<KnowledgeRelationship> KnowledgeRelationships => Set<KnowledgeRelationship>();
 
     // Content chunks (tenant-scoped with query filter)
     public DbSet<ContentChunk> ContentChunks => Set<ContentChunk>();
@@ -93,6 +97,7 @@ public class SelfHostedDbContext : DbContext
         modelBuilder.Entity<ContentChunk>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
         modelBuilder.Entity<KnowledgeVersion>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
+        modelBuilder.Entity<KnowledgeRelationship>().HasQueryFilter(e => e.TenantId == _tenantId && !e.IsDeleted);
 
         // Junction table composite keys
         modelBuilder.Entity<KnowledgeVault>().HasKey(kv => new { kv.KnowledgeId, kv.VaultId });
@@ -361,6 +366,7 @@ public class SelfHostedDbContext : DbContext
         modelBuilder.Entity<FileRecord>().HasIndex(f => f.TenantId);
         modelBuilder.Entity<FileAttachment>().HasIndex(fa => fa.TenantId);
         modelBuilder.Entity<FileAttachment>().HasIndex(fa => fa.FileRecordId);
+        modelBuilder.Entity<KnowledgeRelationship>().HasIndex(r => r.TenantId);
 
         // ContentChunk relationships and indexes
         modelBuilder.Entity<ContentChunk>()
@@ -400,6 +406,41 @@ public class SelfHostedDbContext : DbContext
             entity.Property(a => a.Action).IsRequired().HasMaxLength(100);
             entity.Property(a => a.UserEmail).HasMaxLength(255);
             entity.Property(a => a.Details).HasMaxLength(4000);
+        });
+
+        // --- KnowledgeRelationship entity configuration ---
+        modelBuilder.Entity<KnowledgeRelationship>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            // Unique constraint: one relationship per source+target pair per tenant
+            entity.HasIndex(r => new { r.TenantId, r.SourceKnowledgeId, r.TargetKnowledgeId })
+                .IsUnique()
+                .HasDatabaseName("IX_KnowledgeRelationships_Tenant_Source_Target");
+
+            // Graph traversal indexes
+            entity.HasIndex(r => new { r.SourceKnowledgeId, r.RelationshipType })
+                .HasDatabaseName("IX_KnowledgeRelationships_Source_Type");
+            entity.HasIndex(r => new { r.TargetKnowledgeId, r.RelationshipType })
+                .HasDatabaseName("IX_KnowledgeRelationships_Target_Type");
+
+            // Enum stored as int
+            entity.Property(r => r.RelationshipType)
+                .HasConversion<int>();
+
+            entity.Property(r => r.Metadata).HasMaxLength(4000);
+
+            // Source FK → Cascade
+            entity.HasOne(r => r.SourceKnowledge)
+                .WithMany(k => k.OutgoingRelationships)
+                .HasForeignKey(r => r.SourceKnowledgeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Target FK → NoAction (SQL Server multi-cascade limitation)
+            entity.HasOne(r => r.TargetKnowledge)
+                .WithMany(k => k.IncomingRelationships)
+                .HasForeignKey(r => r.TargetKnowledgeId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         // --- GitRepository entity configuration (NO query filter — scoped by VaultId in service) ---
