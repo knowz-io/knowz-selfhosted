@@ -34,7 +34,7 @@ public static class VersionEndpoints
 
             var versions = await versioningService.GetVersionsAsync(knowledgeId, ct);
             var response = versions.Select(v => new VersionResponse(
-                v.Id, v.KnowledgeId, v.VersionNumber, v.Title, v.ContentType,
+                v.Id, v.KnowledgeId, v.VersionNumber, v.Title, v.Content, v.ContentType,
                 v.CreatedAt, v.CreatedByUserId, v.ChangeDescription));
 
             return Results.Ok(response);
@@ -120,6 +120,7 @@ public static class VersionEndpoints
 // DTOs for version endpoints
 public record VersionResponse(
     Guid Id, Guid KnowledgeId, int VersionNumber, string Title,
+    string Content,
     string? ContentType, DateTime CreatedAt, Guid? CreatedByUserId,
     string? ChangeDescription);
 

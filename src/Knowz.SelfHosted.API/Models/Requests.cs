@@ -64,6 +64,14 @@ public record AmendKnowledgeRequest(string Instruction);
 
 public record VerifyApiKeyRequest(string? ApiKey = null);
 
+public record CreateRelationshipRequest(
+    Guid TargetKnowledgeId,
+    string? RelationshipType = null,
+    double? Confidence = null,
+    double? Weight = null,
+    bool? IsBidirectional = null,
+    string? Metadata = null);
+
 public record QuickCreateKnowledgeRequest(
     string Content,
     string? VaultId = null);
