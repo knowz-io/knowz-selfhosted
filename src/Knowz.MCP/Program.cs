@@ -138,7 +138,11 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        policy.WithOrigins(
+            "https://knowz.io", "https://dev.knowz.io",
+            "https://mcp.knowz.io", "https://mcp.dev.knowz.io",
+            "http://localhost:3000", "http://localhost:5173", "http://localhost:8080"
+        ).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
     });
 });
 

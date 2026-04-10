@@ -11,24 +11,11 @@ public interface IMcpSessionStore
     string? GetApiKey(string sessionId);
     void RemoveSession(string sessionId);
     void CleanupExpiredSessions();
-
-    /// <summary>
-    /// Stores a mapping from client fingerprint (IP+User-Agent) to session ID.
-    /// Used to recover sessions when clients send neither Mcp-Session-Id nor cookies.
-    /// </summary>
-    void StoreFingerprint(string fingerprint, string sessionId);
-
-    /// <summary>
-    /// Retrieves the most recently stored session ID for a client fingerprint.
-    /// Returns null if no mapping exists or the mapping has expired.
-    /// </summary>
-    string? GetSessionByFingerprint(string fingerprint);
 }
 
 public class McpSessionStore : IMcpSessionStore
 {
     private readonly ConcurrentDictionary<string, SessionData> _sessions = new();
-    private readonly ConcurrentDictionary<string, FingerprintData> _fingerprints = new();
     private readonly TimeSpan _sessionTimeout = TimeSpan.FromDays(30);
     private readonly ILogger<McpSessionStore> _logger;
 
@@ -96,47 +83,9 @@ public class McpSessionStore : IMcpSessionStore
         }
     }
 
-    public void StoreFingerprint(string fingerprint, string sessionId)
-    {
-        if (string.IsNullOrWhiteSpace(fingerprint) || string.IsNullOrWhiteSpace(sessionId))
-            return;
-
-        _fingerprints.AddOrUpdate(
-            fingerprint,
-            _ => new FingerprintData { SessionId = sessionId, StoredAt = DateTime.UtcNow },
-            (_, _) => new FingerprintData { SessionId = sessionId, StoredAt = DateTime.UtcNow });
-
-        _logger.LogDebug("Stored fingerprint mapping for session {SessionId}", sessionId);
-    }
-
-    public string? GetSessionByFingerprint(string fingerprint)
-    {
-        if (string.IsNullOrWhiteSpace(fingerprint))
-            return null;
-
-        if (_fingerprints.TryGetValue(fingerprint, out var data))
-        {
-            // Expire fingerprints along with sessions
-            if (DateTime.UtcNow - data.StoredAt > _sessionTimeout)
-            {
-                _fingerprints.TryRemove(fingerprint, out _);
-                return null;
-            }
-            return data.SessionId;
-        }
-
-        return null;
-    }
-
     private class SessionData
     {
         public string? ApiKey { get; set; }
         public DateTime LastActivity { get; set; }
-    }
-
-    private class FingerprintData
-    {
-        public string SessionId { get; set; } = "";
-        public DateTime StoredAt { get; set; }
     }
 }

@@ -196,11 +196,13 @@ export interface MultiTenantLoginResponse {
   requiresTenantSelection: boolean
   userId: string | null
   availableTenants: TenantMembershipDto[]
+  selectionToken: string | null
 }
 
 export interface SelectTenantData {
   userId: string
   tenantId: string
+  selectionToken: string
 }
 
 export interface SwitchTenantData {

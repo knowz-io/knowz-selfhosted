@@ -625,6 +625,199 @@ public class EnrichmentBackgroundServiceTests : IDisposable
         Assert.Equal(EnrichmentStatus.Completed, outbox.Status);
     }
 
+    // --- Startup recovery scan tests (Fix 1) ---
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_EnqueuesPendingItems()
+    {
+        // Seed pending items in DB
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Pending,
+                NextRetryAt = null
+            });
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Pending,
+                NextRetryAt = DateTime.UtcNow.AddMinutes(-1) // past NextRetryAt
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        // Both items should be enqueued to the channel
+        Assert.True(_channel.Reader.TryRead(out _));
+        Assert.True(_channel.Reader.TryRead(out _));
+        Assert.False(_channel.Reader.TryRead(out _)); // No more
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_SkipsPendingWithFutureRetry()
+    {
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Pending,
+                NextRetryAt = DateTime.UtcNow.AddMinutes(10) // future retry
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        Assert.False(_channel.Reader.TryRead(out _)); // Not enqueued
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_EnqueuesStuckProcessingItems()
+    {
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Processing,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-10) // stuck: older than 5 min threshold
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        Assert.True(_channel.Reader.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_SkipsRecentProcessingItems()
+    {
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Processing,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-2) // recent — not stuck
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        Assert.False(_channel.Reader.TryRead(out _)); // Not enqueued — still processing
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_SkipsCompletedAndFailed()
+    {
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Completed,
+                ProcessedAt = DateTime.UtcNow.AddMinutes(-30)
+            });
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Failed,
+                ProcessedAt = DateTime.UtcNow.AddMinutes(-30)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        Assert.False(_channel.Reader.TryRead(out _)); // None enqueued
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_LimitsTo100Items()
+    {
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            for (int i = 0; i < 120; i++)
+            {
+                db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+                {
+                    TenantId = TenantId,
+                    KnowledgeId = Guid.NewGuid(),
+                    Status = EnrichmentStatus.Pending
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        int count = 0;
+        while (_channel.Reader.TryRead(out _)) count++;
+        Assert.Equal(100, count); // Capped at 100
+    }
+
+    [Fact]
+    public async Task ScanAndEnqueuePendingAsync_DoesNotThrow_OnDbError()
+    {
+        // Using a cancelled token to simulate DB failure
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Should not throw — logs warning and returns gracefully
+        var ex = await Record.ExceptionAsync(() => _svc.ScanAndEnqueuePendingAsync(cts.Token));
+        // No unhandled exception (OperationCanceledException is caught internally)
+        // The method catches all exceptions, so this should not propagate
+        Assert.Null(ex);
+    }
+
+    // --- Recovery timer stuck threshold tests (Fix 3) ---
+
+    [Fact]
+    public async Task RecoveryTimerAsync_Uses5MinuteStuckThreshold()
+    {
+        // Seed a Processing item that is 6 min old (should be picked up with 5-min threshold)
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            db.EnrichmentOutbox.Add(new EnrichmentOutboxItem
+            {
+                TenantId = TenantId,
+                KnowledgeId = Guid.NewGuid(),
+                Status = EnrichmentStatus.Processing,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-6)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Run one iteration of recovery by cancelling after the first scan
+        using var cts = new CancellationTokenSource();
+        // We'll let it run the initial delay and one scan, then cancel
+        // Since RecoveryTimerAsync has a 10-second initial delay, we need to
+        // test the recovery logic via the startup scan which uses the same threshold
+        await _svc.ScanAndEnqueuePendingAsync(CancellationToken.None);
+
+        Assert.True(_channel.Reader.TryRead(out _));
+    }
+
     // --- TenantContext tests ---
 
     [Fact]

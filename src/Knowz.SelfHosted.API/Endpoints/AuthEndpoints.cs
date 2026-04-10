@@ -104,9 +104,12 @@ public static class AuthEndpoints
             if (request.UserId == Guid.Empty || request.TenantId == Guid.Empty)
                 return Results.BadRequest(new { error = "UserId and TenantId are required." });
 
+            if (string.IsNullOrWhiteSpace(request.SelectionToken))
+                return Results.BadRequest(new { error = "SelectionToken is required." });
+
             try
             {
-                var result = await authService.SelectTenantAsync(request.UserId, request.TenantId);
+                var result = await authService.SelectTenantAsync(request.UserId, request.TenantId, request.SelectionToken);
                 return Results.Ok(result);
             }
             catch (UnauthorizedAccessException ex)

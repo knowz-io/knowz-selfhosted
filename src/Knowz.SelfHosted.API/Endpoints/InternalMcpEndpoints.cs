@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Knowz.Core.Enums;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Data;
@@ -263,8 +265,8 @@ public static class InternalMcpEndpoints
                     provider = "Microsoft",
                     displayName = "Sign in with Microsoft",
                     clientId = msClientId,
-                    clientSecret = configuration["SSO:Microsoft:ClientSecret"],
                     authority,
+                    configured = true,
                 });
             }
 
@@ -276,8 +278,8 @@ public static class InternalMcpEndpoints
                     provider = "Google",
                     displayName = "Sign in with Google",
                     clientId = googleClientId,
-                    clientSecret = configuration["SSO:Google:ClientSecret"],
                     authority = "https://accounts.google.com",
+                    configured = true,
                 });
             }
         }
@@ -290,7 +292,14 @@ public static class InternalMcpEndpoints
         var expectedKey = configuration["MCP:ServiceKey"];
         var providedKey = httpContext.Request.Headers["X-Service-Key"].FirstOrDefault();
 
-        return !string.IsNullOrEmpty(expectedKey) && providedKey == expectedKey;
+        if (string.IsNullOrEmpty(expectedKey) || string.IsNullOrEmpty(providedKey))
+            return false;
+
+        var expectedBytes = Encoding.UTF8.GetBytes(expectedKey);
+        var providedBytes = Encoding.UTF8.GetBytes(providedKey);
+
+        return expectedBytes.Length == providedBytes.Length
+            && CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
     }
 }
 

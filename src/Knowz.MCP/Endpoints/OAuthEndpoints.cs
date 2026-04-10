@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Knowz.MCP.Helpers;
 using Knowz.MCP.Services;
+using Knowz.MCP.Services.Session;
 
 namespace Knowz.MCP.Endpoints;
 
@@ -37,7 +38,7 @@ public static class OAuthEndpoints
                 resource = $"{baseUrl}/mcp",
                 authorization_servers = new[] { baseUrl },
                 scopes_supported = new[] { "mcp:read", "mcp:write" },
-                bearer_methods_supported = new[] { "header", "query" },
+                bearer_methods_supported = new[] { "header" },
                 resource_documentation = $"{baseUrl}/docs"
             });
         });
@@ -59,7 +60,7 @@ public static class OAuthEndpoints
         });
 
         // OAuth2 Token Endpoint
-        app.MapPost("/oauth/token", async (HttpContext context, IOAuthService oauthService) =>
+        app.MapPost("/oauth/token", async (HttpContext context, IOAuthService oauthService, IMcpSessionStore sessionStore) =>
         {
             var contentType = context.Request.ContentType ?? "";
 
@@ -157,11 +158,16 @@ public static class OAuthEndpoints
                     return Results.Unauthorized();
                 }
 
+                // Generate an opaque session token instead of returning the raw API key.
+                // The session store maps this token back to the API key on subsequent requests.
+                var opaqueToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                sessionStore.StoreApiKey(opaqueToken, clientSecret);
+
                 var refreshToken = oauthService.CreateRefreshToken(clientSecret, "mcp:read mcp:write");
 
                 return Results.Json(new
                 {
-                    access_token = clientSecret,
+                    access_token = opaqueToken,
                     token_type = "Bearer",
                     expires_in = OAuthService.TokenExpirySeconds,
                     scope = "mcp:read mcp:write",

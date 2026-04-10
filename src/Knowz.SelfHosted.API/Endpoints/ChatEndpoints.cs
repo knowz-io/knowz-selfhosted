@@ -134,9 +134,14 @@ public static class ChatEndpoints
             }
             catch (Exception ex)
             {
+                var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("ChatEndpoints");
+                logger.LogError(ex, "Error during chat stream");
+
                 try
                 {
-                    var errorJson = System.Text.Json.JsonSerializer.Serialize(new { type = "error", message = ex.Message }, CamelCaseJson);
+                    var errorJson = System.Text.Json.JsonSerializer.Serialize(
+                        new { type = "error", message = "An internal error occurred. Please try again." }, CamelCaseJson);
                     await context.Response.WriteAsync($"data: {errorJson}\n\n", ct);
                     await context.Response.Body.FlushAsync(ct);
                 }

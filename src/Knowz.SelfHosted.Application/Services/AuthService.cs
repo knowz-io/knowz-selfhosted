@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -21,6 +22,12 @@ namespace Knowz.SelfHosted.Application.Services;
 /// </summary>
 public class AuthService : IAuthService
 {
+    /// <summary>
+    /// Short-lived, single-use tokens for tenant selection after multi-tenant login.
+    /// Prevents unauthenticated callers from selecting a tenant with just a userId.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Guid, (string Token, DateTime Expiry)> _tenantSelectionTokens = new();
+
     private readonly SelfHostedDbContext _db;
     private readonly SelfHostedOptions _options;
     private readonly ILogger<AuthService> _logger;
@@ -245,6 +252,11 @@ public class AuthService : IAuthService
 
         // 2+ active memberships: require tenant selection
         _logger.LogInformation("User {Username} has {Count} tenant memberships, requiring selection", username, memberships.Count);
+
+        // Issue a short-lived, single-use token to prove this caller authenticated
+        var selectionToken = Guid.NewGuid().ToString("N");
+        _tenantSelectionTokens[user.Id] = (selectionToken, DateTime.UtcNow.AddMinutes(5));
+
         return new MultiTenantLoginResult
         {
             Token = string.Empty,
@@ -252,6 +264,7 @@ public class AuthService : IAuthService
             User = null,
             RequiresTenantSelection = true,
             UserId = user.Id,
+            SelectionToken = selectionToken,
             AvailableTenants = memberships.Select(m => new TenantMembershipDto
             {
                 TenantId = m.TenantId,
@@ -263,8 +276,14 @@ public class AuthService : IAuthService
         };
     }
 
-    public async Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId)
+    public async Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId, string? selectionToken = null)
     {
+        // Validate the single-use selection token issued during login
+        if (!ValidateAndConsumeSelectionToken(userId, selectionToken))
+        {
+            throw new UnauthorizedAccessException("Invalid or expired selection token.");
+        }
+
         var user = await _db.Users
             .Include(u => u.Tenant)
             .FirstOrDefaultAsync(u => u.Id == userId);
@@ -288,6 +307,20 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync();
 
         return GenerateAuthResultForMembership(user, membership.TenantId, membership.Tenant.Name, membership.Role);
+    }
+
+    private static bool ValidateAndConsumeSelectionToken(Guid userId, string? selectionToken)
+    {
+        if (string.IsNullOrEmpty(selectionToken))
+            return false;
+
+        if (!_tenantSelectionTokens.TryRemove(userId, out var stored))
+            return false;
+
+        if (stored.Expiry < DateTime.UtcNow)
+            return false;
+
+        return string.Equals(stored.Token, selectionToken, StringComparison.Ordinal);
     }
 
     public async Task<AuthResult> SwitchTenantAsync(Guid userId, Guid newTenantId)

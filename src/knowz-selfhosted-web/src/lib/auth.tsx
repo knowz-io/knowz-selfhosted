@@ -52,9 +52,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
   const [availableTenants, setAvailableTenants] = useState<TenantMembershipDto[]>([])
   const [pendingUserId, setPendingUserId] = useState<string | null>(null)
+  const [pendingSelectionToken, setPendingSelectionToken] = useState<string | null>(null)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('authToken')
+    const storedToken = sessionStorage.getItem('authToken')
     if (storedToken) {
       setToken(storedToken)
       api
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         })
         .catch((err) => {
           if (err instanceof ApiError && err.status === 401) {
-            localStorage.removeItem('authToken')
+            sessionStorage.removeItem('authToken')
             setToken(null)
           }
         })
@@ -88,14 +89,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const response = await api.login(username, password)
 
     if (response.requiresTenantSelection) {
-      // Multi-tenant: store tenants for selection, don't set token yet
+      // Multi-tenant: store tenants and selection token for next step, don't set token yet
       setAvailableTenants(response.availableTenants)
       setPendingUserId(response.userId)
+      setPendingSelectionToken(response.selectionToken)
       return response
     }
 
     // Single tenant: proceed as before
-    localStorage.setItem('authToken', response.token)
+    sessionStorage.setItem('authToken', response.token)
     setToken(response.token)
     setUser(response.user!)
     // Clear tenant override on fresh login
@@ -109,23 +111,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const selectTenant = useCallback(async (tenantId: string) => {
-    if (!pendingUserId) throw new Error('No pending user for tenant selection')
-    const response = await api.selectTenant({ userId: pendingUserId, tenantId })
-    localStorage.setItem('authToken', response.token)
+    if (!pendingUserId || !pendingSelectionToken) throw new Error('No pending user for tenant selection')
+    const response = await api.selectTenant({ userId: pendingUserId, tenantId, selectionToken: pendingSelectionToken })
+    sessionStorage.setItem('authToken', response.token)
     setToken(response.token)
     setUser(response.user)
     setPendingUserId(null)
+    setPendingSelectionToken(null)
     localStorage.removeItem('activeTenantId')
     setActiveTenantIdState(null)
     // Fetch available tenants
     api.getUserTenants()
       .then(tenants => setAvailableTenants(tenants))
       .catch(() => {})
-  }, [pendingUserId])
+  }, [pendingUserId, pendingSelectionToken])
 
   const switchTenant = useCallback(async (tenantId: string) => {
     const response = await api.switchTenant({ tenantId })
-    localStorage.setItem('authToken', response.token)
+    sessionStorage.setItem('authToken', response.token)
     setToken(response.token)
     setUser(response.user)
     localStorage.removeItem('activeTenantId')
@@ -133,7 +136,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const loginWithToken = useCallback(async (jwtToken: string) => {
-    localStorage.setItem('authToken', jwtToken)
+    sessionStorage.setItem('authToken', jwtToken)
     setToken(jwtToken)
     const userData = await api.getMe()
     setUser(userData)
@@ -146,7 +149,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('authToken')
+    sessionStorage.removeItem('authToken')
     localStorage.removeItem('activeTenantId')
     setToken(null)
     setUser(null)

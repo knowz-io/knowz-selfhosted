@@ -17,7 +17,6 @@ public class RedisMcpSessionStore : IMcpSessionStore
     private bool _redisAvailable = true;
 
     private const string KeyPrefix = "session:";
-    private const string FingerprintPrefix = "fingerprint:";
 
     public RedisMcpSessionStore(IDistributedCache cache, ILogger<RedisMcpSessionStore> logger, IConfiguration configuration)
     {
@@ -125,53 +124,6 @@ public class RedisMcpSessionStore : IMcpSessionStore
         {
             _logger.LogInformation("Cleaned up {Count} expired in-memory fallback sessions", expiredSessions.Count);
         }
-    }
-
-    public void StoreFingerprint(string fingerprint, string sessionId)
-    {
-        if (string.IsNullOrWhiteSpace(fingerprint) || string.IsNullOrWhiteSpace(sessionId))
-            return;
-
-        try
-        {
-            var options = new DistributedCacheEntryOptions
-            {
-                SlidingExpiration = _sessionTimeout
-            };
-            _cache.SetString(FingerprintPrefix + fingerprint, sessionId, options);
-            _logger.LogDebug("Stored fingerprint mapping for session {SessionId} in Redis", sessionId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Redis unavailable, storing fingerprint in memory for session {SessionId}", sessionId);
-            _fallbackStore.AddOrUpdate(
-                FingerprintPrefix + fingerprint,
-                _ => new SessionData { ApiKey = sessionId, LastActivity = DateTime.UtcNow },
-                (_, _) => new SessionData { ApiKey = sessionId, LastActivity = DateTime.UtcNow });
-        }
-    }
-
-    public string? GetSessionByFingerprint(string fingerprint)
-    {
-        if (string.IsNullOrWhiteSpace(fingerprint))
-            return null;
-
-        try
-        {
-            var sessionId = _cache.GetString(FingerprintPrefix + fingerprint);
-            if (!string.IsNullOrWhiteSpace(sessionId))
-                return sessionId;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Redis unavailable during GetSessionByFingerprint, checking fallback");
-        }
-
-        // Check in-memory fallback
-        if (_fallbackStore.TryGetValue(FingerprintPrefix + fingerprint, out var fallbackData))
-            return fallbackData.ApiKey; // ApiKey field reused to store sessionId for fingerprint entries
-
-        return null;
     }
 
     public bool IsRedisAvailable => _redisAvailable;
