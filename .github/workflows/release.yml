@@ -16,7 +16,9 @@ jobs:
   release:
     name: Build & Publish to GHCR
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45 min gives headroom for cold-cache builds and GHCR contention.
+    # Normal runs are ~15 min; v0.6.3 hit the 30 min cap on a slow run.
+    timeout-minutes: 45
 
     permissions:
       contents: read
