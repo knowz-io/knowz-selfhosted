@@ -35,6 +35,12 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Allow attachments up to 500 MB (matches the API's MultipartBodyLengthLimit).
+    # nginx default is 1M, which rejects any image or document larger than 1 MB with 413.
+    client_max_body_size 500M;
+    client_body_timeout 600s;
+    client_header_timeout 600s;
+
     # DNS resolver for dynamic upstreams (Container Apps internal DNS)
     resolver 127.0.0.11 valid=30s;
 
@@ -45,7 +51,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 60s;
+        # Stream uploads directly to the API instead of buffering the whole 500 MB body first.
+        proxy_request_buffering off;
         proxy_ssl_server_name on;
     }
 

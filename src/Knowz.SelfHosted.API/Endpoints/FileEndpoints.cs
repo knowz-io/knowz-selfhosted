@@ -10,6 +10,10 @@ public static class FileEndpoints
         var group = app.MapGroup("/api/v1/files").WithTags("Files");
 
         // POST /api/files/upload -- multipart file upload
+        // Ceiling: 500 MB. Matches Kestrel/Form limits in Program.cs and the
+        // 500M client_max_body_size on the web container's nginx config.
+        const long MaxUploadBytes = 500L * 1024 * 1024;
+
         group.MapPost("/upload", async (
             FileStorageService svc,
             IFormFile file,
@@ -18,8 +22,8 @@ public static class FileEndpoints
             if (file == null || file.Length == 0)
                 return Results.BadRequest(new { error = "No file uploaded" });
 
-            if (file.Length > 100 * 1024 * 1024) // 100MB
-                return Results.BadRequest(new { error = "File size exceeds 100MB limit" });
+            if (file.Length > MaxUploadBytes)
+                return Results.BadRequest(new { error = "File size exceeds 500MB limit" });
 
             using var stream = file.OpenReadStream();
             var result = await svc.UploadAsync(

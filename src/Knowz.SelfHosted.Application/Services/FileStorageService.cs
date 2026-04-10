@@ -44,22 +44,36 @@ public class FileStorageService
     public async Task<FileUploadResult> UploadAsync(
         Stream stream, string fileName, string contentType, CancellationToken ct = default)
     {
-        if (stream == null || stream.Length == 0)
-            throw new ArgumentException("Stream cannot be empty");
+        if (stream == null)
+            throw new ArgumentException("Stream cannot be null");
 
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable");
 
-        // Buffer non-seekable streams (e.g. HTTP upload streams) into memory
-        // so we can seek back for both storage upload and content extraction.
+        if (stream.CanSeek && stream.Length == 0)
+            throw new ArgumentException("Stream cannot be empty");
+
+        // Non-seekable streams (e.g. HTTP upload streams) need to be buffered
+        // so we can seek back for both blob upload and content extraction.
+        // IMPORTANT: Do NOT buffer into MemoryStream — for 500 MB uploads this
+        // blows memory (500 MB × N concurrent uploads). Use a temp file on
+        // disk with FileOptions.DeleteOnClose so it auto-cleans when disposed.
         Stream workingStream = stream;
-        MemoryStream? bufferedStream = null;
+        FileStream? tempFileStream = null;
+        string? tempFilePath = null;
         if (!stream.CanSeek)
         {
-            bufferedStream = new MemoryStream();
-            await stream.CopyToAsync(bufferedStream, ct).ConfigureAwait(false);
-            bufferedStream.Position = 0;
-            workingStream = bufferedStream;
+            tempFilePath = Path.Combine(Path.GetTempPath(), $"knowz-upload-{Guid.NewGuid():N}.tmp");
+            tempFileStream = new FileStream(
+                tempFilePath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                bufferSize: 81920,
+                FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            await stream.CopyToAsync(tempFileStream, ct).ConfigureAwait(false);
+            tempFileStream.Position = 0;
+            workingStream = tempFileStream;
         }
 
         try
@@ -85,17 +99,26 @@ public class FileStorageService
                 UpdatedAt = DateTime.UtcNow
             };
 
-            // Proactive text extraction (best-effort, with timeout to avoid blocking uploads)
-            if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && workingStream.CanSeek)
+            // Proactive text extraction (best-effort, with timeout to avoid blocking uploads).
+            // Skip for files > 50 MB — extraction is prohibitively expensive, and the
+            // enrichment pipeline handles large files asynchronously in the background.
+            const long ProactiveExtractionMaxBytes = 50L * 1024 * 1024;
+            var extractionEligible = _contentExtractor != null
+                && _contentExtractor.CanExtract(contentType)
+                && workingStream.CanSeek
+                && sizeBytes > 0
+                && sizeBytes <= ProactiveExtractionMaxBytes;
+
+            if (extractionEligible)
             {
                 try
                 {
                     workingStream.Position = 0;
-                    // 30-second timeout — image vision analysis can take 15-25s
-                    // Text/PDF/Office extraction is fast (<1s) so this only affects images
+                    // 30-second timeout — image vision analysis can take 15-25s.
+                    // Text/PDF/Office extraction is fast (<1s) so this only affects images.
                     using var extractionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     extractionCts.CancelAfter(TimeSpan.FromSeconds(30));
-                    var extraction = await _contentExtractor.ExtractAsync(fileRecord, workingStream, extractionCts.Token);
+                    var extraction = await _contentExtractor!.ExtractAsync(fileRecord, workingStream, extractionCts.Token);
                     if (extraction.Success)
                     {
                         fileRecord.ExtractedText = extraction.ExtractedText;
@@ -111,6 +134,11 @@ public class FileStorageService
                     _logger.LogWarning(ex, "Proactive text extraction failed for {FileRecordId}", fileRecordId);
                 }
             }
+            else if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && sizeBytes > ProactiveExtractionMaxBytes)
+            {
+                _logger.LogInformation("Skipping proactive extraction for {FileRecordId}: {SizeBytes} bytes exceeds {Limit} byte threshold — will be handled by enrichment",
+                    fileRecordId, sizeBytes, ProactiveExtractionMaxBytes);
+            }
 
             await _fileRepo.AddAsync(fileRecord, ct).ConfigureAwait(false);
             await _fileRepo.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -122,8 +150,9 @@ public class FileStorageService
         }
         finally
         {
-            if (bufferedStream != null)
-                await bufferedStream.DisposeAsync().ConfigureAwait(false);
+            // FileOptions.DeleteOnClose handles temp file cleanup on dispose.
+            if (tempFileStream != null)
+                await tempFileStream.DisposeAsync().ConfigureAwait(false);
         }
     }
 

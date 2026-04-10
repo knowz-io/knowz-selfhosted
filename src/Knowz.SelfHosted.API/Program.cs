@@ -87,12 +87,22 @@ builder.Services.AddHostedService<GitSyncBackgroundService>();
 // columns on VaultSyncLink. Idempotent — safe to run on every boot.
 builder.Services.AddHostedService<PlatformConnectionMigrationService>();
 
-// Configure multipart form options (100MB upload limit)
+// Upload size ceiling: 500 MB. Raise BOTH the MVC multipart form limit and
+// Kestrel's global MaxRequestBodySize (default 30 MB). Kestrel rejects the
+// request with 413 before the form binder ever sees it, so the two limits
+// must be set together.
+const long MaxUploadBytes = 500L * 1024 * 1024; // 500 MB
+
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 100 * 1024 * 1024; // 100MB
+    options.MultipartBodyLengthLimit = MaxUploadBytes;
     options.ValueLengthLimit = int.MaxValue;
     options.MultipartHeadersLengthLimit = int.MaxValue;
+});
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = MaxUploadBytes;
 });
 
 // Register DatabaseConfigurationProvider as singleton for reload support

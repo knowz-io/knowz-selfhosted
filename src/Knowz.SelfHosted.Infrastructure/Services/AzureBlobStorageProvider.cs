@@ -46,8 +46,20 @@ public class AzureBlobStorageProvider : IFileStorageProvider
         var blobClient = container.GetBlobClient(blobKey);
 
         var headers = new BlobHttpHeaders { ContentType = contentType };
-        await blobClient.UploadAsync(stream, new BlobUploadOptions { HttpHeaders = headers }, ct)
-            .ConfigureAwait(false);
+        // Transfer options for large uploads (up to 500 MB). The Azure Blob SDK
+        // auto-parallelizes into blocks when the stream exceeds InitialTransferSize.
+        // 8 MB blocks × 4 concurrent = efficient for files in the 50-500 MB range.
+        var uploadOptions = new BlobUploadOptions
+        {
+            HttpHeaders = headers,
+            TransferOptions = new Azure.Storage.StorageTransferOptions
+            {
+                InitialTransferSize = 8 * 1024 * 1024,       // 8 MB one-shot cap
+                MaximumTransferSize = 8 * 1024 * 1024,       // 8 MB per block
+                MaximumConcurrency = 4
+            }
+        };
+        await blobClient.UploadAsync(stream, uploadOptions, ct).ConfigureAwait(false);
 
         _logger.LogInformation("Uploaded blob {BlobKey} ({ContentType})", blobKey, contentType);
         return blobClient.Uri.ToString();
