@@ -1,3 +1,4 @@
+using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,11 +13,15 @@ public static class GitSyncEndpoints
 
         // POST /api/v1/vaults/{vaultId}/git-sync — Configure git repo for vault
         group.MapPost("/", async (
+            HttpContext context,
             Guid vaultId,
             [FromBody] ConfigureGitSyncRequest request,
             GitSyncService gitSyncService,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden("Admin access required for git sync configuration.");
+
             try
             {
                 var result = await gitSyncService.ConfigureAsync(
@@ -43,20 +48,28 @@ public static class GitSyncEndpoints
 
         // GET /api/v1/vaults/{vaultId}/git-sync — Get config + status
         group.MapGet("/", async (
+            HttpContext context,
             Guid vaultId,
             GitSyncService gitSyncService,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden("Admin access required for git sync configuration.");
+
             var status = await gitSyncService.GetStatusAsync(vaultId, ct);
             return status != null ? Results.Ok(status) : Results.NotFound();
         }).Produces<GitSyncStatusDto>();
 
         // POST /api/v1/vaults/{vaultId}/git-sync/trigger — Trigger manual sync
         group.MapPost("/trigger", async (
+            HttpContext context,
             Guid vaultId,
             GitSyncService gitSyncService,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden("Admin access required for git sync operations.");
+
             try
             {
                 await gitSyncService.TriggerSyncAsync(vaultId, ct);
@@ -70,20 +83,28 @@ public static class GitSyncEndpoints
 
         // GET /api/v1/vaults/{vaultId}/git-sync/history — Sync history
         group.MapGet("/history", async (
+            HttpContext context,
             Guid vaultId,
             GitSyncService gitSyncService,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden("Admin access required for git sync operations.");
+
             var history = await gitSyncService.GetHistoryAsync(vaultId, ct);
             return Results.Ok(history);
         }).Produces<List<GitSyncHistoryDto>>();
 
         // DELETE /api/v1/vaults/{vaultId}/git-sync — Remove config
         group.MapDelete("/", async (
+            HttpContext context,
             Guid vaultId,
             GitSyncService gitSyncService,
             CancellationToken ct) =>
         {
+            if (!AuthorizationHelpers.IsAdminOrAbove(context))
+                return AuthorizationHelpers.Forbidden("Admin access required for git sync configuration.");
+
             var removed = await gitSyncService.RemoveAsync(vaultId, ct);
             return removed ? Results.NoContent() : Results.NotFound();
         });

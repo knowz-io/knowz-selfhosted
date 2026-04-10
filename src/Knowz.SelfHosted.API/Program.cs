@@ -73,6 +73,7 @@ builder.Services.AddSingleton(Channel.CreateBounded<EnrichmentWorkItem>(
         SingleReader = true
     }));
 builder.Services.AddHostedService<EnrichmentBackgroundService>();
+builder.Services.AddHostedService<EnrichmentOutboxCleanupService>();
 
 // Git sync pipeline: bounded channel + background service
 builder.Services.AddSingleton(Channel.CreateBounded<GitSyncWorkItem>(
@@ -172,7 +173,7 @@ builder.Services.AddCors(options =>
         if (allowedOrigins is { Length: > 0 })
             policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
         else
-            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+            policy.WithOrigins("https://localhost", "http://localhost").AllowAnyMethod().AllowAnyHeader();
     });
 });
 
@@ -244,11 +245,11 @@ if (keyVaultConfigured)
     app.Logger.LogInformation("Azure Key Vault configuration enabled: {VaultUri}", kvUri);
 }
 
-// Warn if CORS is wide-open
+// Warn if CORS origins not configured
 if (allowedOrigins is not { Length: > 0 })
 {
     app.Logger.LogWarning(
-        "CORS is configured to allow all origins. Set 'SelfHosted:AllowedOrigins' to restrict access in production.");
+        "SelfHosted:AllowedOrigins not configured — CORS restricted to localhost only. Set origins for production access.");
 }
 
 // Auto-migrate database when configured (for Aspire local dev)
@@ -369,7 +370,7 @@ if (rateLimitingEnabled)
 app.UseMiddleware<AuthenticationMiddleware>();
 
 // Swagger (configurable)
-var enableSwagger = builder.Configuration.GetValue("SelfHosted:EnableSwagger", true);
+var enableSwagger = app.Environment.IsDevelopment() || builder.Configuration.GetValue("SelfHosted:EnableSwagger", false);
 if (enableSwagger)
 {
     app.UseSwagger();

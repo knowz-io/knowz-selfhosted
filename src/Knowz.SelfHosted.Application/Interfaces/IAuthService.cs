@@ -44,9 +44,10 @@ public interface IAuthService
     Task<MultiTenantLoginResult> MultiTenantLoginAsync(string username, string password);
 
     /// <summary>
-    /// Selects a tenant after a multi-tenant login (anonymous, user identified by userId).
+    /// Selects a tenant after a multi-tenant login.
+    /// Requires a valid single-use selection token from the login response.
     /// </summary>
-    Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId);
+    Task<AuthResult> SelectTenantAsync(Guid userId, Guid tenantId, string? selectionToken = null);
 
     /// <summary>
     /// Switches the authenticated user's active tenant context.

@@ -150,13 +150,12 @@ public class McpAuthMiddleware
     // --- Helper methods ---
 
     /// <summary>
-    /// Extracts API key from request headers/query parameters.
-    /// Supports: X-Api-Key header, Authorization: Bearer header, apiKey query param.
+    /// Extracts API key from request headers.
+    /// Supports: X-Api-Key header, Authorization: Bearer header.
     /// </summary>
     internal static string? ExtractApiKeyFromRequest(HttpContext context)
     {
-        var apiKey = context.Request.Headers["X-Api-Key"].FirstOrDefault()
-                     ?? context.Request.Query["apiKey"].FirstOrDefault();
+        var apiKey = context.Request.Headers["X-Api-Key"].FirstOrDefault();
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -198,17 +197,6 @@ public class McpAuthMiddleware
     }
 
     /// <summary>
-    /// Creates a client fingerprint from IP address and User-Agent.
-    /// Used to recover MCP sessions when clients don't send session headers.
-    /// </summary>
-    private static string GetClientFingerprint(HttpContext context)
-    {
-        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var ua = context.Request.Headers.UserAgent.FirstOrDefault() ?? "unknown";
-        return $"{ip}|{ua}";
-    }
-
-    /// <summary>
     /// Proxy mode: extract API key and store in session store.
     /// </summary>
     private void ExtractApiKeyForProxy(HttpContext context, IMcpSessionStore sessionStore)
@@ -243,18 +231,6 @@ public class McpAuthMiddleware
             }
         }
 
-        // Fingerprint fallback: when client sends neither Mcp-Session-Id header nor cookies,
-        // recover the session via client fingerprint (IP + User-Agent hash).
-        if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            var fingerprint = GetClientFingerprint(context);
-            sessionId = sessionStore.GetSessionByFingerprint(fingerprint);
-            if (!string.IsNullOrWhiteSpace(sessionId))
-            {
-                _logger.LogInformation("Recovered session via client fingerprint: {SessionId}", sessionId);
-            }
-        }
-
         // If no API key in request, try session store
         if (string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(sessionId))
         {
@@ -278,10 +254,6 @@ public class McpAuthMiddleware
             {
                 sessionStore.StoreApiKey(sessionId, apiKey);
 
-                // Store fingerprint mapping for session recovery on future requests
-                var fingerprint = GetClientFingerprint(context);
-                sessionStore.StoreFingerprint(fingerprint, sessionId);
-
                 // Sliding cookie extension: refresh the session cookie on every authenticated request
                 // so active clients never have their cookies expire mid-use
                 context.Response.Cookies.Append("mcp_session", sessionId, new CookieOptions
@@ -292,7 +264,7 @@ public class McpAuthMiddleware
                     MaxAge = OAuthService.SessionCookieMaxAge
                 });
 
-                _logger.LogInformation("Stored API key and fingerprint in session store for session {SessionId}", sessionId);
+                _logger.LogInformation("Stored API key in session store for session {SessionId}", sessionId);
             }
         }
         else if (!string.IsNullOrWhiteSpace(apiKey))

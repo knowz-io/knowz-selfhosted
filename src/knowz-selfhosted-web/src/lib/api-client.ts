@@ -67,7 +67,7 @@ const getApiKey = (): string | null =>
   localStorage.getItem('apiKey')
 
 const getAuthToken = (): string | null =>
-  localStorage.getItem('authToken')
+  sessionStorage.getItem('authToken')
 
 const getActiveTenantId = (): string | null =>
   localStorage.getItem('activeTenantId')
@@ -108,7 +108,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
-      localStorage.removeItem('authToken')
+      sessionStorage.removeItem('authToken')
     }
     const body = await response.json().catch(() => ({}))
     throw new ApiError(
@@ -146,7 +146,7 @@ async function requestUpload<T>(path: string, formData: FormData): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
-      localStorage.removeItem('authToken')
+      sessionStorage.removeItem('authToken')
     }
     const body = await response.json().catch(() => ({}))
     throw new ApiError(
@@ -180,7 +180,7 @@ async function requestBlob(path: string): Promise<Blob> {
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
-      localStorage.removeItem('authToken')
+      sessionStorage.removeItem('authToken')
     }
     const body = await response.json().catch(() => ({}))
     throw new ApiError(
@@ -226,7 +226,7 @@ async function streamRequest(
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
-      localStorage.removeItem('authToken')
+      sessionStorage.removeItem('authToken')
     }
     const errorBody = await response.json().catch(() => ({}))
     throw new ApiError(

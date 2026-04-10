@@ -26,6 +26,12 @@ public class MultiTenantLoginResult
     public bool RequiresTenantSelection { get; set; }
     public Guid? UserId { get; set; }
     public List<TenantMembershipDto> AvailableTenants { get; set; } = new();
+
+    /// <summary>
+    /// Short-lived, single-use token for tenant selection after multi-tenant login.
+    /// Only populated when RequiresTenantSelection is true.
+    /// </summary>
+    public string? SelectionToken { get; set; }
 }
 
 /// <summary>
@@ -35,6 +41,12 @@ public class SelectTenantRequest
 {
     public Guid UserId { get; set; }
     public Guid TenantId { get; set; }
+
+    /// <summary>
+    /// The single-use selection token returned by the login endpoint.
+    /// Required to prove the caller authenticated successfully.
+    /// </summary>
+    public string? SelectionToken { get; set; }
 }
 
 /// <summary>

@@ -382,23 +382,16 @@ public class OAuthService : IOAuthService
         if (string.IsNullOrEmpty(codeVerifier))
             return false;
 
-        if (method == "S256")
-        {
-            using var sha256 = SHA256.Create();
-            var hash = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
-            var computed = Convert.ToBase64String(hash)
-                .Replace("+", "-")
-                .Replace("/", "_")
-                .TrimEnd('=');
-            return computed == codeChallenge;
-        }
+        if (method != "S256")
+            return false;
 
-        if (method == "plain")
-        {
-            return codeVerifier == codeChallenge;
-        }
-
-        return false;
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
+        var computed = Convert.ToBase64String(hash)
+            .Replace("+", "-")
+            .Replace("/", "_")
+            .TrimEnd('=');
+        return computed == codeChallenge;
     }
 }
 

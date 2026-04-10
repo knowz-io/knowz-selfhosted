@@ -38,7 +38,9 @@ param(
     [string]$GhcrToken = "",
     [string]$ApiKeyOverride = "",
     [string]$JwtSecretOverride = "",
-    [string]$AdminPassword = "changeme"
+    [Parameter(Mandatory=$true)]
+    [ValidateScript({$_.Length -ge 8})]
+    [string]$AdminPassword
 )
 
 $ErrorActionPreference = "Continue"

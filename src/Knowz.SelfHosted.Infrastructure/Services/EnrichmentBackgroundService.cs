@@ -11,6 +11,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+// Fix 6 TODO: Add StartedProcessingAt field to EnrichmentOutboxItem and use it
+// for stuck detection instead of CreatedAt. Requires a DB migration.
+// The 5-min threshold on CreatedAt is acceptable for now.
+
 namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class EnrichmentBackgroundService : BackgroundService
@@ -38,10 +42,47 @@ public class EnrichmentBackgroundService : BackgroundService
     {
         _logger.LogInformation("EnrichmentBackgroundService started");
 
+        // Immediate startup scan: load pending/stuck items into channel before entering processing loop
+        await ScanAndEnqueuePendingAsync(stoppingToken);
+
         var channelTask = ProcessChannelAsync(stoppingToken);
         var recoveryTask = RecoveryTimerAsync(stoppingToken);
 
         await Task.WhenAll(channelTask, recoveryTask);
+    }
+
+    internal async Task ScanAndEnqueuePendingAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
+            var now = DateTime.UtcNow;
+            var stuckThreshold = now.AddMinutes(-5);
+
+            var pendingItems = await db.EnrichmentOutbox
+                .Where(e =>
+                    (e.Status == EnrichmentStatus.Pending &&
+                     (e.NextRetryAt == null || e.NextRetryAt <= now)) ||
+                    (e.Status == EnrichmentStatus.Processing &&
+                     e.CreatedAt < stuckThreshold))
+                .OrderBy(e => e.CreatedAt)
+                .Take(100)
+                .ToListAsync(ct);
+
+            foreach (var item in pendingItems)
+            {
+                await _channel.Writer.WriteAsync(
+                    new EnrichmentWorkItem(item.KnowledgeId, item.TenantId), ct);
+            }
+
+            if (pendingItems.Count > 0)
+                _logger.LogInformation("Startup recovery: enqueued {Count} pending enrichment items", pendingItems.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Startup recovery scan failed — items will be picked up by recovery timer");
+        }
     }
 
     internal async Task ProcessChannelAsync(CancellationToken stoppingToken)
@@ -281,7 +322,7 @@ public class EnrichmentBackgroundService : BackgroundService
                     var db = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
 
                     var now = DateTime.UtcNow;
-                    var stuckThreshold = now.AddMinutes(-10);
+                    var stuckThreshold = now.AddMinutes(-5);
 
                     var items = await db.EnrichmentOutbox
                         .Where(e =>
@@ -292,7 +333,15 @@ public class EnrichmentBackgroundService : BackgroundService
 
                     foreach (var item in items)
                     {
-                        _channel.Writer.TryWrite(new EnrichmentWorkItem(item.KnowledgeId, item.TenantId));
+                        try
+                        {
+                            await _channel.Writer.WriteAsync(
+                                new EnrichmentWorkItem(item.KnowledgeId, item.TenantId), stoppingToken);
+                        }
+                        catch (ChannelClosedException)
+                        {
+                            break; // Service shutting down
+                        }
                     }
 
                     if (items.Count > 0)

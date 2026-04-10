@@ -1,4 +1,5 @@
 using Knowz.Core.Enums;
+using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.API.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Application.Interfaces;
@@ -435,10 +436,13 @@ public static class KnowledgeEndpoints
 
         group.MapGet("/{id:guid}/enrichment-status", async (
             SelfHostedDbContext db,
+            ITenantProvider tenantProvider,
             Guid id,
             CancellationToken ct) =>
         {
-            // Check knowledge item exists
+            var callerTenantId = tenantProvider.TenantId;
+
+            // Check knowledge item exists (query filter already scopes by tenant)
             var knowledge = await db.KnowledgeItems
                 .AsNoTracking()
                 .Where(k => k.Id == id)
@@ -448,10 +452,10 @@ public static class KnowledgeEndpoints
             if (knowledge == null)
                 return Results.NotFound(new { error = "Knowledge item not found" });
 
-            // Check enrichment outbox for the latest status
+            // Check enrichment outbox for the latest status (no query filter — scope by tenant explicitly)
             var outboxItem = await db.EnrichmentOutbox
                 .AsNoTracking()
-                .Where(e => e.KnowledgeId == id)
+                .Where(e => e.KnowledgeId == id && e.TenantId == callerTenantId)
                 .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefaultAsync(ct);
 
