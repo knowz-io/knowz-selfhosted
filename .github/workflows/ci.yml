@@ -41,9 +41,7 @@ jobs:
 
       - name: Install web dependencies
         working-directory: src/knowz-selfhosted-web
-        # Use `npm install` rather than `npm ci` — the repo does not commit
-        # package-lock.json, so `npm ci` has no lockfile to work from.
-        run: npm install
+        run: npm ci
 
       - name: Run web tests
         working-directory: src/knowz-selfhosted-web
