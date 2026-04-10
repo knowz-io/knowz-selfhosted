@@ -26,9 +26,22 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+# Pre-flight checks
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+    Write-Host "Error: Azure CLI (az) not found. Install: https://learn.microsoft.com/cli/azure/install-azure-cli" -ForegroundColor Red
+    exit 1
+}
+
+$accountInfo = az account show --query name -o tsv 2>$null
+if (-not $accountInfo) {
+    Write-Host "Error: Not logged in to Azure. Run: az login" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host " Knowz Self-Hosted Update" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Subscription:   $accountInfo"
 Write-Host "Resource Group: $ResourceGroup"
 Write-Host "Target Version: $Version"
 Write-Host ""
@@ -133,7 +146,12 @@ if (-not $SkipHealthCheck -and $updateCount -gt 0) {
                 $response = Invoke-WebRequest -Uri "https://$apiFqdn/api/v1/health" -TimeoutSec 15 -ErrorAction SilentlyContinue
                 Write-Host "  API: $($response.StatusCode)" -ForegroundColor Green
             } catch {
-                Write-Host "  API: Unhealthy or starting up" -ForegroundColor DarkYellow
+                # 401 means auth is working — API is healthy
+                if ($_.Exception.Response.StatusCode.value__ -eq 401) {
+                    Write-Host "  API: 401 (auth working)" -ForegroundColor Green
+                } else {
+                    Write-Host "  API: Unhealthy or starting up" -ForegroundColor DarkYellow
+                }
             }
         }
     }

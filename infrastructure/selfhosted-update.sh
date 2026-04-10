@@ -74,10 +74,29 @@ if [[ -z "$RESOURCE_GROUP" ]]; then
     usage
 fi
 
+# Pre-flight checks
+if ! command -v az &> /dev/null; then
+    echo -e "${RED}Error: Azure CLI (az) not found. Install: https://learn.microsoft.com/cli/azure/install-azure-cli${NC}"
+    exit 1
+fi
+
+if ! az account show &> /dev/null; then
+    echo -e "${RED}Error: Not logged in to Azure. Run: az login${NC}"
+    exit 1
+fi
+
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}Error: python3 required for JSON parsing${NC}"
+    exit 1
+fi
+
+CURRENT_SUB=$(az account show --query name -o tsv 2>/dev/null)
+
 echo ""
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN} Knowz Self-Hosted Update${NC}"
 echo -e "${CYAN}========================================${NC}"
+echo "Subscription:   $CURRENT_SUB"
 echo "Resource Group: $RESOURCE_GROUP"
 echo "Target Version: $VERSION"
 echo ""
@@ -225,8 +244,11 @@ if [[ "$SKIP_HEALTH_CHECK" == false ]] && [[ "$update_count" -gt 0 ]]; then
             --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || true)
         if [[ -n "$api_fqdn" ]]; then
             http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://$api_fqdn/api/v1/health" 2>/dev/null || echo "000")
+            # 401 means auth is working (API is healthy, requires auth) — treat as healthy
             if [[ "$http_code" -ge 200 ]] && [[ "$http_code" -lt 400 ]]; then
                 echo -e "  ${GREEN}API: $http_code${NC}"
+            elif [[ "$http_code" == "401" ]]; then
+                echo -e "  ${GREEN}API: $http_code (auth working)${NC}"
             else
                 echo -e "  ${YELLOW}API: Unhealthy or starting up (HTTP $http_code)${NC}"
             fi
