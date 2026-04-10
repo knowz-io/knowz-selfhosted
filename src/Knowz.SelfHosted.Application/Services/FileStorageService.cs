@@ -1,0 +1,473 @@
+using System.Linq.Expressions;
+using Knowz.Core.Entities;
+using Knowz.Core.Interfaces;
+using Knowz.SelfHosted.Application.DTOs;
+using Knowz.SelfHosted.Infrastructure.Interfaces;
+using Knowz.SelfHosted.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Knowz.SelfHosted.Application.Services;
+
+/// <summary>
+/// Service for file storage operations coordinating IFileStorageProvider + DB.
+/// Pattern: Repository for CRUD, DbContext for complex queries (LIKE, includes).
+/// </summary>
+public class FileStorageService
+{
+    private readonly IFileStorageProvider _storageProvider;
+    private readonly ISelfHostedRepository<FileRecord> _fileRepo;
+    private readonly SelfHostedDbContext _db;
+    private readonly ITenantProvider _tenantProvider;
+    private readonly ILogger<FileStorageService> _logger;
+    private readonly IFileContentExtractor? _contentExtractor;
+    private readonly IEnrichmentOutboxWriter? _enrichmentWriter;
+
+    public FileStorageService(
+        IFileStorageProvider storageProvider,
+        ISelfHostedRepository<FileRecord> fileRepo,
+        SelfHostedDbContext db,
+        ITenantProvider tenantProvider,
+        ILogger<FileStorageService> logger,
+        IFileContentExtractor? contentExtractor = null,
+        IEnrichmentOutboxWriter? enrichmentWriter = null)
+    {
+        _storageProvider = storageProvider;
+        _fileRepo = fileRepo;
+        _db = db;
+        _tenantProvider = tenantProvider;
+        _logger = logger;
+        _contentExtractor = contentExtractor;
+        _enrichmentWriter = enrichmentWriter;
+    }
+
+    public async Task<FileUploadResult> UploadAsync(
+        Stream stream, string fileName, string contentType, CancellationToken ct = default)
+    {
+        if (stream == null || stream.Length == 0)
+            throw new ArgumentException("Stream cannot be empty");
+
+        if (!stream.CanRead)
+            throw new ArgumentException("Stream must be readable");
+
+        // Buffer non-seekable streams (e.g. HTTP upload streams) into memory
+        // so we can seek back for both storage upload and content extraction.
+        Stream workingStream = stream;
+        MemoryStream? bufferedStream = null;
+        if (!stream.CanSeek)
+        {
+            bufferedStream = new MemoryStream();
+            await stream.CopyToAsync(bufferedStream, ct).ConfigureAwait(false);
+            bufferedStream.Position = 0;
+            workingStream = bufferedStream;
+        }
+
+        try
+        {
+            var fileRecordId = Guid.NewGuid();
+            var tenantId = _tenantProvider.TenantId;
+
+            var blobUri = await _storageProvider.UploadAsync(tenantId, fileRecordId, workingStream, contentType, ct)
+                .ConfigureAwait(false);
+
+            var sizeBytes = workingStream.CanSeek ? workingStream.Length : 0;
+
+            var fileRecord = new FileRecord
+            {
+                Id = fileRecordId,
+                TenantId = tenantId,
+                FileName = fileName,
+                ContentType = contentType,
+                SizeBytes = sizeBytes,
+                BlobUri = blobUri,
+                BlobMigrationPending = false,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Proactive text extraction (best-effort, with timeout to avoid blocking uploads)
+            if (_contentExtractor != null && _contentExtractor.CanExtract(contentType) && workingStream.CanSeek)
+            {
+                try
+                {
+                    workingStream.Position = 0;
+                    // 30-second timeout — image vision analysis can take 15-25s
+                    // Text/PDF/Office extraction is fast (<1s) so this only affects images
+                    using var extractionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    extractionCts.CancelAfter(TimeSpan.FromSeconds(30));
+                    var extraction = await _contentExtractor.ExtractAsync(fileRecord, workingStream, extractionCts.Token);
+                    if (extraction.Success)
+                    {
+                        fileRecord.ExtractedText = extraction.ExtractedText;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Proactive extraction timed out for {FileRecordId} ({ContentType}) — will be handled by enrichment",
+                        fileRecordId, contentType);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Proactive text extraction failed for {FileRecordId}", fileRecordId);
+                }
+            }
+
+            await _fileRepo.AddAsync(fileRecord, ct).ConfigureAwait(false);
+            await _fileRepo.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            _logger.LogInformation("File uploaded: {FileRecordId}, {FileName}, {SizeBytes} bytes",
+                fileRecordId, fileName, sizeBytes);
+
+            return new FileUploadResult(fileRecordId, fileName, contentType, sizeBytes, blobUri, true);
+        }
+        finally
+        {
+            if (bufferedStream != null)
+                await bufferedStream.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task<(Stream stream, string contentType, string fileName)?> DownloadAsync(
+        Guid fileRecordId, CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRepo.GetByIdAsync(fileRecordId, ct).ConfigureAwait(false);
+        if (fileRecord == null)
+            return null;
+
+        try
+        {
+            var result = await _storageProvider.DownloadAsync(fileRecord.TenantId, fileRecordId, ct)
+                .ConfigureAwait(false);
+            return (result.stream, fileRecord.ContentType ?? result.contentType, fileRecord.FileName);
+        }
+        catch (FileNotFoundException)
+        {
+            _logger.LogWarning("Storage file not found for FileRecord {FileRecordId}", fileRecordId);
+            return null;
+        }
+    }
+
+    public async Task<DeleteResult?> DeleteAsync(Guid fileRecordId, CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRepo.GetByIdAsync(fileRecordId, ct).ConfigureAwait(false);
+        if (fileRecord == null)
+            return null;
+
+        await _fileRepo.SoftDeleteAsync(fileRecord, ct).ConfigureAwait(false);
+        await _fileRepo.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        try
+        {
+            await _storageProvider.DeleteAsync(fileRecord.TenantId, fileRecordId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete storage file for FileRecord {FileRecordId}", fileRecordId);
+        }
+
+        return new DeleteResult(fileRecordId, true);
+    }
+
+    private static readonly Expression<Func<FileRecord, FileMetadataDto>> FileRecordProjection =
+        f => new FileMetadataDto(
+            f.Id, f.FileName, f.ContentType, f.SizeBytes, f.BlobUri,
+            f.TranscriptionText, f.ExtractedText, f.VisionDescription,
+            f.BlobMigrationPending, f.CreatedAt, f.UpdatedAt,
+            f.Attachments.Where(a => a.KnowledgeId != null).Select(a => a.KnowledgeId).FirstOrDefault(),
+            f.Attachments.Where(a => a.KnowledgeId != null && a.Knowledge != null)
+                .Select(a => a.Knowledge!.Title).FirstOrDefault(),
+            f.Attachments.Where(a => a.KnowledgeId != null && a.Knowledge != null)
+                .SelectMany(a => a.Knowledge!.KnowledgeVaults)
+                .Select(kv => (Guid?)kv.VaultId).FirstOrDefault(),
+            f.Attachments.Where(a => a.KnowledgeId != null && a.Knowledge != null)
+                .SelectMany(a => a.Knowledge!.KnowledgeVaults)
+                .Select(kv => kv.Vault.Name).FirstOrDefault()
+        );
+
+    public async Task<FileMetadataDto?> GetMetadataAsync(Guid fileRecordId, CancellationToken ct = default)
+    {
+        return await _db.FileRecords
+            .Where(f => f.Id == fileRecordId)
+            .Select(FileRecordProjection)
+            .FirstOrDefaultAsync(ct)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<FileListResponse> ListAsync(
+        int page = 1, int pageSize = 20, string? search = null, string? contentTypeFilter = null,
+        CancellationToken ct = default)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+
+        var query = _db.FileRecords.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLowerInvariant();
+            query = query.Where(f => f.FileName.ToLower().Contains(searchLower));
+        }
+
+        if (!string.IsNullOrWhiteSpace(contentTypeFilter))
+        {
+            query = query.Where(f => f.ContentType == contentTypeFilter);
+        }
+
+        query = query.OrderByDescending(f => f.CreatedAt);
+
+        var total = await query.CountAsync(ct).ConfigureAwait(false);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(FileRecordProjection)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        var totalPages = pageSize > 0 ? (int)Math.Ceiling((double)total / pageSize) : 0;
+        return new FileListResponse(items, page, pageSize, total, totalPages);
+    }
+
+    public async Task<string> GenerateDownloadUrlAsync(
+        Guid fileRecordId, TimeSpan? expiry = null, CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRepo.GetByIdAsync(fileRecordId, ct).ConfigureAwait(false);
+        if (fileRecord == null)
+            throw new FileNotFoundException($"FileRecord {fileRecordId} not found");
+
+        return await _storageProvider.GenerateDownloadUrlAsync(
+            fileRecord.TenantId, fileRecordId, fileRecord.FileName, expiry, ct)
+            .ConfigureAwait(false);
+    }
+
+    // --- Attachment Operations ---
+
+    public async Task<FileAttachmentDto> AttachToKnowledgeAsync(
+        Guid fileRecordId, Guid knowledgeId, CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRepo.GetByIdAsync(fileRecordId, ct).ConfigureAwait(false);
+        if (fileRecord == null)
+            throw new InvalidOperationException($"FileRecord {fileRecordId} does not exist");
+
+        if (!await _db.KnowledgeItems.AnyAsync(k => k.Id == knowledgeId, ct).ConfigureAwait(false))
+            throw new InvalidOperationException($"Knowledge {knowledgeId} does not exist");
+
+        var existing = await _db.FileAttachments
+            .FirstOrDefaultAsync(fa => fa.FileRecordId == fileRecordId && fa.KnowledgeId == knowledgeId, ct)
+            .ConfigureAwait(false);
+
+        if (existing != null)
+            return new FileAttachmentDto(existing.Id, existing.FileRecordId, existing.KnowledgeId, existing.CommentId, existing.CreatedAt);
+
+        var attachment = new FileAttachment
+        {
+            Id = Guid.NewGuid(),
+            FileRecordId = fileRecordId,
+            KnowledgeId = knowledgeId,
+            CommentId = null,
+            TenantId = _tenantProvider.TenantId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.FileAttachments.Add(attachment);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        // Extract content if not already done (idempotent)
+        if (string.IsNullOrEmpty(fileRecord.ExtractedText) && _contentExtractor != null
+            && _contentExtractor.CanExtract(fileRecord.ContentType))
+        {
+            try
+            {
+                var downloadResult = await _storageProvider.DownloadAsync(fileRecord.TenantId, fileRecordId, ct);
+                using var stream = downloadResult.stream;
+                var extraction = await _contentExtractor.ExtractAsync(fileRecord, stream, ct);
+                if (extraction.Success)
+                {
+                    fileRecord.ExtractedText = extraction.ExtractedText;
+                    fileRecord.UpdatedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Content extraction failed for FileRecord {Id}", fileRecordId);
+            }
+        }
+
+        // Trigger re-enrichment of parent knowledge (AFTER save)
+        if (_enrichmentWriter != null)
+        {
+            try
+            {
+                await _enrichmentWriter.EnqueueAsync(knowledgeId, _tenantProvider.TenantId, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enqueue re-enrichment after attachment for Knowledge {Id}", knowledgeId);
+            }
+        }
+
+        return new FileAttachmentDto(attachment.Id, attachment.FileRecordId, attachment.KnowledgeId, attachment.CommentId, attachment.CreatedAt);
+    }
+
+    public async Task<FileAttachmentDto> AttachToCommentAsync(
+        Guid fileRecordId, Guid commentId, CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRepo.GetByIdAsync(fileRecordId, ct).ConfigureAwait(false);
+        if (fileRecord == null)
+            throw new InvalidOperationException($"FileRecord {fileRecordId} does not exist");
+
+        if (!await _db.Comments.AnyAsync(c => c.Id == commentId, ct).ConfigureAwait(false))
+            throw new InvalidOperationException($"Comment {commentId} does not exist");
+
+        var existing = await _db.FileAttachments
+            .FirstOrDefaultAsync(fa => fa.FileRecordId == fileRecordId && fa.CommentId == commentId, ct)
+            .ConfigureAwait(false);
+
+        if (existing != null)
+            return new FileAttachmentDto(existing.Id, existing.FileRecordId, existing.KnowledgeId, existing.CommentId, existing.CreatedAt);
+
+        var attachment = new FileAttachment
+        {
+            Id = Guid.NewGuid(),
+            FileRecordId = fileRecordId,
+            KnowledgeId = null,
+            CommentId = commentId,
+            TenantId = _tenantProvider.TenantId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.FileAttachments.Add(attachment);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        // Extract content if not already done
+        if (string.IsNullOrEmpty(fileRecord.ExtractedText) && _contentExtractor != null
+            && _contentExtractor.CanExtract(fileRecord.ContentType))
+        {
+            try
+            {
+                var downloadResult = await _storageProvider.DownloadAsync(fileRecord.TenantId, fileRecordId, ct);
+                using var stream = downloadResult.stream;
+                var extraction = await _contentExtractor.ExtractAsync(fileRecord, stream, ct);
+                if (extraction.Success)
+                {
+                    fileRecord.ExtractedText = extraction.ExtractedText;
+                    fileRecord.UpdatedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Content extraction failed for FileRecord {Id}", fileRecordId);
+            }
+        }
+
+        // Resolve parent Knowledge for re-enrichment
+        var comment = await _db.Comments.FindAsync(new object[] { commentId }, ct);
+        if (comment != null && _enrichmentWriter != null)
+        {
+            try
+            {
+                await _enrichmentWriter.EnqueueAsync(comment.KnowledgeId, _tenantProvider.TenantId, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enqueue re-enrichment after comment attachment for Knowledge {Id}", comment.KnowledgeId);
+            }
+        }
+
+        return new FileAttachmentDto(attachment.Id, attachment.FileRecordId, attachment.KnowledgeId, attachment.CommentId, attachment.CreatedAt);
+    }
+
+    public async Task<bool> DetachFromKnowledgeAsync(
+        Guid fileRecordId, Guid knowledgeId, CancellationToken ct = default)
+    {
+        var attachment = await _db.FileAttachments
+            .FirstOrDefaultAsync(fa => fa.FileRecordId == fileRecordId && fa.KnowledgeId == knowledgeId, ct)
+            .ConfigureAwait(false);
+
+        if (attachment == null)
+            return false;
+
+        _db.FileAttachments.Remove(attachment);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        // Trigger re-enrichment after detach
+        if (_enrichmentWriter != null)
+        {
+            try
+            {
+                await _enrichmentWriter.EnqueueAsync(knowledgeId, _tenantProvider.TenantId, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enqueue re-enrichment after detach for Knowledge {Id}", knowledgeId);
+            }
+        }
+
+        return true;
+    }
+
+    public async Task<bool> DetachFromCommentAsync(
+        Guid fileRecordId, Guid commentId, CancellationToken ct = default)
+    {
+        var attachment = await _db.FileAttachments
+            .FirstOrDefaultAsync(fa => fa.FileRecordId == fileRecordId && fa.CommentId == commentId, ct)
+            .ConfigureAwait(false);
+
+        if (attachment == null)
+            return false;
+
+        _db.FileAttachments.Remove(attachment);
+        await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+        // Resolve parent Knowledge for re-enrichment
+        var comment = await _db.Comments.FindAsync(new object[] { commentId }, ct);
+        if (comment != null && _enrichmentWriter != null)
+        {
+            try
+            {
+                await _enrichmentWriter.EnqueueAsync(comment.KnowledgeId, _tenantProvider.TenantId, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enqueue re-enrichment after comment detach for Knowledge {Id}", comment.KnowledgeId);
+            }
+        }
+
+        return true;
+    }
+
+    public async Task<List<FileMetadataDto>> GetAttachmentsForKnowledgeAsync(
+        Guid knowledgeId, CancellationToken ct = default)
+    {
+        var fileRecords = await _db.FileAttachments
+            .Where(fa => fa.KnowledgeId == knowledgeId)
+            .Include(fa => fa.FileRecord)
+            .Select(fa => fa.FileRecord)
+            .Where(f => !f.IsDeleted)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        return fileRecords.Select(MapToDto).ToList();
+    }
+
+    public async Task<List<FileMetadataDto>> GetAttachmentsForCommentAsync(
+        Guid commentId, CancellationToken ct = default)
+    {
+        var fileRecords = await _db.FileAttachments
+            .Where(fa => fa.CommentId == commentId)
+            .Include(fa => fa.FileRecord)
+            .Select(fa => fa.FileRecord)
+            .Where(f => !f.IsDeleted)
+            .ToListAsync(ct)
+            .ConfigureAwait(false);
+
+        return fileRecords.Select(MapToDto).ToList();
+    }
+
+    private static FileMetadataDto MapToDto(FileRecord f) => new(
+        f.Id, f.FileName, f.ContentType, f.SizeBytes, f.BlobUri,
+        f.TranscriptionText, f.ExtractedText, f.VisionDescription,
+        f.BlobMigrationPending, f.CreatedAt, f.UpdatedAt);
+}
