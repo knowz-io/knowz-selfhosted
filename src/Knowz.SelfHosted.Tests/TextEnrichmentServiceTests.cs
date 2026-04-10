@@ -67,7 +67,7 @@ public class TextEnrichmentServiceTests
     [Fact]
     public void TruncateContent_LongContent_Truncates()
     {
-        var content = new string('x', 15_000);
+        var content = new string('x', TextEnrichmentService.MaxContentChars + 5_000);
         var result = TextEnrichmentService.TruncateContent(content);
         Assert.Equal(TextEnrichmentService.MaxContentChars, result.Length);
     }

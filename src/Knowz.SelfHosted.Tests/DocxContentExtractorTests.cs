@@ -138,20 +138,20 @@ public class DocxContentExtractorTests
     // =============================================
 
     [Fact]
-    public async Task ExtractAsync_TruncatesWhenExceeding1MB()
+    public async Task ExtractAsync_TruncatesWhenExceedingMaxChars()
     {
         // VERIFY_DOCX_04
         var record = MakeRecord("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        // Create a DOCX with large text content
-        var largeParagraph = new string('B', 600_000);
+        // Create a DOCX with text content larger than the 2MB extraction cap
+        var largeParagraph = new string('B', DocxContentExtractor.MaxExtractionChars + 100_000);
         using var stream = CreateDocxWithParagraphs(largeParagraph);
 
         var result = await _extractor.ExtractAsync(record, stream);
 
         Assert.True(result.Success);
         Assert.NotNull(result.ExtractedText);
-        Assert.True(result.ExtractedText.Length <= 524_288,
-            $"Expected <= 524288 chars but got {result.ExtractedText.Length}");
+        Assert.True(result.ExtractedText.Length <= DocxContentExtractor.MaxExtractionChars,
+            $"Expected <= {DocxContentExtractor.MaxExtractionChars} chars but got {result.ExtractedText.Length}");
     }
 
     // =============================================
