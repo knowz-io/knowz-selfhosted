@@ -4,25 +4,24 @@ namespace Knowz.SelfHosted.Tests;
 
 /// <summary>
 /// Tests for NodeID 2: ContentExtractionFix.
-/// VERIFY: DOCX/PDF extractors allow 2MB content.
+/// VERIFY: DOCX/PDF extractors allow 10M char content.
 /// </summary>
 public class ContentExtractionFixTests
 {
     // ===== DocxContentExtractor MaxExtractionChars =====
 
     [Fact]
-    public void DocxExtractor_MaxExtractionChars_Is2MB()
+    public void DocxExtractor_MaxExtractionChars_Is10M()
     {
-        // 2,097,152 = 2 * 1024 * 1024 = 2MB in chars
-        Assert.Equal(2_097_152, DocxContentExtractor.MaxExtractionChars);
+        Assert.Equal(10_000_000, DocxContentExtractor.MaxExtractionChars);
     }
 
     // ===== PdfContentExtractor MaxExtractionChars =====
 
     [Fact]
-    public void PdfExtractor_MaxExtractionChars_Is2MB()
+    public void PdfExtractor_MaxExtractionChars_Is10M()
     {
-        Assert.Equal(2_097_152, PdfContentExtractor.MaxExtractionChars);
+        Assert.Equal(10_000_000, PdfContentExtractor.MaxExtractionChars);
     }
 
     // ===== TextEnrichmentService MaxContentChars =====

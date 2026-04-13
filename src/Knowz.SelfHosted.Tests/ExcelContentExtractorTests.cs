@@ -280,9 +280,9 @@ public class ExcelContentExtractorTests
 
         Assert.True(result.Success);
         Assert.NotNull(result.ExtractedText);
-        // Total should not exceed MaxExtractionChars (2_097_152)
-        Assert.True(result.ExtractedText.Length <= 2_097_152,
-            $"Expected <= 2097152 chars but got {result.ExtractedText.Length}");
+        // Total should not exceed MaxExtractionChars (10_000_000)
+        Assert.True(result.ExtractedText.Length <= ExcelContentExtractor.MaxExtractionChars,
+            $"Expected <= {ExcelContentExtractor.MaxExtractionChars} chars but got {result.ExtractedText.Length}");
     }
 
     // =============================================

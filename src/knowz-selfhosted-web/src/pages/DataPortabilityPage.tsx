@@ -9,9 +9,11 @@ import {
   XCircle,
   AlertTriangle,
   Info,
+  FileArchive,
 } from 'lucide-react'
 import { api } from '../lib/api-client'
 
+type ExportMode = 'light' | 'full'
 type Strategy = 'skip' | 'overwrite' | 'merge'
 
 const strategyDescriptions: Record<Strategy, { label: string; description: string }> = {
@@ -31,7 +33,9 @@ const strategyDescriptions: Record<Strategy, { label: string; description: strin
 
 export default function DataPortabilityPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [exportMode, setExportMode] = useState<ExportMode>('light')
   const [importFile, setImportFile] = useState<File | null>(null)
+  const [importFileType, setImportFileType] = useState<'json' | 'zip' | null>(null)
   const [importPackage, setImportPackage] = useState<Record<string, unknown> | null>(null)
   const [strategy, setStrategy] = useState<Strategy>('skip')
   const [parseError, setParseError] = useState<string | null>(null)
@@ -43,7 +47,7 @@ export default function DataPortabilityPage() {
     queryFn: () => api.getSchema(),
   })
 
-  const exportMutation = useMutation({
+  const exportJsonMutation = useMutation({
     mutationFn: () => api.exportData(),
     onSuccess: (data) => {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -59,6 +63,23 @@ export default function DataPortabilityPage() {
     },
   })
 
+  const exportZipMutation = useMutation({
+    mutationFn: () => api.exportZip(),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const date = new Date().toISOString().split('T')[0]
+      a.href = url
+      a.download = `knowz-export-${date}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
+  })
+
+  const exportMutation = exportMode === 'full' ? exportZipMutation : exportJsonMutation
+
   const validateMutation = useMutation({
     mutationFn: (pkg: Record<string, unknown>) => api.validateImport(pkg),
     onSuccess: (data) => {
@@ -72,13 +93,23 @@ export default function DataPortabilityPage() {
     },
   })
 
-  const importMutation = useMutation({
+  const importJsonMutation = useMutation({
     mutationFn: ({ pkg, strat }: { pkg: Record<string, unknown>; strat: string }) =>
       api.importData(pkg, strat),
     onSuccess: (data) => {
       setImportResult(data as Record<string, unknown>)
     },
   })
+
+  const importZipMutation = useMutation({
+    mutationFn: ({ file, strat }: { file: File; strat: string }) =>
+      api.importZip(file, strat),
+    onSuccess: (data) => {
+      setImportResult(data as Record<string, unknown>)
+    },
+  })
+
+  const importMutation = importFileType === 'zip' ? importZipMutation : importJsonMutation
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -88,14 +119,24 @@ export default function DataPortabilityPage() {
     setParseError(null)
     setValidationResult(null)
     setImportResult(null)
+    setImportPackage(null)
+    setImportFileType(null)
 
-    try {
-      const text = await file.text()
-      const parsed = JSON.parse(text)
-      setImportPackage(parsed)
-    } catch {
-      setParseError('Invalid JSON file. Please select a valid Knowz export file.')
-      setImportPackage(null)
+    const ext = file.name.toLowerCase().split('.').pop()
+
+    if (ext === 'zip') {
+      setImportFileType('zip')
+    } else if (ext === 'json') {
+      setImportFileType('json')
+      try {
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        setImportPackage(parsed)
+      } catch {
+        setParseError('Invalid JSON file. Please select a valid Knowz export file.')
+      }
+    } else {
+      setParseError('Unsupported file type. Please select a .json or .zip file.')
     }
   }
 
@@ -106,10 +147,14 @@ export default function DataPortabilityPage() {
   }
 
   const handleImport = () => {
-    if (importPackage) {
-      importMutation.mutate({ pkg: importPackage, strat: strategy })
+    if (importFileType === 'zip' && importFile) {
+      importZipMutation.mutate({ file: importFile, strat: strategy })
+    } else if (importPackage) {
+      importJsonMutation.mutate({ pkg: importPackage, strat: strategy })
     }
   }
+
+  const isImportReady = importFileType === 'zip' ? !!importFile : !!importPackage
 
   const vr = validationResult as Record<string, unknown> | null
 
@@ -131,19 +176,50 @@ export default function DataPortabilityPage() {
       <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm">
         <h2 className="text-lg font-semibold mb-2">Export</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Download all your knowledge, vaults, topics, tags, and entities as a JSON file.
+          Download all your knowledge, vaults, topics, tags, and entities.
         </p>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setExportMode('light')}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+              exportMode === 'light'
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border/60 hover:bg-muted'
+            }`}
+          >
+            <Download size={14} />
+            Light (JSON)
+          </button>
+          <button
+            onClick={() => setExportMode('full')}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+              exportMode === 'full'
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border/60 hover:bg-muted'
+            }`}
+          >
+            <FileArchive size={14} />
+            Full (ZIP with files)
+          </button>
+        </div>
+        {exportMode === 'full' && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Full export includes binary files (images, documents) in a browsable ZIP archive.
+          </p>
+        )}
         <button
-          onClick={() => exportMutation.mutate()}
+          onClick={() => exportMutation.mutate(undefined as never)}
           disabled={exportMutation.isPending}
           className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {exportMutation.isPending ? (
             <Loader2 size={14} className="animate-spin" />
+          ) : exportMode === 'full' ? (
+            <FileArchive size={14} />
           ) : (
             <Download size={14} />
           )}
-          {exportMutation.isPending ? 'Exporting...' : 'Export All Data'}
+          {exportMutation.isPending ? 'Exporting...' : `Export All Data (${exportMode === 'full' ? 'ZIP' : 'JSON'})`}
         </button>
         {exportMutation.isSuccess && (
           <p className="mt-2 text-sm text-green-600 dark:text-green-400 flex items-center gap-1.5">
@@ -170,7 +246,7 @@ export default function DataPortabilityPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".json"
+              accept=".json,.zip"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -179,7 +255,7 @@ export default function DataPortabilityPage() {
               className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors"
             >
               <Upload size={14} />
-              {importFile ? 'Change File' : 'Select JSON File'}
+              {importFile ? 'Change File' : 'Select File (.json or .zip)'}
             </button>
             {importFile && (
               <span className="ml-3 text-sm text-muted-foreground">
@@ -195,7 +271,7 @@ export default function DataPortabilityPage() {
           )}
 
           {/* Strategy selector */}
-          {importPackage != null && (
+          {isImportReady && (
             <div>
               <label className="block text-sm font-medium mb-2">Conflict Strategy</label>
               <div className="space-y-2">
@@ -229,32 +305,34 @@ export default function DataPortabilityPage() {
           )}
 
           {/* Action buttons */}
-          {importPackage ? (
+          {isImportReady ? (
             <div className="flex gap-3">
-              <button
-                onClick={handleValidate}
-                disabled={validateMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                {validateMutation.isPending ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <FileCheck size={14} />
-                )}
-                Validate
-              </button>
+              {importFileType === 'json' && (
+                <button
+                  onClick={handleValidate}
+                  disabled={validateMutation.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-input rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {validateMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <FileCheck size={14} />
+                  )}
+                  Validate
+                </button>
+              )}
               <button
                 onClick={handleImport}
-                disabled={importMutation.isPending || !validationResult}
+                disabled={importMutation.isPending || (importFileType === 'json' && !validationResult)}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                title={!validationResult ? 'Validate the file first' : undefined}
+                title={importFileType === 'json' && !validationResult ? 'Validate the file first' : undefined}
               >
                 {importMutation.isPending ? (
                   <Loader2 size={14} className="animate-spin" />
                 ) : (
                   <Upload size={14} />
                 )}
-                {importMutation.isPending ? 'Importing...' : 'Import'}
+                {importMutation.isPending ? 'Importing...' : `Import ${importFileType === 'zip' ? 'ZIP' : 'JSON'}`}
               </button>
             </div>
           ) : null}

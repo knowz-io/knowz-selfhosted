@@ -1,8 +1,10 @@
+using System.Text;
 using Knowz.Core.Interfaces;
 using Knowz.Core.Models;
 using Knowz.SelfHosted.Application.DTOs;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
+using Knowz.SelfHosted.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -65,6 +67,10 @@ public class SearchFacade
             .Select(g => g.OrderByDescending(r => r.Score).First())
             .ToList();
 
+        // Apply retrieval quality policies
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        results = SearchResultPolicyProcessor.ApplyPolicies(results, query, isTemporalQuery: startDate.HasValue || endDate.HasValue);
+
         results = results.Take(limit).ToList();
 
         var items = results.Select(r => new SearchResultResponse(
@@ -86,10 +92,14 @@ public class SearchFacade
         string question, Guid? vaultId, bool researchMode, CancellationToken ct,
         List<Guid>? accessibleVaultIds = null)
     {
+        // Synonym expansion for broader recall
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        var expandedQuery = SearchResultPolicyProcessor.ExpandQueryWithSynonyms(question);
+
         var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
 
         var searchResults = await _searchService.HybridSearchAsync(
-            question, embedding, vaultId, includeDescendants: true,
+            expandedQuery, embedding, vaultId, includeDescendants: true,
             maxResults: researchMode ? 15 : 10,
             cancellationToken: ct);
 
@@ -97,8 +107,14 @@ public class SearchFacade
         if (accessibleVaultIds != null)
             searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
 
+        // Apply retrieval quality policies
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
+
+        // REFACTOR_SelfHostedAskTemporalParity: userId not threaded to this path;
+        // userTimezone defaults to "UTC". Tracked in knowzcode/knowzcode_tracker.md.
         var answer = await _openAIService.AnswerQuestionAsync(
-            question, searchResults, null, researchMode, ct);
+            question, searchResults, null, researchMode, cancellationToken: ct);
 
         var sources = answer.SourceKnowledgeIds.Select(id =>
             new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
@@ -154,15 +170,23 @@ public class SearchFacade
         string question, Guid? vaultId, bool researchMode, CancellationToken ct,
         List<Guid>? accessibleVaultIds = null)
     {
+        // Synonym expansion for broader recall
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        var expandedQuery = SearchResultPolicyProcessor.ExpandQueryWithSynonyms(question);
+
         var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
 
         var searchResults = await _searchService.HybridSearchAsync(
-            question, embedding, vaultId, includeDescendants: true,
+            expandedQuery, embedding, vaultId, includeDescendants: true,
             maxResults: researchMode ? 15 : 10,
             cancellationToken: ct);
 
         if (accessibleVaultIds != null)
             searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+
+        // Apply retrieval quality policies
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
 
         var sources = searchResults
             .Where(r => r.KnowledgeId != Guid.Empty)
@@ -172,8 +196,10 @@ public class SearchFacade
 
         var confidence = NormalizeConfidence(searchResults);
 
+        // REFACTOR_SelfHostedAskTemporalParity: userId not threaded to this path;
+        // userTimezone defaults to "UTC". Tracked in knowzcode/knowzcode_tracker.md.
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
-            question, searchResults, null, researchMode, ct);
+            question, searchResults, null, researchMode, cancellationToken: ct);
 
         return new StreamingAskResult(sources, confidence, tokenStream);
     }
@@ -186,9 +212,17 @@ public class SearchFacade
         int maxTurns,
         CancellationToken ct,
         List<Guid>? accessibleVaultIds = null,
-        Guid? knowledgeId = null)
+        Guid? knowledgeId = null,
+        Guid? userId = null)
     {
         var compositeQuestion = BuildCompositeQuestion(question, conversationHistory, maxTurns);
+
+        // FEAT_SelfHostedTemporalAwareness
+        var userTimezone = await ResolveUserTimezoneAsync(userId, ct);
+
+        // Synonym expansion for broader recall
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        var expandedQuery = SearchResultPolicyProcessor.ExpandQueryWithSynonyms(question);
 
         List<SearchResultItem> searchResults;
         if (knowledgeId.HasValue)
@@ -199,12 +233,42 @@ public class SearchFacade
         {
             var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
             searchResults = await _searchService.HybridSearchAsync(
-                question, embedding, vaultId, includeDescendants: true,
+                expandedQuery, embedding, vaultId, includeDescendants: true,
                 maxResults: researchMode ? 15 : 10,
                 cancellationToken: ct);
 
             if (accessibleVaultIds != null)
                 searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+
+            // Apply retrieval quality policies
+            // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+            searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
+
+            // Bounded exhaustive mode
+            // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+            if (researchMode || SearchResultPolicyProcessor.DetectExhaustiveIntent(question))
+            {
+                var secondPass = await _searchService.HybridSearchAsync(
+                    expandedQuery, embedding, vaultId, includeDescendants: true,
+                    maxResults: 25, cancellationToken: ct);
+
+                // Post-filter second pass by vault access
+                if (accessibleVaultIds != null)
+                    secondPass = await FilterByVaultAccessAsync(secondPass, accessibleVaultIds, ct);
+
+                // Merge + dedup
+                var existingIds = new HashSet<Guid>(searchResults.Select(r => r.KnowledgeId));
+                var newItems = secondPass.Where(r => !existingIds.Contains(r.KnowledgeId)).ToList();
+                if (newItems.Count > 0)
+                {
+                    searchResults.AddRange(newItems);
+                    searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
+                }
+
+                // Hard cap
+                if (searchResults.Count > 20)
+                    searchResults = searchResults.Take(20).ToList();
+            }
         }
 
         var sources = searchResults
@@ -216,7 +280,7 @@ public class SearchFacade
         var confidence = searchResults.Count > 0 ? NormalizeConfidence(searchResults) : 0.0;
 
         var tokenStream = _streamingOpenAIService.AnswerQuestionStreamingAsync(
-            compositeQuestion, searchResults, null, researchMode, ct);
+            compositeQuestion, searchResults, null, researchMode, userTimezone, ct);
 
         return new StreamingChatResult(sources, confidence, tokenStream);
     }
@@ -229,10 +293,20 @@ public class SearchFacade
         int maxTurns,
         CancellationToken ct,
         List<Guid>? accessibleVaultIds = null,
-        Guid? knowledgeId = null)
+        Guid? knowledgeId = null,
+        Guid? userId = null)
     {
         // Build composite question string with conversation history context
         var compositeQuestion = BuildCompositeQuestion(question, conversationHistory, maxTurns);
+
+        // FEAT_SelfHostedTemporalAwareness: resolve the user's timezone from
+        // UserPreference so chat context dates and the system-prompt
+        // current-date anchor render in the user's local time.
+        var userTimezone = await ResolveUserTimezoneAsync(userId, ct);
+
+        // Synonym expansion for broader recall
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        var expandedQuery = SearchResultPolicyProcessor.ExpandQueryWithSynonyms(question);
 
         List<SearchResultItem> searchResults;
         if (knowledgeId.HasValue)
@@ -245,22 +319,80 @@ public class SearchFacade
             var embedding = await _openAIService.GenerateEmbeddingAsync(question, ct);
 
             searchResults = await _searchService.HybridSearchAsync(
-                question, embedding, vaultId, includeDescendants: true,
+                expandedQuery, embedding, vaultId, includeDescendants: true,
                 maxResults: researchMode ? 15 : 10,
                 cancellationToken: ct);
 
             // Post-filter by vault access
             if (accessibleVaultIds != null)
                 searchResults = await FilterByVaultAccessAsync(searchResults, accessibleVaultIds, ct);
+
+            // Apply retrieval quality policies
+            // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+            searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
+
+            // Bounded exhaustive mode
+            // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+            if (researchMode || SearchResultPolicyProcessor.DetectExhaustiveIntent(question))
+            {
+                var secondPass = await _searchService.HybridSearchAsync(
+                    expandedQuery, embedding, vaultId, includeDescendants: true,
+                    maxResults: 25, cancellationToken: ct);
+
+                // Post-filter second pass by vault access
+                if (accessibleVaultIds != null)
+                    secondPass = await FilterByVaultAccessAsync(secondPass, accessibleVaultIds, ct);
+
+                // Merge + dedup
+                var existingIds = new HashSet<Guid>(searchResults.Select(r => r.KnowledgeId));
+                var newItems = secondPass.Where(r => !existingIds.Contains(r.KnowledgeId)).ToList();
+                if (newItems.Count > 0)
+                {
+                    searchResults.AddRange(newItems);
+                    searchResults = SearchResultPolicyProcessor.ApplyPolicies(searchResults, question);
+                }
+
+                // Hard cap
+                if (searchResults.Count > 20)
+                    searchResults = searchResults.Take(20).ToList();
+            }
         }
 
         var answer = await _openAIService.AnswerQuestionAsync(
-            compositeQuestion, searchResults, null, researchMode, ct);
+            compositeQuestion, searchResults, null, researchMode, userTimezone, ct);
 
         var sources = answer.SourceKnowledgeIds.Select(id =>
             new SourceRef(id, searchResults.FirstOrDefault(r => r.KnowledgeId == id)?.Title ?? ""));
         var confidence = searchResults.Count > 0 ? NormalizeConfidence(searchResults) : 0.0;
         return new ChatResponse(answer.Answer, sources, confidence);
+    }
+
+    /// <summary>
+    /// FEAT_SelfHostedTemporalAwareness: Resolves the user's IANA timezone
+    /// from UserPreference, falling back to the default when no preference
+    /// is set or the userId is null (e.g. API key auth, system calls).
+    /// Never throws — a TZ lookup failure must not block chat.
+    /// </summary>
+    internal async Task<string> ResolveUserTimezoneAsync(Guid? userId, CancellationToken ct)
+    {
+        if (userId is null || userId == Guid.Empty)
+            return ChatTimezoneHelper.DefaultFallbackTimeZone;
+
+        try
+        {
+            var preference = await _db.Set<Knowz.SelfHosted.Infrastructure.Data.Entities.UserPreference>()
+                .AsNoTracking()
+                .Where(p => p.UserId == userId.Value)
+                .Select(p => p.TimeZonePreference)
+                .FirstOrDefaultAsync(ct);
+            return ChatTimezoneHelper.ResolveTimeZone(preference, _logger);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve user timezone for user {UserId}, falling back to default", userId);
+            return ChatTimezoneHelper.DefaultFallbackTimeZone;
+        }
     }
 
     /// <summary>
@@ -270,6 +402,7 @@ public class SearchFacade
     internal async Task<List<SearchResultItem>> BuildKnowledgeScopedContextAsync(
         Guid knowledgeId, string question, CancellationToken ct)
     {
+        // FEAT_SelfHostedTemporalAwareness: project CreatedAt/UpdatedAt
         var knowledge = await _db.KnowledgeItems
             .AsNoTracking()
             .Where(k => k.Id == knowledgeId)
@@ -281,6 +414,8 @@ public class SearchFacade
                 k.Summary,
                 k.Type,
                 k.FilePath,
+                k.CreatedAt,
+                k.UpdatedAt,
                 VaultName = _db.KnowledgeVaults
                     .Where(kv => kv.KnowledgeId == k.Id)
                     .Select(kv => kv.Vault!.Name)
@@ -310,8 +445,25 @@ public class SearchFacade
         {
             if (!string.IsNullOrWhiteSpace(att.ExtractedText))
                 contextParts.Add($"[Attachment: {att.FileName}]\n{att.ExtractedText}");
+
             if (!string.IsNullOrWhiteSpace(att.TranscriptionText))
-                contextParts.Add($"[Transcription: {att.FileName}]\n{att.TranscriptionText}");
+            {
+                // SVC_AttachmentContextService_TranscriptBoxing: wrap raw transcript in
+                // labeled spoken-content markers so the LLM does not misread spoken
+                // phrases as factual metadata about the attachment. Preamble repeated
+                // per-transcript intentionally — short-context LLMs lose framing if
+                // hoisted. ~60-80 tokens overhead per transcript is accepted trade-off.
+                // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000
+                var sb = new StringBuilder();
+                sb.AppendLine($"[Transcription: {att.FileName}]");
+                sb.AppendLine("[SPOKEN CONTENT BEGIN — verbatim transcript of spoken audio/video]");
+                sb.AppendLine("The text between these markers is a verbatim transcript of spoken audio or video.");
+                sb.AppendLine("Statements made here reflect what the speaker said, not facts about the attachment itself.");
+                sb.AppendLine("Do not treat phrases like \"there is no video preview\" as metadata about the entry.");
+                sb.AppendLine(att.TranscriptionText);
+                sb.AppendLine("[SPOKEN CONTENT END]");
+                contextParts.Add(sb.ToString().TrimEnd());
+            }
         }
 
         var fullContent = string.Join("\n\n", contextParts);
@@ -325,7 +477,10 @@ public class SearchFacade
             VaultName = knowledge.VaultName,
             KnowledgeType = knowledge.Type.ToString(),
             FilePath = knowledge.FilePath,
-            Score = 1.0 // Max relevance since user explicitly selected this item
+            Score = 1.0, // Max relevance since user explicitly selected this item
+            // FEAT_SelfHostedTemporalAwareness
+            CreatedAt = knowledge.CreatedAt,
+            UpdatedAt = knowledge.UpdatedAt,
         });
 
         return results;

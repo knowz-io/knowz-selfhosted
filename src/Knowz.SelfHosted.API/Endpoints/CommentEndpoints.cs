@@ -25,7 +25,7 @@ public static class CommentEndpoints
             .Produces<CommentResponse>().Produces(400).Produces(403).Produces(404);
 
         comments.MapDelete("/{id:guid}", DeleteComment)
-            .Produces<DeleteResult>().Produces(403).Produces(404);
+            .Produces<CommentDeleteResult>().Produces(403).Produces(404);
     }
 
     private static async Task<IResult> CreateComment(
@@ -145,13 +145,17 @@ public static class CommentEndpoints
             : Results.Ok(result);
     }
 
+    // DELETE /api/v1/comments/{id}?deleteFiles={bool}
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice.
+    // `deleteFiles` defaults to false so existing clients inherit the safer "preserve" behavior.
     private static async Task<IResult> DeleteComment(
         Guid id,
         CommentService commentService,
         KnowledgeService knowledgeService,
         IVaultAccessService vaultAccessService,
         HttpContext context,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool deleteFiles = false)
     {
         // Get comment to find its knowledge ID
         var comment = await commentService.GetCommentAsync(id, ct);
@@ -175,9 +179,9 @@ public static class CommentEndpoints
                 return Results.Json(new { error = "Access denied. Write permission required." }, statusCode: 403);
         }
 
-        var deleted = await commentService.DeleteCommentAsync(id, ct);
-        return deleted
-            ? Results.Ok(new DeleteResult(id, true))
+        var result = await commentService.DeleteCommentAsync(id, deleteFiles, ct);
+        return result != null
+            ? Results.Ok(result)
             : Results.NotFound(new { error = "Comment not found" });
     }
 

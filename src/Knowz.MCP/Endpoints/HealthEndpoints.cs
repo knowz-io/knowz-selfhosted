@@ -6,7 +6,7 @@ public static class HealthEndpoints
 {
     public static WebApplication MapHealthEndpoints(this WebApplication app)
     {
-        app.MapGet("/health", (IMcpSessionStore sessionStore) =>
+        app.MapMethods("/health", new[] { "GET", "HEAD" }, (IMcpSessionStore sessionStore) =>
         {
             var redisAvailable = sessionStore is RedisMcpSessionStore redisStore && redisStore.IsRedisAvailable;
             var fallbackCount = sessionStore is RedisMcpSessionStore rs ? rs.FallbackSessionCount : -1;

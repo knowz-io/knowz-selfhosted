@@ -82,7 +82,14 @@ describe('CommentSection', () => {
     mockListComments.mockResolvedValue([])
     mockAddComment.mockResolvedValue(sampleComment)
     mockUpdateComment.mockResolvedValue({ ...sampleComment, body: 'Updated' })
-    mockDeleteComment.mockResolvedValue({ id: 'comment-1', deleted: true })
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+    // deleteComment now returns a CommentDeleteResult envelope.
+    mockDeleteComment.mockResolvedValue({
+      filesPreserved: 0,
+      filesDeleted: 0,
+      preservedFileNames: [],
+      deletedFileNames: [],
+    })
   })
 
   afterEach(() => {
@@ -295,7 +302,95 @@ describe('CommentSection', () => {
     await user.click(screen.getByRole('button', { name: /confirm/i }))
 
     await waitFor(() => {
-      expect(mockDeleteComment).toHaveBeenCalledWith('comment-1')
+      // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+      // deleteComment signature now accepts a deleteFiles flag (defaults to false).
+      expect(mockDeleteComment).toHaveBeenCalledWith('comment-1', false)
+    })
+  })
+
+  // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — VERIFY-15
+  // Checkbox only renders when comment has >=1 attachment.
+  it('Should_NotRenderDeleteFilesCheckbox_WhenCommentHasNoAttachments', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([sampleComment]) // attachmentCount: 0
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('This is a contribution')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/are you sure/i)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('selfhosted-delete-comment-files-checkbox')).not.toBeInTheDocument()
+  })
+
+  it('Should_RenderDeleteFilesCheckbox_WhenCommentHasAttachments', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([commentWithAttachment]) // attachmentCount: 2
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('This is a contribution')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('selfhosted-delete-comment-files-checkbox')).toBeInTheDocument()
+    })
+    // Checkbox is unchecked by default
+    const checkbox = screen.getByTestId('selfhosted-delete-comment-files-checkbox') as HTMLInputElement
+    expect(checkbox.checked).toBe(false)
+  })
+
+  it('Should_CallDeleteComment_WithDeleteFilesFalse_WhenCheckboxUnchecked', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([commentWithAttachment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('This is a contribution')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('selfhosted-delete-comment-files-checkbox')).toBeInTheDocument()
+    })
+
+    // Don't click the checkbox — leave unchecked
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    await waitFor(() => {
+      expect(mockDeleteComment).toHaveBeenCalledWith('comment-1', false)
+    })
+  })
+
+  it('Should_CallDeleteComment_WithDeleteFilesTrue_WhenCheckboxChecked', async () => {
+    const user = userEvent.setup()
+    mockListComments.mockResolvedValue([commentWithAttachment])
+    renderWithProviders(<CommentSection knowledgeId="knowledge-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('This is a contribution')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('selfhosted-delete-comment-files-checkbox')).toBeInTheDocument()
+    })
+
+    // Check the checkbox then confirm
+    await user.click(screen.getByTestId('selfhosted-delete-comment-files-checkbox'))
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    await waitFor(() => {
+      expect(mockDeleteComment).toHaveBeenCalledWith('comment-1', true)
     })
   })
 

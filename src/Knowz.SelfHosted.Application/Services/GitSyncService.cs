@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Knowz.Core.Entities;
 using Knowz.Core.Enums;
 using Knowz.Core.Interfaces;
+using Knowz.SelfHosted.Application.Services.GitCommitHistory;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -22,6 +23,7 @@ public class GitSyncService : IGitSyncService
     private readonly IDataProtector _dataProtector;
     private readonly Channel<GitSyncWorkItem> _gitSyncChannel;
     private readonly IEnrichmentOutboxWriter _enrichmentWriter;
+    private readonly IGitCommitHistoryService _commitHistoryService;
     private readonly ILogger<GitSyncService> _logger;
 
     private static readonly string[] DefaultFilePatterns = new[]
@@ -35,6 +37,7 @@ public class GitSyncService : IGitSyncService
         IDataProtectionProvider dataProtectionProvider,
         Channel<GitSyncWorkItem> gitSyncChannel,
         IEnrichmentOutboxWriter enrichmentWriter,
+        IGitCommitHistoryService commitHistoryService,
         ILogger<GitSyncService> logger)
     {
         _db = db;
@@ -42,6 +45,7 @@ public class GitSyncService : IGitSyncService
         _dataProtector = dataProtectionProvider.CreateProtector("Knowz.SelfHosted.GitSync");
         _gitSyncChannel = gitSyncChannel;
         _enrichmentWriter = enrichmentWriter;
+        _commitHistoryService = commitHistoryService;
         _logger = logger;
     }
 
@@ -50,9 +54,17 @@ public class GitSyncService : IGitSyncService
     /// </summary>
     public async Task<GitRepository> ConfigureAsync(
         Guid vaultId, string repoUrl, string branch, string? pat, string? filePatterns,
+        bool? trackCommitHistory = null, int? commitHistoryDepth = null,
         CancellationToken ct = default)
     {
         var tenantId = _tenantProvider.TenantId;
+
+        // Defense-in-depth: enforce the platform ceiling at the service boundary as well.
+        if (commitHistoryDepth.HasValue && (commitHistoryDepth.Value < 1 || commitHistoryDepth.Value > 2000))
+        {
+            throw new InvalidOperationException(
+                $"CommitHistoryDepth must be between 1 and 2000 (got {commitHistoryDepth.Value}).");
+        }
 
         // Verify vault exists
         var vault = await _db.Vaults.FirstOrDefaultAsync(v => v.Id == vaultId, ct);
@@ -69,6 +81,15 @@ public class GitSyncService : IGitSyncService
             existing.Branch = branch;
             existing.FilePatterns = filePatterns;
             existing.UpdatedAt = DateTime.UtcNow;
+
+            if (trackCommitHistory.HasValue)
+            {
+                existing.TrackCommitHistory = trackCommitHistory.Value;
+            }
+            if (commitHistoryDepth.HasValue)
+            {
+                existing.CommitHistoryDepth = commitHistoryDepth.Value;
+            }
 
             if (!string.IsNullOrWhiteSpace(pat))
             {
@@ -88,7 +109,9 @@ public class GitSyncService : IGitSyncService
             Branch = branch,
             FilePatterns = filePatterns,
             Status = "NotSynced",
-            PlatformData = !string.IsNullOrWhiteSpace(pat) ? _dataProtector.Protect(pat) : null
+            PlatformData = !string.IsNullOrWhiteSpace(pat) ? _dataProtector.Protect(pat) : null,
+            TrackCommitHistory = trackCommitHistory ?? false,
+            CommitHistoryDepth = commitHistoryDepth
         };
 
         _db.GitRepositories.Add(gitRepo);
@@ -139,7 +162,9 @@ public class GitSyncService : IGitSyncService
             Status = gitRepo.Status,
             FilePatterns = gitRepo.FilePatterns,
             ErrorMessage = gitRepo.ErrorMessage,
-            CreatedAt = gitRepo.CreatedAt
+            CreatedAt = gitRepo.CreatedAt,
+            TrackCommitHistory = gitRepo.TrackCommitHistory,
+            CommitHistoryDepth = gitRepo.CommitHistoryDepth
         };
     }
 
@@ -327,6 +352,39 @@ public class GitSyncService : IGitSyncService
 
             await _db.SaveChangesAsync(ct);
 
+            // ─── NODE-4: Commit-history ingestion ────────────────────────────
+            // Gated on TrackCommitHistory flag (default OFF). Walks commits via LibGit2Sharp,
+            // hands them to IGitCommitHistoryService which creates parent + per-commit
+            // children, elaborates them in-process, and writes KnowledgeRelationship edges.
+            // Errors are logged but do not fail the file-sync checkpoint — commit-history
+            // is strictly additive.
+            if (gitRepo.TrackCommitHistory)
+            {
+                try
+                {
+                    var descriptors = EnumerateCommitDescriptors(
+                        repoDir,
+                        sinceSha: gitRepo.LastCommitHistorySyncSha,
+                        maxCommits: Math.Min(
+                            gitRepo.CommitHistoryDepth ?? GitCommitHistoryService.DefaultCommitHistoryDepth,
+                            GitCommitHistoryService.MaxCommitHistoryDepth));
+
+                    var newestSha = await _commitHistoryService.ProcessCommitsAsync(
+                        gitRepo.Id, descriptors, vaultId, ct);
+
+                    if (!string.IsNullOrEmpty(newestSha))
+                    {
+                        gitRepo.LastCommitHistorySyncSha = newestSha;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Commit-history ingestion failed for VaultId {VaultId} — file sync continues",
+                        vaultId);
+                }
+            }
+
             // Update sync status
             gitRepo.LastSyncCommitSha = commitSha;
             gitRepo.LastSyncAt = DateTime.UtcNow;
@@ -390,6 +448,79 @@ public class GitSyncService : IGitSyncService
 
             await _db.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>
+    /// Walk commits from HEAD backwards (newest-first), stopping at <paramref name="sinceSha"/>
+    /// (exclusive) or after <paramref name="maxCommits"/> commits. Produces
+    /// <see cref="CommitDescriptor"/> records with path + line-count stats only — NO diff body
+    /// (CRIT-2 enforcement at the producer layer).
+    ///
+    /// NODE-4: selfhosted commit walker. Mirrors platform's
+    /// <c>LibGit2SharpWrapper.EnumerateCommitsAsync</c> shape, inlined here because the
+    /// selfhosted edition does not have a parallel IGitOperations abstraction.
+    /// </summary>
+    internal static List<CommitDescriptor> EnumerateCommitDescriptors(
+        string repoDir,
+        string? sinceSha,
+        int maxCommits)
+    {
+        var result = new List<CommitDescriptor>();
+        using var repo = new Repository(repoDir);
+
+        var filter = new CommitFilter
+        {
+            SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Time,
+            IncludeReachableFrom = repo.Head.Tip
+        };
+
+        foreach (var commit in repo.Commits.QueryBy(filter))
+        {
+            if (!string.IsNullOrEmpty(sinceSha) &&
+                string.Equals(commit.Sha, sinceSha, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (result.Count >= maxCommits)
+            {
+                break;
+            }
+
+            var changedFiles = new List<CommitChangedFile>();
+            if (commit.Parents.Any())
+            {
+                var parentTree = commit.Parents.First().Tree;
+                var patch = repo.Diff.Compare<Patch>(parentTree, commit.Tree);
+                foreach (var fileChange in patch)
+                {
+                    var type = fileChange.Status switch
+                    {
+                        ChangeKind.Added => GitCommitChangeType.Added,
+                        ChangeKind.Deleted => GitCommitChangeType.Deleted,
+                        ChangeKind.Renamed => GitCommitChangeType.Renamed,
+                        _ => GitCommitChangeType.Modified
+                    };
+                    changedFiles.Add(new CommitChangedFile(
+                        fileChange.Path,
+                        fileChange.LinesAdded,
+                        fileChange.LinesDeleted,
+                        type));
+                }
+            }
+
+            result.Add(new CommitDescriptor(
+                Sha: commit.Sha,
+                ParentShas: commit.Parents.Select(p => p.Sha).ToList(),
+                AuthorName: commit.Author?.Name ?? string.Empty,
+                AuthorEmail: commit.Author?.Email ?? string.Empty,
+                AuthoredAt: commit.Author?.When ?? DateTimeOffset.MinValue,
+                CommittedAt: commit.Committer?.When ?? DateTimeOffset.MinValue,
+                Message: commit.Message ?? string.Empty,
+                ChangedFiles: changedFiles));
+        }
+
+        return result;
     }
 
     private static string CloneRepository(string url, string path, string? pat, string branch)
@@ -560,6 +691,8 @@ public class GitSyncStatusDto
     public string? FilePatterns { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTime CreatedAt { get; set; }
+    public bool TrackCommitHistory { get; set; }
+    public int? CommitHistoryDepth { get; set; }
 }
 
 public class GitSyncHistoryDto
@@ -575,4 +708,16 @@ public class ConfigureGitSyncRequest
     public string Branch { get; set; } = "main";
     public string? Pat { get; set; }
     public string? FilePatterns { get; set; }
+
+    /// <summary>
+    /// When true, initial sync backfills commit history into AI-elaborated knowledge items.
+    /// Nullable on the wire for backwards compatibility.
+    /// </summary>
+    public bool? TrackCommitHistory { get; set; }
+
+    /// <summary>
+    /// Number of historical commits to backfill on first enable. Range [1, 2000].
+    /// Nullable: when null, the service uses its own default.
+    /// </summary>
+    public int? CommitHistoryDepth { get; set; }
 }

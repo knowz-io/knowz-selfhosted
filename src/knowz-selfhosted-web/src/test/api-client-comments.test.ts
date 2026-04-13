@@ -138,7 +138,15 @@ describe('API Client - Comment Methods', () => {
   })
 
   it('Should_DeleteComment_WhenCalledWithId', async () => {
-    const deleteResult = { id: 'comment-1', deleted: true }
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+    // deleteComment now returns a CommentDeleteResult envelope and forwards the
+    // `deleteFiles` flag as a query param (defaults to false).
+    const deleteResult = {
+      filesPreserved: 0,
+      filesDeleted: 0,
+      preservedFileNames: [],
+      deletedFileNames: [],
+    }
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(deleteResult),
@@ -148,7 +156,29 @@ describe('API Client - Comment Methods', () => {
 
     expect(result).toEqual(deleteResult)
     const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('http://localhost:5000/api/v1/comments/comment-1')
+    expect(url).toBe('http://localhost:5000/api/v1/comments/comment-1?deleteFiles=false')
+    expect(options.method).toBe('DELETE')
+  })
+
+  it('Should_DeleteComment_WithDeleteFilesTrue_WhenFlagPassed', async () => {
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+    // When caller explicitly sets deleteFiles=true the URL query string reflects it.
+    const deleteResult = {
+      filesPreserved: 0,
+      filesDeleted: 1,
+      preservedFileNames: [],
+      deletedFileNames: ['photo.jpg'],
+    }
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(deleteResult),
+    })
+
+    const result = await api.deleteComment('comment-1', true)
+
+    expect(result).toEqual(deleteResult)
+    const [url, options] = mockFetch.mock.calls[0]
+    expect(url).toBe('http://localhost:5000/api/v1/comments/comment-1?deleteFiles=true')
     expect(options.method).toBe('DELETE')
   })
 

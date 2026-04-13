@@ -99,7 +99,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "The answer is 42",
@@ -273,7 +273,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Hello! How can I help you?",
@@ -315,7 +315,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "The answer",
@@ -336,7 +336,7 @@ public class SearchFacadeTests : IDisposable
         await _openAIService.Received().AnswerQuestionAsync(
             "What is X?",
             Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         Assert.Equal("The answer", result1.Answer);
         Assert.Equal("The answer", result2.Answer);
@@ -362,7 +362,7 @@ public class SearchFacadeTests : IDisposable
         _openAIService.AnswerQuestionAsync(
             Arg.Do<string>(q => capturedQuestion = q),
             Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Follow-up answer",
@@ -414,7 +414,7 @@ public class SearchFacadeTests : IDisposable
         _openAIService.AnswerQuestionAsync(
             Arg.Do<string>(q => capturedQuestion = q),
             Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Answer",
@@ -467,7 +467,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Answer",
@@ -511,7 +511,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Scoped answer",
@@ -545,7 +545,7 @@ public class SearchFacadeTests : IDisposable
 
         _openAIService.AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AnswerResponse
             {
                 Answer = "Research answer",
@@ -567,6 +567,6 @@ public class SearchFacadeTests : IDisposable
         // Research mode flag should be passed to AnswerQuestionAsync
         await _openAIService.Received(1).AnswerQuestionAsync(
             Arg.Any<string>(), Arg.Any<List<SearchResultItem>>(),
-            Arg.Any<string?>(), true, Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), true, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

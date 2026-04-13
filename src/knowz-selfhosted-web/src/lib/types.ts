@@ -14,6 +14,7 @@ export interface KnowledgeItem {
   updatedAt: string
   isIndexed: boolean
   indexedAt?: string
+  summaryRefinementGuidance?: string
 }
 
 export interface KnowledgeListItem {
@@ -122,6 +123,7 @@ export interface UpdateKnowledgeData {
   source?: string
   tags?: string[]
   vaultId?: string
+  summaryRefinementGuidance?: string
 }
 
 // --- Auth & Admin Types ---
@@ -489,6 +491,16 @@ export interface UpdateCommentData {
   sentiment?: string
 }
 
+// WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice.
+// Result envelope returned from DELETE /api/v1/comments/{id}?deleteFiles=...
+// Mirrors the shape of the platform's CommentDeleteResult DTO.
+export interface CommentDeleteResult {
+  filesPreserved: number
+  filesDeleted: number
+  preservedFileNames: string[]
+  deletedFileNames: string[]
+}
+
 // --- SSO Types ---
 
 export interface SelfHostedSSOConfigDto {
@@ -597,12 +609,36 @@ export interface GitSyncStatus {
   status: string
   filePatterns?: string
   errorMessage?: string
+  trackCommitHistory?: boolean
+  commitHistoryDepth?: number
 }
 
 export interface GitSyncHistoryEntry {
   action: string
   timestamp: string
   details?: string
+}
+
+// --- Commit History Types ---
+
+export interface CommitHistoryEntry {
+  knowledgeId: string
+  sha: string
+  shortSha: string
+  title: string
+  authorName: string
+  committedAt: string  // ISO 8601
+  changedFileCount: number
+  linesAdded: number
+  linesDeleted: number
+  content: string
+}
+
+export interface CommitHistoryResponse {
+  items: CommitHistoryEntry[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 // --- Platform Sync Types ---

@@ -7,7 +7,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class PdfContentExtractor : IFileContentExtractor
 {
-    internal const int MaxExtractionChars = 2_097_152; // ~2MB
+    internal const int MaxExtractionChars = 10_000_000; // 10M chars
     private readonly ILogger<PdfContentExtractor> _logger;
 
     public PdfContentExtractor(ILogger<PdfContentExtractor> logger)
@@ -59,7 +59,7 @@ public class PdfContentExtractor : IFileContentExtractor
                             textParts.Add(pageText[..remaining]);
 
                         _logger.LogWarning(
-                            "PDF {FileRecordId} ({FileName}) exceeded 2MB extraction limit at page {Page}, content truncated",
+                            "PDF {FileRecordId} ({FileName}) exceeded 10M char extraction limit at page {Page}, content truncated",
                             fileRecord.Id, fileRecord.FileName, page.Number);
                         break;
                     }

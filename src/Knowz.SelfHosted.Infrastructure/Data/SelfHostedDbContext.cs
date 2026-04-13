@@ -522,6 +522,8 @@ public class SelfHostedDbContext : DbContext
             entity.Property(g => g.LastSyncCommitSha).HasMaxLength(100);
             entity.Property(g => g.FilePatterns).HasMaxLength(2000);
             entity.Property(g => g.ErrorMessage).HasMaxLength(2000);
+            // NODE-4: commit-history ingestion fields
+            entity.Property(g => g.LastCommitHistorySyncSha).HasMaxLength(40);
         });
     }
 }

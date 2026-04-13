@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
+using Knowz.SelfHosted.Infrastructure.Services.GitCommitHistory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,6 +44,8 @@ public static class OpenAIExtensions
                 services.AddScoped<IContentAmendmentService, PlatformAIService>();
                 services.AddScoped<IStreamingOpenAIService, PlatformAIService>();
                 services.AddScoped<ITextEnrichmentService, PlatformTextEnrichmentService>();
+                // NODE-4: commit-history elaboration uses the platform completion endpoint
+                services.AddScoped<ICommitElaborationLlmClient, PlatformCommitElaborationLlmClient>();
                 return services;
             }
         }
@@ -61,6 +64,10 @@ public static class OpenAIExtensions
             services.AddScoped<IContentAmendmentService, AzureOpenAIService>();
             services.AddScoped<IStreamingOpenAIService, AzureOpenAIService>();
             services.AddScoped<ITextEnrichmentService, TextEnrichmentService>();
+            // NODE-4: Azure OpenAI tier also uses the NoOp commit LLM client for now.
+            // Commit-history elaboration is a platform-only feature today; Azure OpenAI
+            // direct callers get metadata-only stubs. Debt item: add an Azure-backed impl.
+            services.AddScoped<ICommitElaborationLlmClient, NoOpCommitElaborationLlmClient>();
             return services;
         }
 
@@ -69,6 +76,7 @@ public static class OpenAIExtensions
         services.AddScoped<IContentAmendmentService, NoOpOpenAIService>();
         services.AddScoped<IStreamingOpenAIService, NoOpOpenAIService>();
         services.AddScoped<ITextEnrichmentService, NoOpTextEnrichmentService>();
+        services.AddScoped<ICommitElaborationLlmClient, NoOpCommitElaborationLlmClient>();
         return services;
     }
 }

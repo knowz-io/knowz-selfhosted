@@ -47,7 +47,8 @@ public class DatabaseSearchService : ISearchService
             dbQuery = dbQuery.Where(k =>
                 EF.Functions.Like(k.Title, pattern)
                 || (k.Content != null && EF.Functions.Like(k.Content, pattern))
-                || (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+                || (k.Summary != null && EF.Functions.Like(k.Summary, pattern))
+                || (k.BriefSummary != null && EF.Functions.Like(k.BriefSummary, pattern)));
         }
 
         if (vaultId.HasValue)
@@ -69,8 +70,13 @@ public class DatabaseSearchService : ISearchService
                 k.Title,
                 Content = k.Content ?? string.Empty,
                 Summary = k.Summary,
+                k.BriefSummary,
                 k.Type,
                 k.FilePath,
+                // FEAT_SelfHostedTemporalAwareness: project entity dates
+                // directly so chat context can cite accurate timestamps.
+                k.CreatedAt,
+                k.UpdatedAt,
                 VaultName = _db.KnowledgeVaults
                     .Where(kv => kv.KnowledgeId == k.Id)
                     .Select(kv => kv.Vault!.Name)
@@ -81,7 +87,8 @@ public class DatabaseSearchService : ISearchService
         return items.Select((r, i) =>
         {
             var score = LocalVectorSearchService.ComputeFieldWeightedScore(
-                r.Title, r.Summary, r.Content, null, query);
+                r.Title, r.Summary, r.Content, null, query,
+                briefSummary: r.BriefSummary);
             return new SearchResultItem
             {
                 KnowledgeId = r.Id,
@@ -94,6 +101,8 @@ public class DatabaseSearchService : ISearchService
                 Score = score,
                 Position = i,
                 DocumentType = "database",
+                CreatedAt = r.CreatedAt,
+                UpdatedAt = r.UpdatedAt,
             };
         })
         .OrderByDescending(r => r.Score)
@@ -106,9 +115,13 @@ public class DatabaseSearchService : ISearchService
         string? vaultName, Guid? vaultId, List<Guid>? ancestorVaultIds,
         string? topicName, IEnumerable<string>? tags, string? knowledgeType,
         string? filePath, float[]? contentVector, int? chunkIndex = null,
+        DateTime? knowledgeCreatedAt = null,
+        DateTime? knowledgeUpdatedAt = null,
         CancellationToken cancellationToken = default)
     {
-        // No external index to update — data is already in the database
+        // No external index to update — data is already in the database.
+        // knowledgeCreatedAt/knowledgeUpdatedAt are ignored: the EF
+        // projection reads them directly from the entity in HybridSearchAsync.
         return Task.CompletedTask;
     }
 

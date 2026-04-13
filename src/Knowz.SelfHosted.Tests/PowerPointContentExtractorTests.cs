@@ -309,8 +309,8 @@ public class PowerPointContentExtractorTests
 
         Assert.True(result.Success);
         Assert.NotNull(result.ExtractedText);
-        Assert.True(result.ExtractedText.Length <= 2_097_152,
-            $"Expected <= 2097152 chars but got {result.ExtractedText.Length}");
+        Assert.True(result.ExtractedText.Length <= PowerPointContentExtractor.MaxExtractionChars,
+            $"Expected <= {PowerPointContentExtractor.MaxExtractionChars} chars but got {result.ExtractedText.Length}");
     }
 
     // =============================================

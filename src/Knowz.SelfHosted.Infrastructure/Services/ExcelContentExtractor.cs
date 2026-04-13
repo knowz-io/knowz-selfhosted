@@ -8,7 +8,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class ExcelContentExtractor : IFileContentExtractor
 {
-    internal const int MaxExtractionChars = 2_097_152; // ~2MB
+    internal const int MaxExtractionChars = 10_000_000; // 10M chars
 
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -143,7 +143,7 @@ public class ExcelContentExtractor : IFileContentExtractor
                                 textParts.Add(rowText[..remaining]);
 
                             _logger.LogWarning(
-                                "Excel {FileRecordId} ({FileName}) exceeded 2MB extraction limit, content truncated",
+                                "Excel {FileRecordId} ({FileName}) exceeded 10M char extraction limit, content truncated",
                                 fileRecord.Id, fileRecord.FileName);
                             truncated = true;
                             break;

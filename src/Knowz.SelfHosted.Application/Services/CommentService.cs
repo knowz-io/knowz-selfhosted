@@ -13,17 +13,20 @@ public class CommentService
     private readonly SelfHostedDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly ILogger<CommentService> _logger;
+    private readonly IFileStorageProvider _storage;
     private readonly IEnrichmentOutboxWriter? _enrichmentWriter;
 
     public CommentService(
         SelfHostedDbContext db,
         ITenantProvider tenantProvider,
         ILogger<CommentService> logger,
+        IFileStorageProvider storage,
         IEnrichmentOutboxWriter? enrichmentWriter = null)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _logger = logger;
+        _storage = storage;
         _enrichmentWriter = enrichmentWriter;
     }
 
@@ -139,12 +142,25 @@ public class CommentService
         return MapToResponse(comment, null, attachmentCount);
     }
 
-    public async Task<bool> DeleteCommentAsync(Guid commentId, CancellationToken ct)
+    /// <summary>
+    /// Delete a comment and cascade to replies. Controls whether attached files are preserved
+    /// or permanently deleted via the <paramref name="deleteFiles"/> flag.
+    /// WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice.
+    /// </summary>
+    /// <param name="deleteFiles">
+    /// When false (default, safer): junction rows are hard-deleted but the FileRecord and blob are preserved.
+    /// When true: each FileRecord is cross-referenced across ALL FileAttachment rows. If no other entity
+    /// references it, the FileRecord is soft-deleted and the blob is IMMEDIATELY deleted via
+    /// <see cref="IFileStorageProvider.DeleteAsync"/>. Files referenced elsewhere are preserved automatically.
+    /// Self-hosted has NO grace period — blob deletion is synchronous and irreversible.
+    /// </param>
+    /// <returns>A <see cref="CommentDeleteResult"/> with preserved/deleted file counts, or null if not found.</returns>
+    public async Task<CommentDeleteResult?> DeleteCommentAsync(Guid commentId, bool deleteFiles, CancellationToken ct)
     {
         var comment = await _db.Comments
             .FirstOrDefaultAsync(c => c.Id == commentId, ct);
         if (comment == null)
-            return false;
+            return null;
 
         // Soft-delete the comment
         comment.IsDeleted = true;
@@ -160,13 +176,104 @@ public class CommentService
             reply.UpdatedAt = DateTime.UtcNow;
         }
 
-        // Hard-delete FileAttachment junction rows for this comment and its replies
+        // Gather FileAttachment junction rows for this comment + all cascaded replies
         var commentIds = childReplies.Select(r => r.Id).Append(commentId).ToList();
         var attachments = await _db.FileAttachments
             .Where(fa => fa.CommentId != null && commentIds.Contains(fa.CommentId.Value))
             .ToListAsync(ct);
+
+        var result = new CommentDeleteResult();
+
         if (attachments.Count > 0)
         {
+            var uniqueFileRecordIds = attachments.Select(a => a.FileRecordId).Distinct().ToList();
+
+            // Load the FileRecord rows we might touch. IgnoreQueryFilters so already-soft-deleted
+            // records don't surprise us (cross-reference check still needs their metadata).
+            var fileRecords = await _db.FileRecords
+                .IgnoreQueryFilters()
+                .Where(f => uniqueFileRecordIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, ct);
+
+            // Capture the junction-row IDs we're about to remove so we can exclude them from the
+            // cross-reference count below (these are "about to be deleted in this operation").
+            var attachmentIdsBeingRemoved = attachments.Select(a => a.Id).ToHashSet();
+
+            foreach (var fileRecordId in uniqueFileRecordIds)
+            {
+                fileRecords.TryGetValue(fileRecordId, out var fileRecord);
+                var fileName = fileRecord?.FileName ?? fileRecordId.ToString();
+
+                if (!deleteFiles)
+                {
+                    // Preserve path: FileRecord stays exactly as-is (junction row removal happens below).
+                    // This is also the fix for the pre-existing self-hosted orphan bug — the previous
+                    // code hard-deleted junction rows and left FileRecord/blob dangling forever.
+                    // Now the FileRecord is explicitly preserved and queryable.
+                    result = result with
+                    {
+                        FilesPreserved = result.FilesPreserved + 1,
+                        PreservedFileNames = new List<string>(result.PreservedFileNames) { fileName }
+                    };
+                    continue;
+                }
+
+                // deleteFiles == true: cross-reference check (R4 — mirrors platform AttachmentCleanupService).
+                // Count references from ALL FileAttachment rows for this FileRecord, EXCLUDING the rows
+                // we're deleting in this operation.
+                var otherReferenceCount = await _db.FileAttachments
+                    .Where(fa => fa.FileRecordId == fileRecordId && !attachmentIdsBeingRemoved.Contains(fa.Id))
+                    .CountAsync(ct);
+
+                if (otherReferenceCount > 0)
+                {
+                    _logger.LogInformation(
+                        "Preserving FileRecord {FileRecordId} ({FileName}) — still referenced by {Count} other attachment(s)",
+                        fileRecordId, fileName, otherReferenceCount);
+                    result = result with
+                    {
+                        FilesPreserved = result.FilesPreserved + 1,
+                        PreservedFileNames = new List<string>(result.PreservedFileNames) { fileName }
+                    };
+                    continue;
+                }
+
+                if (fileRecord == null || fileRecord.IsDeleted)
+                {
+                    // Already gone — nothing to do
+                    continue;
+                }
+
+                // No other references: mark FileRecord soft-deleted IN MEMORY first, then attempt
+                // the (synchronous, immediate) blob delete. Only persist if blob delete succeeds.
+                // If the blob delete throws, we bail without saving so FileRecord.IsDeleted never
+                // reaches the database — the file remains queryable at the next request.
+                try
+                {
+                    await _storage.DeleteAsync(_tenantProvider.TenantId, fileRecordId, ct);
+                    fileRecord.IsDeleted = true;
+                    fileRecord.UpdatedAt = DateTime.UtcNow;
+
+                    result = result with
+                    {
+                        FilesDeleted = result.FilesDeleted + 1,
+                        DeletedFileNames = new List<string>(result.DeletedFileNames) { fileName }
+                    };
+                    _logger.LogInformation(
+                        "Deleted FileRecord {FileRecordId} ({FileName}) and blob for comment {CommentId}",
+                        fileRecordId, fileName, commentId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Failed to delete blob for FileRecord {FileRecordId} ({FileName}); FileRecord will remain active",
+                        fileRecordId, fileName);
+                    // Re-throw so the caller sees the failure. SaveChangesAsync below won't run.
+                    throw;
+                }
+            }
+
+            // Hard-delete junction rows regardless of deleteFiles (existing behavior preserved).
             _db.FileAttachments.RemoveRange(attachments);
         }
 
@@ -174,7 +281,7 @@ public class CommentService
 
         await TriggerEnrichmentAsync(comment.KnowledgeId, comment.TenantId, ct);
 
-        return true;
+        return result;
     }
 
     private async Task TriggerEnrichmentAsync(Guid knowledgeId, Guid tenantId, CancellationToken ct)

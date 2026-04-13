@@ -48,6 +48,8 @@ public class NoOpSearchService : ISearchService
         string? filePath,
         float[]? contentVector,
         int? chunkIndex = null,
+        DateTime? knowledgeCreatedAt = null,
+        DateTime? knowledgeUpdatedAt = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogWarning("Search indexing is not configured. Document '{KnowledgeId}' was not indexed.", knowledgeId);

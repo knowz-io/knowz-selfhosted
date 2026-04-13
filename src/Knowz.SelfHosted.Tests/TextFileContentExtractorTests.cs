@@ -95,16 +95,17 @@ public class TextFileContentExtractorTests
     {
         // VERIFY_FUNC_06
         var record = MakeRecord("text/plain");
-        // Create content larger than 1MB
-        var largeContent = new string('x', 2_000_000);
+        // Create content larger than 10M chars
+        var largeContent = new string('x', 10_100_000);
         using var stream = MakeStream(largeContent);
 
         var result = await _extractor.ExtractAsync(record, stream);
 
         Assert.True(result.Success);
         Assert.NotNull(result.ExtractedText);
-        // Should be truncated to approximately 1MB / 2 chars
-        Assert.True(result.ExtractedText.Length <= 1_048_576 / 2);
+        // Should be truncated to MaxExtractionChars (10M)
+        Assert.True(result.ExtractedText.Length <= 10_000_000,
+            $"Expected <= 10000000 chars but got {result.ExtractedText.Length}");
     }
 
     [Fact]

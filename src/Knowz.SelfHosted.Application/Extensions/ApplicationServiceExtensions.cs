@@ -1,6 +1,7 @@
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Services;
+using Knowz.SelfHosted.Application.Services.GitCommitHistory;
 using Knowz.SelfHosted.Application.Validators;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
@@ -100,6 +101,21 @@ public static class ApplicationServiceExtensions
         // Git sync service (implements IGitSyncService for background service resolution)
         services.AddScoped<GitSyncService>();
         services.AddScoped<IGitSyncService>(sp => sp.GetRequiredService<GitSyncService>());
+
+        // Git commit-history ingestion (NODE-4)
+        // ICommitElaborationLlmClient is registered in OpenAIExtensions alongside the
+        // IOpenAIService tier selection (NoOp vs Platform vs Azure).
+        services.AddScoped<ICommitSecretScanner, CommitSecretScanner>();
+        services.AddScoped<ICommitElaborationPromptBuilder, CommitElaborationPromptBuilder>();
+        // CommitRelinkService depends on the concrete GitCommitHistoryService (for the
+        // internal ResolveAndLinkChangedFilesAsync helper), so we need both the concrete
+        // type and the interface registered from the same scoped instance.
+        services.AddScoped<GitCommitHistoryService>();
+        services.AddScoped<IGitCommitHistoryService>(sp => sp.GetRequiredService<GitCommitHistoryService>());
+
+        // Git commit backfill / relink endpoint (NODE-3 CommitBackfillEndpoint)
+        // WorkGroupID: kc-feat-commit-history-polish-20260411-051000
+        services.AddScoped<CommitRelinkService>();
 
         return services;
     }

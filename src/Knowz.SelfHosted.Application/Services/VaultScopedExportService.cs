@@ -2,6 +2,7 @@ namespace Knowz.SelfHosted.Application.Services;
 
 using System.Text.Json;
 using Knowz.Core.Entities;
+using Knowz.Core.Enums;
 using Knowz.Core.Interfaces;
 using Knowz.Core.Portability;
 using Knowz.Core.Schema;
@@ -100,6 +101,10 @@ public class VaultScopedExportService
             .Where(c => c.TenantId == tenantId && c.KnowledgeId == localKnowledgeId)
             .AsNoTracking().ToListAsync(ct);
 
+        // NODE-5: commit-history-scoped relationships for this single item.
+        var singleRelationshipLookup = await BuildCommitRelationshipLookupAsync(
+            tenantId, new[] { knowledge }, ct);
+
         var package = new PortableExportPackage
         {
             SchemaVersion = CoreSchema.Version,
@@ -124,7 +129,7 @@ public class VaultScopedExportService
             Data = new PortableExportData
             {
                 Vaults = new(),
-                KnowledgeItems = new List<PortableKnowledge> { MapKnowledge(knowledge, localVaultId) },
+                KnowledgeItems = new List<PortableKnowledge> { MapKnowledge(knowledge, localVaultId, singleRelationshipLookup) },
                 Topics = topics.Select(MapTopic).ToList(),
                 Tags = tags.Select(MapTag).ToList(),
                 Persons = persons.Select(MapPerson).ToList(),
@@ -248,6 +253,10 @@ public class VaultScopedExportService
             .Include(v => v.VaultPersons)
             .AsNoTracking().FirstOrDefaultAsync(ct);
 
+        // NODE-5: Commit-history-scoped relationships. See helper for routing rules.
+        var relationshipLookup = await BuildCommitRelationshipLookupAsync(
+            tenantId, knowledgeItems.Where(k => !k.IsDeleted), ct);
+
         // Build tombstones from soft-deleted knowledge
         var tombstones = knowledgeItems
             .Where(k => k.IsDeleted)
@@ -307,7 +316,7 @@ public class VaultScopedExportService
                 {
                     MapVault(vault)
                 } : new(),
-                KnowledgeItems = knowledgeItems.Where(k => !k.IsDeleted).Select(k => MapKnowledge(k, localVaultId)).ToList(),
+                KnowledgeItems = knowledgeItems.Where(k => !k.IsDeleted).Select(k => MapKnowledge(k, localVaultId, relationshipLookup)).ToList(),
                 Topics = topics.Select(MapTopic).ToList(),
                 Tags = tags.Select(MapTag).ToList(),
                 Persons = persons.Select(MapPerson).ToList(),
@@ -339,12 +348,17 @@ public class VaultScopedExportService
         return dto;
     }
 
-    private static PortableKnowledge MapKnowledge(Knowledge k, Guid vaultId)
+    private static PortableKnowledge MapKnowledge(
+        Knowledge k,
+        Guid vaultId,
+        IReadOnlyDictionary<Guid, List<PortableKnowledgeRelationship>>? relationshipLookup = null)
     {
         var dto = new PortableKnowledge
         {
             Id = k.Id, Title = k.Title, Content = k.Content,
             Summary = k.Summary, Source = k.Source,
+            Type = k.Type,
+            FilePath = k.FilePath,
             IsIndexed = k.IsIndexed, IndexedAt = k.IndexedAt,
             CreatedAt = k.CreatedAt, UpdatedAt = k.UpdatedAt,
             TopicId = k.TopicId,
@@ -363,6 +377,12 @@ public class VaultScopedExportService
                 ConfidenceScore = kp.ConfidenceScore,
             }).ToList(),
         };
+        if (relationshipLookup != null
+            && relationshipLookup.TryGetValue(k.Id, out var relList)
+            && relList.Count > 0)
+        {
+            dto.Relationships = relList;
+        }
         MergePlatformData(k.PlatformData, d => dto.ExtensionData = d);
         return dto;
     }
@@ -441,5 +461,115 @@ public class VaultScopedExportService
         if (string.IsNullOrEmpty(platformData)) return;
         var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(platformData);
         if (dict is { Count: > 0 }) setter(dict);
+    }
+
+    /// <summary>
+    /// NODE-5: Build a lookup from source commit/commit-history Knowledge Id → list of
+    /// <see cref="PortableKnowledgeRelationship"/> payload entries. Only relationships
+    /// originating from <c>Commit</c>/<c>CommitHistory</c> items with type
+    /// <c>PartOf</c> or <c>References</c> are included. See
+    /// <c>knowzcode/specs/SVC_PlatformSyncRelationshipPayload.md</c>.
+    /// </summary>
+    private async Task<Dictionary<Guid, List<PortableKnowledgeRelationship>>>
+        BuildCommitRelationshipLookupAsync(
+            Guid tenantId,
+            IEnumerable<Knowledge> knowledgeItems,
+            CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, List<PortableKnowledgeRelationship>>();
+
+        var commitScoped = knowledgeItems
+            .Where(k => k.Type == KnowledgeType.Commit || k.Type == KnowledgeType.CommitHistory)
+            .ToDictionary(k => k.Id, k => k);
+
+        if (commitScoped.Count == 0) return result;
+
+        var scopedIds = commitScoped.Keys.ToHashSet();
+        var rels = await _db.KnowledgeRelationships
+            .IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId
+                && !r.IsDeleted
+                && scopedIds.Contains(r.SourceKnowledgeId)
+                && (r.RelationshipType == KnowledgeRelationshipType.PartOf
+                    || r.RelationshipType == KnowledgeRelationshipType.References))
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        if (rels.Count == 0) return result;
+
+        var targetIds = rels.Select(r => r.TargetKnowledgeId).Distinct().ToHashSet();
+        var targetInfo = await _db.KnowledgeItems
+            .IgnoreQueryFilters()
+            .Where(k => k.TenantId == tenantId && targetIds.Contains(k.Id))
+            .Select(k => new { k.Id, k.FilePath, k.Source })
+            .AsNoTracking()
+            .ToListAsync(ct);
+        var targetById = targetInfo.ToDictionary(t => t.Id);
+
+        foreach (var rel in rels)
+        {
+            if (!commitScoped.TryGetValue(rel.SourceKnowledgeId, out var src))
+            {
+                continue;
+            }
+
+            var sha = ExtractCommitSha(src.Source);
+            string? targetFilePath = null;
+            if (targetById.TryGetValue(rel.TargetKnowledgeId, out var tgt))
+            {
+                targetFilePath = tgt.FilePath;
+            }
+
+            var payload = new PortableKnowledgeRelationship
+            {
+                SourceCommitSha = sha,
+                SourceFilePath = null,
+                TargetFilePath = targetFilePath,
+                RelationshipType = rel.RelationshipType,
+                Metadata = ParseRelationshipMetadata(rel.Metadata)
+            };
+
+            if (!result.TryGetValue(rel.SourceKnowledgeId, out var list))
+            {
+                list = new List<PortableKnowledgeRelationship>();
+                result[rel.SourceKnowledgeId] = list;
+            }
+            list.Add(payload);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Extract the commit SHA from a commit Knowledge's Source string.
+    /// Expected format: "{repoUrl}:{branch}:commit:{sha}" or
+    /// "{repoUrl}:{branch}:commit-history" for parents (no SHA).
+    /// </summary>
+    internal static string? ExtractCommitSha(string? source)
+    {
+        if (string.IsNullOrEmpty(source)) return null;
+        const string marker = ":commit:";
+        var idx = source.LastIndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0) return null;
+        var sha = source[(idx + marker.Length)..];
+        return string.IsNullOrWhiteSpace(sha) ? null : sha;
+    }
+
+    /// <summary>
+    /// Parse the optional JSON metadata on a <see cref="KnowledgeRelationship"/>
+    /// into the passthrough dictionary carried by the sync payload.
+    /// </summary>
+    internal static Dictionary<string, JsonElement>? ParseRelationshipMetadata(string? metadataJson)
+    {
+        if (string.IsNullOrEmpty(metadataJson)) return null;
+        try
+        {
+            var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(metadataJson);
+            return dict is { Count: > 0 } ? dict : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

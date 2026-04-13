@@ -15,6 +15,7 @@ public class CommentServiceTests : IDisposable
     private readonly SelfHostedDbContext _db;
     private readonly CommentService _svc;
     private readonly IEnrichmentOutboxWriter _enrichmentWriter;
+    private readonly IFileStorageProvider _storage;
     private static readonly Guid TenantId = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherTenantId = Guid.Parse("00000000-0000-0000-0000-000000000099");
 
@@ -29,9 +30,15 @@ public class CommentServiceTests : IDisposable
 
         _db = new SelfHostedDbContext(options, tenantProvider);
         _enrichmentWriter = Substitute.For<IEnrichmentOutboxWriter>();
+        _storage = Substitute.For<IFileStorageProvider>();
+        // Default: storage ops succeed
+        _storage.DeleteAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _storage.ExistsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(true);
 
         var logger = Substitute.For<ILogger<CommentService>>();
-        _svc = new CommentService(_db, tenantProvider, logger, _enrichmentWriter);
+        _svc = new CommentService(_db, tenantProvider, logger, _storage, _enrichmentWriter);
     }
 
     public void Dispose()
@@ -204,7 +211,7 @@ public class CommentServiceTests : IDisposable
         await _svc.AddCommentAsync(
             knowledge.Id, "Stays", "Bob", null, null, CancellationToken.None);
 
-        await _svc.DeleteCommentAsync(comment!.Id, CancellationToken.None);
+        await _svc.DeleteCommentAsync(comment!.Id, deleteFiles: false, CancellationToken.None);
 
         var result = await _svc.ListCommentsAsync(knowledge.Id, CancellationToken.None);
 
@@ -368,7 +375,50 @@ public class CommentServiceTests : IDisposable
 
     // =============================================
     // SVC_CommentService: DeleteCommentAsync
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice
     // =============================================
+
+    private async Task<FileRecord> SeedFileRecord(string fileName = "file.txt")
+    {
+        var fileRecord = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            FileName = fileName,
+            ContentType = "text/plain"
+        };
+        _db.FileRecords.Add(fileRecord);
+        await _db.SaveChangesAsync();
+        return fileRecord;
+    }
+
+    private async Task<FileAttachment> AttachFileToComment(Guid fileRecordId, Guid commentId)
+    {
+        var attachment = new FileAttachment
+        {
+            Id = Guid.NewGuid(),
+            FileRecordId = fileRecordId,
+            CommentId = commentId,
+            TenantId = TenantId
+        };
+        _db.FileAttachments.Add(attachment);
+        await _db.SaveChangesAsync();
+        return attachment;
+    }
+
+    private async Task<FileAttachment> AttachFileToKnowledge(Guid fileRecordId, Guid knowledgeId)
+    {
+        var attachment = new FileAttachment
+        {
+            Id = Guid.NewGuid(),
+            FileRecordId = fileRecordId,
+            KnowledgeId = knowledgeId,
+            TenantId = TenantId
+        };
+        _db.FileAttachments.Add(attachment);
+        await _db.SaveChangesAsync();
+        return attachment;
+    }
 
     [Fact]
     public async Task DeleteComment_SoftDeletesComment()
@@ -377,9 +427,9 @@ public class CommentServiceTests : IDisposable
         var created = await _svc.AddCommentAsync(
             knowledge.Id, "Delete me", "Alice", null, null, CancellationToken.None);
 
-        var result = await _svc.DeleteCommentAsync(created!.Id, CancellationToken.None);
+        var result = await _svc.DeleteCommentAsync(created!.Id, deleteFiles: false, CancellationToken.None);
 
-        Assert.True(result);
+        Assert.NotNull(result);
 
         // Verify soft-deleted (query filter excludes it from queries)
         var found = await _db.Comments
@@ -402,7 +452,7 @@ public class CommentServiceTests : IDisposable
         var reply = await _svc.AddCommentAsync(
             knowledge.Id, "Reply", "Bob", parent!.Id, null, CancellationToken.None);
 
-        await _svc.DeleteCommentAsync(parent.Id, CancellationToken.None);
+        await _svc.DeleteCommentAsync(parent.Id, deleteFiles: false, CancellationToken.None);
 
         // Both parent and reply should be soft-deleted
         var parentRaw = await _db.Comments.IgnoreQueryFilters()
@@ -420,26 +470,10 @@ public class CommentServiceTests : IDisposable
         var created = await _svc.AddCommentAsync(
             knowledge.Id, "With files", "Alice", null, null, CancellationToken.None);
 
-        // Add file attachment
-        var fileRecord = new FileRecord
-        {
-            Id = Guid.NewGuid(),
-            TenantId = TenantId,
-            FileName = "file.txt",
-            ContentType = "text/plain"
-        };
-        _db.FileRecords.Add(fileRecord);
-        var attachment = new FileAttachment
-        {
-            Id = Guid.NewGuid(),
-            FileRecordId = fileRecord.Id,
-            CommentId = created!.Id,
-            TenantId = TenantId
-        };
-        _db.FileAttachments.Add(attachment);
-        await _db.SaveChangesAsync();
+        var fileRecord = await SeedFileRecord();
+        await AttachFileToComment(fileRecord.Id, created!.Id);
 
-        await _svc.DeleteCommentAsync(created.Id, CancellationToken.None);
+        await _svc.DeleteCommentAsync(created.Id, deleteFiles: false, CancellationToken.None);
 
         // FileAttachment junction row should be hard-deleted
         var remaining = await _db.FileAttachments
@@ -457,18 +491,186 @@ public class CommentServiceTests : IDisposable
 
         _enrichmentWriter.ClearReceivedCalls();
 
-        await _svc.DeleteCommentAsync(created!.Id, CancellationToken.None);
+        await _svc.DeleteCommentAsync(created!.Id, deleteFiles: false, CancellationToken.None);
 
         await _enrichmentWriter.Received(1).EnqueueAsync(
             knowledge.Id, Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task DeleteComment_ReturnsFalse_WhenNotFound()
+    public async Task DeleteComment_ReturnsNull_WhenNotFound()
     {
-        var result = await _svc.DeleteCommentAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await _svc.DeleteCommentAsync(Guid.NewGuid(), deleteFiles: false, CancellationToken.None);
 
-        Assert.False(result);
+        Assert.Null(result);
+    }
+
+    // --- FEAT_CommentDeleteAttachmentChoice tests ---
+
+    [Fact]
+    public async Task DeleteComment_WithDeleteFilesFalse_PreservesFileRecord_AndDoesNotDeleteBlob()
+    {
+        // VERIFY-6, VERIFY-9: default (preserve) keeps FileRecord + blob intact
+        var knowledge = await SeedKnowledge();
+        var created = await _svc.AddCommentAsync(
+            knowledge.Id, "Keep files", "Alice", null, null, CancellationToken.None);
+
+        var fileRecord = await SeedFileRecord("keep-me.pdf");
+        await AttachFileToComment(fileRecord.Id, created!.Id);
+
+        var result = await _svc.DeleteCommentAsync(created.Id, deleteFiles: false, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result!.FilesPreserved);
+        Assert.Equal(0, result.FilesDeleted);
+        Assert.Contains("keep-me.pdf", result.PreservedFileNames);
+
+        // FileRecord still present and not soft-deleted
+        var rawFile = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == fileRecord.Id);
+        Assert.NotNull(rawFile);
+        Assert.False(rawFile!.IsDeleted);
+
+        // Blob storage must NOT have been called for delete
+        await _storage.DidNotReceive().DeleteAsync(
+            Arg.Any<Guid>(), fileRecord.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteComment_WithDeleteFilesTrue_SoftDeletesFileRecord_AndDeletesBlob()
+    {
+        // VERIFY-7: explicit opt-in: FileRecord soft-deleted, blob deleted immediately
+        var knowledge = await SeedKnowledge();
+        var created = await _svc.AddCommentAsync(
+            knowledge.Id, "Bye files", "Alice", null, null, CancellationToken.None);
+
+        var fileRecord = await SeedFileRecord("bye.pdf");
+        await AttachFileToComment(fileRecord.Id, created!.Id);
+
+        var result = await _svc.DeleteCommentAsync(created.Id, deleteFiles: true, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result!.FilesDeleted);
+        Assert.Equal(0, result.FilesPreserved);
+        Assert.Contains("bye.pdf", result.DeletedFileNames);
+
+        // FileRecord soft-deleted
+        var rawFile = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == fileRecord.Id);
+        Assert.NotNull(rawFile);
+        Assert.True(rawFile!.IsDeleted);
+
+        // Blob deletion called with correct ids
+        await _storage.Received(1).DeleteAsync(
+            TenantId, fileRecord.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteComment_WithDeleteFilesTrue_PreservesSharedFile_AcrossKnowledge()
+    {
+        // VERIFY-8 (MANDATORY): cross-reference check - file also attached to knowledge is preserved
+        var knowledge = await SeedKnowledge();
+        var created = await _svc.AddCommentAsync(
+            knowledge.Id, "Has shared file", "Alice", null, null, CancellationToken.None);
+
+        var fileRecord = await SeedFileRecord("shared.pdf");
+        // Attach the same file to both the comment AND the parent knowledge item
+        await AttachFileToComment(fileRecord.Id, created!.Id);
+        await AttachFileToKnowledge(fileRecord.Id, knowledge.Id);
+
+        var result = await _svc.DeleteCommentAsync(created.Id, deleteFiles: true, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result!.FilesPreserved);
+        Assert.Equal(0, result.FilesDeleted);
+        Assert.Contains("shared.pdf", result.PreservedFileNames);
+
+        // FileRecord must NOT be soft-deleted
+        var rawFile = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == fileRecord.Id);
+        Assert.NotNull(rawFile);
+        Assert.False(rawFile!.IsDeleted);
+
+        // Blob delete must NOT have been called
+        await _storage.DidNotReceive().DeleteAsync(
+            Arg.Any<Guid>(), fileRecord.Id, Arg.Any<CancellationToken>());
+
+        // The knowledge-side attachment must remain
+        var knowledgeAttachment = await _db.FileAttachments
+            .FirstOrDefaultAsync(fa => fa.FileRecordId == fileRecord.Id && fa.KnowledgeId == knowledge.Id);
+        Assert.NotNull(knowledgeAttachment);
+    }
+
+    [Fact]
+    public async Task DeleteComment_WithDeleteFilesTrue_CascadesCleanupToReplies()
+    {
+        // VERIFY-10: cascade - files attached to child replies also evaluated
+        var knowledge = await SeedKnowledge();
+        var parent = await _svc.AddCommentAsync(
+            knowledge.Id, "Parent", "Alice", null, null, CancellationToken.None);
+        var reply = await _svc.AddCommentAsync(
+            knowledge.Id, "Reply", "Bob", parent!.Id, null, CancellationToken.None);
+
+        var parentFile = await SeedFileRecord("parent.pdf");
+        var replyFile = await SeedFileRecord("reply.pdf");
+        await AttachFileToComment(parentFile.Id, parent.Id);
+        await AttachFileToComment(replyFile.Id, reply!.Id);
+
+        var result = await _svc.DeleteCommentAsync(parent.Id, deleteFiles: true, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result!.FilesDeleted);
+        Assert.Contains("parent.pdf", result.DeletedFileNames);
+        Assert.Contains("reply.pdf", result.DeletedFileNames);
+
+        // Both FileRecords soft-deleted
+        var parentRaw = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == parentFile.Id);
+        var replyRaw = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == replyFile.Id);
+        Assert.True(parentRaw!.IsDeleted);
+        Assert.True(replyRaw!.IsDeleted);
+
+        // Both blob deletes called
+        await _storage.Received(1).DeleteAsync(TenantId, parentFile.Id, Arg.Any<CancellationToken>());
+        await _storage.Received(1).DeleteAsync(TenantId, replyFile.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteComment_WithDeleteFilesTrue_WhenStorageDeleteFails_DoesNotSoftDeleteFileRecord()
+    {
+        // VERIFY-11: storage failure - FileRecord.IsDeleted must NOT be persisted
+        var knowledge = await SeedKnowledge();
+        var created = await _svc.AddCommentAsync(
+            knowledge.Id, "Flaky", "Alice", null, null, CancellationToken.None);
+
+        var fileRecord = await SeedFileRecord("flaky.pdf");
+        await AttachFileToComment(fileRecord.Id, created!.Id);
+
+        _storage.DeleteAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new InvalidOperationException("blob storage unreachable"));
+
+        // Act — spec allows endpoint to return 500 OR 200-with-zero-counts; the service may throw or swallow.
+        // Regardless of outcome, FileRecord.IsDeleted must NOT be persisted.
+        try
+        {
+            var result = await _svc.DeleteCommentAsync(created.Id, deleteFiles: true, CancellationToken.None);
+            // If swallowed, must report zero files deleted
+            if (result != null)
+            {
+                Assert.Equal(0, result.FilesDeleted);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Service chose to propagate — also acceptable per spec
+        }
+
+        // Critical invariant: FileRecord must still be queryable as NOT deleted
+        var rawFile = await _db.FileRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Id == fileRecord.Id);
+        Assert.NotNull(rawFile);
+        Assert.False(rawFile!.IsDeleted);
     }
 
     // =============================================
@@ -548,7 +750,7 @@ public class CommentServiceTests : IDisposable
             knowledge.Id, "Delete me", "Alice", null, null, CancellationToken.None);
         _enrichmentWriter.ClearReceivedCalls();
 
-        await _svc.DeleteCommentAsync(comment!.Id, CancellationToken.None);
+        await _svc.DeleteCommentAsync(comment!.Id, deleteFiles: false, CancellationToken.None);
 
         await _enrichmentWriter.Received(1).EnqueueAsync(
             knowledge.Id, Arg.Any<Guid>(), Arg.Any<CancellationToken>());
@@ -568,7 +770,8 @@ public class CommentServiceTests : IDisposable
         tenantProvider.TenantId.Returns(TenantId);
         using var db = new SelfHostedDbContext(options, tenantProvider);
         var logger = Substitute.For<ILogger<CommentService>>();
-        var svcNoEnrichment = new CommentService(db, tenantProvider, logger); // no enrichmentWriter
+        var storage = Substitute.For<IFileStorageProvider>();
+        var svcNoEnrichment = new CommentService(db, tenantProvider, logger, storage); // no enrichmentWriter
 
         var knowledge = new Knowledge { TenantId = TenantId, Title = "Test", Content = "C" };
         db.KnowledgeItems.Add(knowledge);

@@ -8,7 +8,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class DocxContentExtractor : IFileContentExtractor
 {
-    internal const int MaxExtractionChars = 2_097_152; // ~2MB
+    internal const int MaxExtractionChars = 10_000_000; // 10M chars
     private readonly ILogger<DocxContentExtractor> _logger;
 
     public DocxContentExtractor(ILogger<DocxContentExtractor> logger)
@@ -67,7 +67,7 @@ public class DocxContentExtractor : IFileContentExtractor
                             textParts.Add(paraText[..remaining]);
 
                         _logger.LogWarning(
-                            "DOCX {FileRecordId} ({FileName}) exceeded 2MB extraction limit, content truncated",
+                            "DOCX {FileRecordId} ({FileName}) exceeded 10M char extraction limit, content truncated",
                             fileRecord.Id, fileRecord.FileName);
                         break;
                     }
