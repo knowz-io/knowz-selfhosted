@@ -71,10 +71,12 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         CancellationToken cancellationToken = default)
     {
         var tokenBudget = researchMode ? ResearchTokenBudget : DefaultTokenBudget;
-        var contextText = BuildContext(searchResults, tokenBudget);
+        // FEAT_SelfHostedTemporalAwareness: format per-source dates in user TZ
+        var contextText = BuildContext(searchResults, tokenBudget, userTimezone, _logger);
 
         if (string.IsNullOrWhiteSpace(contextText))
         {
@@ -86,7 +88,15 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
             };
         }
 
-        var systemPrompt = vaultSystemPrompt ?? _defaultSystemPrompt;
+        // FEAT_SelfHostedTemporalAwareness: build a dynamic system prompt with
+        // the current-date anchor + temporal awareness instructions. When a
+        // vault override is supplied, TemporalPromptBuilder prepends the
+        // temporal block to the custom body.
+        var customOverride = !string.IsNullOrWhiteSpace(vaultSystemPrompt)
+            ? vaultSystemPrompt
+            : _defaultSystemPrompt;
+        var systemPrompt = TemporalPromptBuilder.BuildSystemPrompt(
+            customOverride, userTimezone, DateTime.UtcNow, _logger);
 
         var chatClient = _client.GetChatClient(_chatDeployment);
 
@@ -137,10 +147,12 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var tokenBudget = researchMode ? ResearchTokenBudget : DefaultTokenBudget;
-        var contextText = BuildContext(searchResults, tokenBudget);
+        // FEAT_SelfHostedTemporalAwareness
+        var contextText = BuildContext(searchResults, tokenBudget, userTimezone, _logger);
 
         if (string.IsNullOrWhiteSpace(contextText))
         {
@@ -148,7 +160,11 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
             yield break;
         }
 
-        var systemPrompt = vaultSystemPrompt ?? _defaultSystemPrompt;
+        var customOverride = !string.IsNullOrWhiteSpace(vaultSystemPrompt)
+            ? vaultSystemPrompt
+            : _defaultSystemPrompt;
+        var systemPrompt = TemporalPromptBuilder.BuildSystemPrompt(
+            customOverride, userTimezone, DateTime.UtcNow, _logger);
 
         var chatClient = _client.GetChatClient(_chatDeployment);
 
@@ -225,7 +241,11 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
 
     // --- Internal helpers (visible for testing) ---
 
-    internal static string BuildContext(List<SearchResultItem> results, int tokenBudget)
+    internal static string BuildContext(
+        List<SearchResultItem> results,
+        int tokenBudget,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var charBudget = tokenBudget * ApproxCharsPerToken;
         var sb = new System.Text.StringBuilder();
@@ -233,7 +253,7 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
 
         foreach (var result in results.OrderByDescending(r => r.Score))
         {
-            var block = FormatSourceBlock(result);
+            var block = FormatSourceBlock(result, userTimezone, logger);
             if (currentLength + block.Length > charBudget)
             {
                 var remaining = charBudget - currentLength;
@@ -251,10 +271,38 @@ public class AzureOpenAIService : IOpenAIService, IContentAmendmentService, IStr
         return sb.ToString().TrimEnd();
     }
 
-    internal static string FormatSourceBlock(SearchResultItem result)
+    internal static string FormatSourceBlock(
+        SearchResultItem result,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"### {result.Title} [{result.KnowledgeId}]");
+
+        // FEAT_SelfHostedTemporalAwareness: emit temporal metadata BEFORE
+        // the content body so the LLM sees it in a predictable position.
+        // Suppress default(DateTime) so an unpopulated CreatedAt doesn't
+        // pollute the context with "Created: 0001-01-01".
+        var createdLocal = ChatTimezoneHelper.FormatDateInTimezone(
+            result.CreatedAt, userTimezone, logger);
+        if (!string.IsNullOrEmpty(createdLocal))
+        {
+            sb.AppendLine($"Created: {createdLocal}");
+        }
+
+        // Same-day update suppression — only emit "Updated:" when the
+        // local calendar day differs from CreatedAt.
+        if (result.UpdatedAt.HasValue
+            && !ChatTimezoneHelper.SameLocalDay(
+                result.CreatedAt, result.UpdatedAt.Value, userTimezone))
+        {
+            var updatedLocal = ChatTimezoneHelper.FormatDateInTimezone(
+                result.UpdatedAt.Value, userTimezone, logger);
+            if (!string.IsNullOrEmpty(updatedLocal))
+            {
+                sb.AppendLine($"Updated: {updatedLocal}");
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(result.Summary))
         {

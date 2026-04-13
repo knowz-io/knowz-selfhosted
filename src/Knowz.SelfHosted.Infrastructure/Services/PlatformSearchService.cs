@@ -75,6 +75,10 @@ public class PlatformSearchService : ISearchService
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             var result = JsonSerializer.Deserialize<SearchQueryResponse>(body, s_deserializeOptions);
 
+            // REFACTOR_PlatformSearchProxyTemporal: CreatedAt/UpdatedAt populate here
+            // only if the platform's /api/v1/search-proxy/query response includes those
+            // fields. If not, FormatSourceBlock suppresses them via default(DateTime)
+            // check. Tracked in knowzcode/knowzcode_tracker.md.
             var items = result?.Items ?? new List<SearchResultItem>();
 
             _logger.LogInformation(
@@ -106,10 +110,17 @@ public class PlatformSearchService : ISearchService
         string? filePath,
         float[]? contentVector,
         int? chunkIndex = null,
+        DateTime? knowledgeCreatedAt = null,
+        DateTime? knowledgeUpdatedAt = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // FEAT_SelfHostedTemporalAwareness: knowledgeCreatedAt/UpdatedAt
+            // are ignored on this proxy path. The main platform's
+            // /api/v1/search-proxy/index endpoint owns date management on its
+            // own index. If parity is needed in a future WG, extend
+            // IndexDocumentRequest below.
             var requestBody = new IndexDocumentRequest(
                 KnowledgeId: knowledgeId,
                 Title: title,

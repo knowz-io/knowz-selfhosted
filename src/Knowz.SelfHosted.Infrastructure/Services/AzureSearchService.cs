@@ -63,7 +63,7 @@ public class AzureSearchService : ISearchService
             Select = {
                 "knowledgeId", "title", "content", "vaultName", "topicName",
                 "tags", "knowledgeTypeId", "filePath", "aiSummary",
-                "position", "documentType"
+                "position", "documentType", "createdAt", "updatedAt"
             },
             QueryType = SearchQueryType.Simple,
             SearchMode = Azure.Search.Documents.Models.SearchMode.Any,
@@ -151,9 +151,23 @@ public class AzureSearchService : ISearchService
         string? filePath,
         float[]? contentVector,
         int? chunkIndex = null,
+        DateTime? knowledgeCreatedAt = null,
+        DateTime? knowledgeUpdatedAt = null,
         CancellationToken cancellationToken = default)
     {
         await EnsureIndexExistsAsync(cancellationToken);
+
+        // FEAT_SelfHostedTemporalAwareness: Prefer the entity's real dates.
+        // Fall back to DateTimeOffset.UtcNow only when the caller did not
+        // pass them (legacy call sites). Without this, re-index operations
+        // overwrite the index createdAt with the re-index time, breaking
+        // temporal queries like "what did I save yesterday".
+        var indexCreatedAt = knowledgeCreatedAt.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(knowledgeCreatedAt.Value, DateTimeKind.Utc), TimeSpan.Zero)
+            : DateTimeOffset.UtcNow;
+        var indexUpdatedAt = knowledgeUpdatedAt.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(knowledgeUpdatedAt.Value, DateTimeKind.Utc), TimeSpan.Zero)
+            : DateTimeOffset.UtcNow;
 
         var document = new SearchDocument
         {
@@ -174,8 +188,8 @@ public class AzureSearchService : ISearchService
             ["tags"] = tags?.ToArray() ?? Array.Empty<string>(),
             ["knowledgeTypeId"] = knowledgeType ?? string.Empty,
             ["filePath"] = filePath ?? string.Empty,
-            ["createdAt"] = DateTimeOffset.UtcNow,
-            ["updatedAt"] = DateTimeOffset.UtcNow,
+            ["createdAt"] = indexCreatedAt,
+            ["updatedAt"] = indexUpdatedAt,
             ["documentType"] = chunkIndex.HasValue ? "chunk" : "knowledge",
             ["position"] = chunkIndex ?? 0
         };
@@ -497,8 +511,32 @@ public class AzureSearchService : ISearchService
             Highlights = result.Highlights?.SelectMany(h => h.Value).ToList()
                          ?? new List<string>(),
             Position = doc.TryGetValue("position", out var pos) && pos is int posInt ? posInt : 0,
-            DocumentType = doc.TryGetValue("documentType", out var dt) ? dt?.ToString() : null
+            DocumentType = doc.TryGetValue("documentType", out var dt) ? dt?.ToString() : null,
+            CreatedAt = TryGetDateTime(doc, "createdAt"),
+            UpdatedAt = TryGetNullableDateTime(doc, "updatedAt")
         };
+    }
+
+    // FEAT_SelfHostedTemporalAwareness: Index fields are DateTimeOffset; Core
+    // model uses DateTime. Convert via .UtcDateTime and tolerate missing /
+    // default values so a stale index row doesn't crash chat.
+    private static DateTime TryGetDateTime(SearchDocument doc, string field)
+    {
+        if (!doc.TryGetValue(field, out var raw) || raw is null)
+            return default;
+        return raw switch
+        {
+            DateTimeOffset dto => dto.UtcDateTime,
+            DateTime dt => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime(),
+            string s when DateTimeOffset.TryParse(s, out var parsed) => parsed.UtcDateTime,
+            _ => default
+        };
+    }
+
+    private static DateTime? TryGetNullableDateTime(SearchDocument doc, string field)
+    {
+        var value = TryGetDateTime(doc, field);
+        return value == default ? null : value;
     }
 
     private static List<string> GetStringCollection(SearchDocument doc, string field)

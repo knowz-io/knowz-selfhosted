@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Knowz.Core" Version="1.6.0" />
+    <ProjectReference Include="..\..\..\src\Knowz.Core\Knowz.Core.csproj" />
   </ItemGroup>
 
 </Project>

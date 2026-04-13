@@ -1,5 +1,6 @@
 using System.Text;
 using Knowz.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Knowz.SelfHosted.Infrastructure.Services;
 
@@ -15,7 +16,11 @@ public static class ContextBuilder
     /// <summary>
     /// Builds a context string from search results within the given token budget.
     /// </summary>
-    public static string BuildContext(List<SearchResultItem> results, int tokenBudget)
+    public static string BuildContext(
+        List<SearchResultItem> results,
+        int tokenBudget,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var charBudget = tokenBudget * ApproxCharsPerToken;
         var sb = new StringBuilder();
@@ -23,7 +28,7 @@ public static class ContextBuilder
 
         foreach (var result in results.OrderByDescending(r => r.Score))
         {
-            var block = FormatSourceBlock(result);
+            var block = FormatSourceBlock(result, userTimezone, logger);
             if (currentLength + block.Length > charBudget)
             {
                 var remaining = charBudget - currentLength;
@@ -46,11 +51,35 @@ public static class ContextBuilder
     /// Includes TopicName and Tags when present.
     /// Handles enrichment sentinel: content before sentinel is subject to truncation,
     /// enrichment text after sentinel is always preserved.
+    /// FEAT_SelfHostedTemporalAwareness: emits Created/Updated before body.
     /// </summary>
-    public static string FormatSourceBlock(SearchResultItem result)
+    public static string FormatSourceBlock(
+        SearchResultItem result,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"### {result.Title} [{result.KnowledgeId}]");
+
+        // FEAT_SelfHostedTemporalAwareness: Created/Updated before other
+        // metadata so the LLM sees temporal context in a predictable spot.
+        var createdLocal = ChatTimezoneHelper.FormatDateInTimezone(
+            result.CreatedAt, userTimezone, logger);
+        if (!string.IsNullOrEmpty(createdLocal))
+        {
+            sb.AppendLine($"Created: {createdLocal}");
+        }
+        if (result.UpdatedAt.HasValue
+            && !ChatTimezoneHelper.SameLocalDay(
+                result.CreatedAt, result.UpdatedAt.Value, userTimezone))
+        {
+            var updatedLocal = ChatTimezoneHelper.FormatDateInTimezone(
+                result.UpdatedAt.Value, userTimezone, logger);
+            if (!string.IsNullOrEmpty(updatedLocal))
+            {
+                sb.AppendLine($"Updated: {updatedLocal}");
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(result.TopicName))
         {

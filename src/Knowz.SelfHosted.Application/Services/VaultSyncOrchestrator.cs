@@ -413,15 +413,33 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
 
             await _db.SaveChangesAsync(ct);
 
-            // Import knowledge items
+            // Import knowledge items. For Commit / CommitHistory items we dedup by
+            // Source string (cross-instance-stable) rather than by Guid — NODE-5.
+            // Map of pk.Id → receiver's local knowledge Id (used later when processing
+            // Relationships to link sender-side source guids to receiver-side guids).
+            var importedKnowledgeIdMap = new Dictionary<Guid, Guid>();
+
             foreach (var pk in package.Data.KnowledgeItems)
             {
-                var existing = await _db.KnowledgeItems
+                var isCommitScoped =
+                    pk.Type == global::Knowz.Core.Enums.KnowledgeType.Commit
+                    || pk.Type == global::Knowz.Core.Enums.KnowledgeType.CommitHistory;
+
+                global::Knowz.Core.Entities.Knowledge? existing = null;
+                if (isCommitScoped && !string.IsNullOrEmpty(pk.Source))
+                {
+                    existing = await _db.KnowledgeItems
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(
+                            k => k.TenantId == tenantId && k.Source == pk.Source, ct);
+                }
+                existing ??= await _db.KnowledgeItems
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.Id == pk.Id, ct);
 
                 if (existing != null)
                 {
+                    importedKnowledgeIdMap[pk.Id] = existing.Id;
                     if (pk.UpdatedAt > existing.UpdatedAt)
                     {
                         existing.Title = pk.Title;
@@ -437,14 +455,21 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                 }
                 else
                 {
+                    // Commit-scoped items get a fresh receiver-side GUID because
+                    // the sender's Guid is not meaningful cross-instance.
+                    var localId = isCommitScoped ? Guid.NewGuid() : pk.Id;
+                    importedKnowledgeIdMap[pk.Id] = localId;
+
                     var newItem = new global::Knowz.Core.Entities.Knowledge
                     {
-                        Id = pk.Id,
+                        Id = localId,
                         TenantId = tenantId,
                         Title = pk.Title,
                         Content = pk.Content,
                         Summary = pk.Summary,
                         Source = pk.Source,
+                        Type = pk.Type,
+                        FilePath = pk.FilePath,
                         TopicId = pk.TopicId,
                         CreatedAt = pk.CreatedAt,
                         UpdatedAt = pk.UpdatedAt,
@@ -454,12 +479,12 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                     // Create vault junction
                     var junctionExists = await _db.KnowledgeVaults
                         .IgnoreQueryFilters()
-                        .AnyAsync(kv => kv.KnowledgeId == pk.Id && kv.VaultId == localVaultId, ct);
+                        .AnyAsync(kv => kv.KnowledgeId == localId && kv.VaultId == localVaultId, ct);
                     if (!junctionExists)
                     {
                         _db.KnowledgeVaults.Add(new global::Knowz.Core.Entities.KnowledgeVault
                         {
-                            KnowledgeId = pk.Id,
+                            KnowledgeId = localId,
                             VaultId = localVaultId,
                             IsPrimary = true,
                         });
@@ -471,16 +496,17 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                 // Sync person junctions
                 if (pk.PersonLinks != null)
                 {
+                    var junctionKnowledgeId = importedKnowledgeIdMap[pk.Id];
                     foreach (var link in pk.PersonLinks)
                     {
                         var exists = await _db.KnowledgePersons
                             .IgnoreQueryFilters()
-                            .AnyAsync(kp => kp.KnowledgeId == pk.Id && kp.PersonId == link.EntityId, ct);
+                            .AnyAsync(kp => kp.KnowledgeId == junctionKnowledgeId && kp.PersonId == link.EntityId, ct);
                         if (!exists)
                         {
                             _db.KnowledgePersons.Add(new global::Knowz.Core.Entities.KnowledgePerson
                             {
-                                KnowledgeId = pk.Id,
+                                KnowledgeId = junctionKnowledgeId,
                                 PersonId = link.EntityId,
                                 RelationshipContext = link.RelationshipContext,
                                 Role = link.Role,
@@ -491,6 +517,16 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
                     }
                 }
             }
+
+            // Persist knowledge items + junctions so the relationship resolver below
+            // can query the freshly-created commit children by Source / FilePath.
+            await _db.SaveChangesAsync(ct);
+
+            // NODE-5: Import commit-history-scoped relationships. Target resolution
+            // is by (VaultId, FilePath); orphan targets are recorded under the commit
+            // child's PlatformData.unlinkedFiles JSON array.
+            await ImportCommitRelationshipsAsync(
+                package.Data.KnowledgeItems, tenantId, localVaultId, ct);
 
             // Import comments
             foreach (var pc in package.Data.Comments)
@@ -549,6 +585,145 @@ public class VaultSyncOrchestrator : IVaultSyncOrchestrator
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// NODE-5: test-only entry point into the vault-import path. Public so tests can
+    /// exercise relationship payload resolution without spinning up the full
+    /// rate-limiter / schema-check / audit-log pipeline.
+    /// </summary>
+    public Task<SyncDeltaImportResult> TestOnly_ImportSyncDeltaLocallyAsync(
+        global::Knowz.Core.Portability.PortableExportPackage package,
+        Guid localVaultId,
+        CancellationToken ct = default)
+        => ImportSyncDeltaLocallyAsync(package, localVaultId, ct);
+
+    /// <summary>
+    /// NODE-5: resolve and persist commit-history-scoped <c>KnowledgeRelationship</c>
+    /// rows from an incoming sync package. Source commit child is resolved via
+    /// <c>Knowledge.Source = "{repoUrl}:{branch}:commit:{sha}"</c>; target file knowledge
+    /// is resolved via <c>(VaultId, FilePath)</c>. Orphan target paths are appended to
+    /// the commit child's <c>PlatformData.unlinkedFiles</c> JSON array (matching the
+    /// local-ingestion orphan convention in <c>GitCommitHistoryService</c>).
+    ///
+    /// Dedup: skip creation when a row with the same
+    /// <c>(TenantId, SourceKnowledgeId, TargetKnowledgeId, RelationshipType)</c> already
+    /// exists. This handles the "re-sync same commit" case without relying on a DB
+    /// unique-index violation.
+    /// See <c>knowzcode/specs/SVC_PlatformSyncRelationshipPayload.md</c>.
+    /// </summary>
+    private async Task ImportCommitRelationshipsAsync(
+        List<global::Knowz.Core.Portability.PortableKnowledge> incomingKnowledge,
+        Guid tenantId,
+        Guid localVaultId,
+        CancellationToken ct)
+    {
+        var commitItems = incomingKnowledge
+            .Where(pk => pk.Relationships != null && pk.Relationships.Count > 0
+                && (pk.Type == global::Knowz.Core.Enums.KnowledgeType.Commit
+                    || pk.Type == global::Knowz.Core.Enums.KnowledgeType.CommitHistory))
+            .ToList();
+
+        if (commitItems.Count == 0) return;
+
+        foreach (var pk in commitItems)
+        {
+            // Resolve the source commit child by its Source string. We use the
+            // pk.Source directly because the receiver's commit child should carry
+            // the same Source string (the sender just wrote it from GitCommitHistoryService).
+            if (string.IsNullOrEmpty(pk.Source))
+            {
+                _logger.LogDebug(
+                    "Skipping commit relationship payload — source knowledge has no Source string");
+                continue;
+            }
+
+            var sourceChild = await _db.KnowledgeItems
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(
+                    k => k.TenantId == tenantId && k.Source == pk.Source && !k.IsDeleted, ct);
+            if (sourceChild == null)
+            {
+                _logger.LogDebug(
+                    "Commit relationship payload — source commit child not yet present on receiver: {Source}",
+                    pk.Source);
+                continue;
+            }
+
+            var orphanPaths = new List<string>();
+            foreach (var rel in pk.Relationships!)
+            {
+                // PartOf: resolve the parent CommitHistory via its own Source string
+                // (derived from the source child's Source by swapping :commit:{sha} → :commit-history).
+                if (rel.RelationshipType == global::Knowz.Core.Enums.KnowledgeRelationshipType.PartOf)
+                {
+                    var parentSource = BuildCommitHistoryParentSource(pk.Source);
+                    if (parentSource == null) continue;
+
+                    var parent = await _db.KnowledgeItems
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(
+                            k => k.TenantId == tenantId && k.Source == parentSource && !k.IsDeleted, ct);
+                    if (parent == null) continue;
+
+                    await global::Knowz.SelfHosted.Application.Services.Shared.KnowledgeRelationshipHelpers
+                        .UpsertRelationshipAsync(
+                            _db, tenantId, sourceChild.Id, parent.Id,
+                            global::Knowz.Core.Enums.KnowledgeRelationshipType.PartOf, ct);
+                }
+                else if (rel.RelationshipType == global::Knowz.Core.Enums.KnowledgeRelationshipType.References)
+                {
+                    if (string.IsNullOrEmpty(rel.TargetFilePath))
+                    {
+                        continue;
+                    }
+
+                    // Target file resolution by (VaultId, FilePath): the knowledge must
+                    // be a member of the receiver's local vault.
+                    var targetFile = await (
+                        from k in _db.KnowledgeItems.IgnoreQueryFilters()
+                        join kv in _db.KnowledgeVaults.IgnoreQueryFilters()
+                            on k.Id equals kv.KnowledgeId
+                        where k.TenantId == tenantId
+                            && !k.IsDeleted
+                            && k.FilePath == rel.TargetFilePath
+                            && kv.VaultId == localVaultId
+                        select k).FirstOrDefaultAsync(ct);
+
+                    if (targetFile == null)
+                    {
+                        orphanPaths.Add(rel.TargetFilePath);
+                        continue;
+                    }
+
+                    await global::Knowz.SelfHosted.Application.Services.Shared.KnowledgeRelationshipHelpers
+                        .UpsertRelationshipAsync(
+                            _db, tenantId, sourceChild.Id, targetFile.Id,
+                            global::Knowz.Core.Enums.KnowledgeRelationshipType.References, ct);
+                }
+            }
+
+            if (orphanPaths.Count > 0)
+            {
+                sourceChild.PlatformData = global::Knowz.SelfHosted.Application.Services.Shared.KnowledgeRelationshipHelpers
+                    .MergeUnlinkedFiles(sourceChild.PlatformData, orphanPaths);
+                sourceChild.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Derive the parent CommitHistory <c>Source</c> string from a child commit's
+    /// <c>Source</c> string. "{repoUrl}:{branch}:commit:{sha}" → "{repoUrl}:{branch}:commit-history".
+    /// </summary>
+    internal static string? BuildCommitHistoryParentSource(string childSource)
+    {
+        const string marker = ":commit:";
+        var idx = childSource.LastIndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0) return null;
+        return childSource[..idx] + ":commit-history";
     }
 
     /// <summary>

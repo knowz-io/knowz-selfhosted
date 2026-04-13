@@ -626,12 +626,17 @@ public class EnrichmentBackgroundService : BackgroundService
 
             chunkData[chunk.Position] = (hash, embeddingJson, contextSummary, isContextual);
 
+            // FEAT_SelfHostedTemporalAwareness: thread the entity's real
+            // dates so re-index operations don't overwrite the index
+            // createdAt with the re-index time.
             await searchService.IndexDocumentAsync(
                 knowledge.Id, knowledge.Title, chunk.Content, knowledge.Summary,
                 vaultName, vaultId, ancestorVaultIds, topicName,
                 currentTags, knowledge.Type.ToString(),
                 knowledge.FilePath, embedding,
                 chunkIndex: chunks.Count > 1 ? chunk.Position : null,
+                knowledgeCreatedAt: knowledge.CreatedAt,
+                knowledgeUpdatedAt: knowledge.UpdatedAt,
                 cancellationToken: ct);
         }
 

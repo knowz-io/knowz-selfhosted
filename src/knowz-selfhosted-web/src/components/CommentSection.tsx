@@ -152,6 +152,8 @@ function CommentItem({
   setEditBody,
   deleteConfirmId,
   setDeleteConfirmId,
+  deleteFilesConfirm,
+  setDeleteFilesConfirm,
   onReplySubmit,
   onEditSave,
   onDeleteConfirm,
@@ -170,6 +172,9 @@ function CommentItem({
   setEditBody: (body: string) => void
   deleteConfirmId: string | null
   setDeleteConfirmId: (id: string | null) => void
+  // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice
+  deleteFilesConfirm: boolean
+  setDeleteFilesConfirm: (value: boolean) => void
   onReplySubmit: () => void
   onEditSave: () => void
   onDeleteConfirm: () => void
@@ -249,6 +254,34 @@ function CommentItem({
         {isDeleting && (
           <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm">
             <p className="text-red-700 dark:text-red-300">Are you sure you want to delete this contribution?</p>
+            {/* WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+                FEAT_CommentDeleteAttachmentChoice. Checkbox only visible when the comment has
+                >=1 attached file. Files used by other knowledge items/comments are preserved
+                automatically by the backend cross-reference check (R4). */}
+            {comment.attachmentCount > 0 && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  This contribution has {comment.attachmentCount} attached file{comment.attachmentCount === 1 ? '' : 's'}.
+                </p>
+                <label className="flex items-start gap-2 cursor-pointer select-none text-xs text-red-700 dark:text-red-300">
+                  <input
+                    type="checkbox"
+                    checked={deleteFilesConfirm}
+                    onChange={(e) => setDeleteFilesConfirm(e.target.checked)}
+                    disabled={isMutating}
+                    className="mt-0.5"
+                    aria-label="Also permanently delete files not used elsewhere"
+                    data-testid="selfhosted-delete-comment-files-checkbox"
+                  />
+                  <span>
+                    Also permanently delete files not used elsewhere
+                  </span>
+                </label>
+                <p className="text-[11px] italic text-red-600 dark:text-red-400">
+                  Files used by other knowledge items or comments will be preserved automatically.
+                </p>
+              </div>
+            )}
             <div className="flex gap-2 mt-2">
               <button
                 onClick={onDeleteConfirm}
@@ -350,6 +383,8 @@ function CommentItem({
               setEditBody={setEditBody}
               deleteConfirmId={deleteConfirmId}
               setDeleteConfirmId={setDeleteConfirmId}
+              deleteFilesConfirm={deleteFilesConfirm}
+              setDeleteFilesConfirm={setDeleteFilesConfirm}
               onReplySubmit={onReplySubmit}
               onEditSave={onEditSave}
               onDeleteConfirm={onDeleteConfirm}
@@ -374,6 +409,10 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice.
+  // Checkbox state for "permanently delete files" in the delete confirmation banner.
+  // Defaults to false (preserve). Resets to false every time a new delete confirm is opened.
+  const [deleteFilesConfirm, setDeleteFilesConfirm] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
 
   const { data: comments, isLoading } = useQuery({
@@ -417,12 +456,16 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
   })
 
   const deleteMut = useMutation({
-    mutationFn: (commentId: string) => api.deleteComment(commentId),
+    // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — mutationFn now takes the
+    // deleteFiles flag so the checkbox state propagates to the API.
+    mutationFn: ({ commentId, deleteFiles }: { commentId: string; deleteFiles: boolean }) =>
+      api.deleteComment(commentId, deleteFiles),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', knowledgeId] })
       queryClient.invalidateQueries({ queryKey: ['knowledge', knowledgeId] })
       queryClient.invalidateQueries({ queryKey: ['enrichment-status', knowledgeId] })
       setDeleteConfirmId(null)
+      setDeleteFilesConfirm(false)
     },
   })
 
@@ -445,7 +488,7 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
 
   const handleDeleteConfirm = () => {
     if (!deleteConfirmId) return
-    deleteMut.mutate(deleteConfirmId)
+    deleteMut.mutate({ commentId: deleteConfirmId, deleteFiles: deleteFilesConfirm })
   }
 
   const handleNewCommentKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -581,7 +624,15 @@ export default function CommentSection({ knowledgeId }: CommentSectionProps) {
               editBody={editBody}
               setEditBody={setEditBody}
               deleteConfirmId={deleteConfirmId}
-              setDeleteConfirmId={setDeleteConfirmId}
+              setDeleteConfirmId={(id) => {
+                // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 —
+                // Reset checkbox each time the delete banner is closed/opened so a
+                // previous "checked" state can never leak into the next delete.
+                setDeleteConfirmId(id)
+                setDeleteFilesConfirm(false)
+              }}
+              deleteFilesConfirm={deleteFilesConfirm}
+              setDeleteFilesConfirm={setDeleteFilesConfirm}
               onReplySubmit={handleReplySubmit}
               onEditSave={handleEditSave}
               onDeleteConfirm={handleDeleteConfirm}

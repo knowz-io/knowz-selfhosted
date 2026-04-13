@@ -1,3 +1,4 @@
+using System.Text;
 using Knowz.Core.Entities;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class TextFileContentExtractor : IFileContentExtractor
 {
-    private const int MaxExtractionBytes = 1_048_576; // 1MB
+    internal const int MaxExtractionChars = 10_000_000; // 10M chars
 
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -39,25 +40,37 @@ public class TextFileContentExtractor : IFileContentExtractor
         try
         {
             using var reader = new StreamReader(
-                fileStream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+                fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
                 leaveOpen: true);
 
-            var buffer = new char[MaxExtractionBytes / 2]; // UTF-16 chars
-            var charsRead = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
+            const int BufferSize = 8192;
+            var sb = new StringBuilder();
+            var buffer = new char[BufferSize];
+            int read;
+            while (sb.Length < MaxExtractionChars
+                   && (read = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                int take = Math.Min(read, MaxExtractionChars - sb.Length);
+                sb.Append(buffer, 0, take);
+            }
 
-            if (charsRead == 0)
+            if (sb.Length == 0)
                 return new FileExtractionResult(false, ErrorMessage: "File is empty");
 
-            var text = new string(buffer, 0, charsRead).Trim();
-
-            if (charsRead == buffer.Length)
+            bool wasTruncated = sb.Length >= MaxExtractionChars;
+            if (wasTruncated)
             {
                 _logger.LogWarning(
-                    "File {FileRecordId} ({FileName}) exceeded 1MB extraction limit, content truncated",
+                    "File {FileRecordId} ({FileName}) exceeded 10M char extraction limit, content truncated",
                     fileRecord.Id, fileRecord.FileName);
             }
 
-            return new FileExtractionResult(true, ExtractedText: text);
+            return new FileExtractionResult(true, ExtractedText: sb.ToString().Trim());
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

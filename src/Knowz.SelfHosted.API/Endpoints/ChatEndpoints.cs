@@ -51,8 +51,12 @@ public static class ChatEndpoints
                 .Select(m => new ChatMessageDto(m.Role, m.Content))
                 .ToList();
 
+            // FEAT_SelfHostedTemporalAwareness: resolve userId from JWT claims
+            // so SearchFacade can look up UserPreference.TimeZonePreference.
+            var userId = GetUserIdClaim(context);
+
             var result = await svc.ChatWithHistoryAsync(
-                req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId);
+                req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId, userId);
 
             return Results.Ok(result);
         }).WithTags("Chat").Produces<ChatResponse>(200).Produces(400);
@@ -106,8 +110,11 @@ public static class ChatEndpoints
 
             try
             {
+                // FEAT_SelfHostedTemporalAwareness: pass userId through
+                var userId = GetUserIdClaim(context);
+
                 var result = await svc.ChatWithHistoryStreamingAsync(
-                    req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId);
+                    req.Question, history, vaultId, req.ResearchMode, maxTurns, ct, accessibleVaultIds, knowledgeId, userId);
 
                 var sourcesJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -148,5 +155,16 @@ public static class ChatEndpoints
                 catch { /* Client may have disconnected */ }
             }
         }).WithTags("Chat");
+    }
+
+    /// <summary>
+    /// FEAT_SelfHostedTemporalAwareness: extracts the authenticated user ID
+    /// from JWT claims. Returns null for API-key auth or unauthenticated
+    /// requests — the facade falls back to the default timezone.
+    /// </summary>
+    private static Guid? GetUserIdClaim(HttpContext context)
+    {
+        var claim = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(claim, out var id) ? id : null;
     }
 }

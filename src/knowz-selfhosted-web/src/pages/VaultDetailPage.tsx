@@ -304,6 +304,10 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
   const [branch, setBranch] = useState('main')
   const [pat, setPat] = useState('')
   const [filePatterns, setFilePatterns] = useState('')
+  const [trackCommitHistory, setTrackCommitHistory] = useState(false)
+  const [commitHistoryDepth, setCommitHistoryDepth] = useState(500)
+  const [showCommitCostConfirm, setShowCommitCostConfirm] = useState(false)
+  const [commitError, setCommitError] = useState<string | null>(null)
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -334,6 +338,8 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
         branch,
         pat: pat || undefined,
         filePatterns: filePatterns || undefined,
+        trackCommitHistory: trackCommitHistory || undefined,
+        commitHistoryDepth: trackCommitHistory ? commitHistoryDepth : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['git-sync-status', vaultId] })
@@ -342,6 +348,10 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
       setBranch('main')
       setPat('')
       setFilePatterns('')
+      setTrackCommitHistory(false)
+      setCommitHistoryDepth(500)
+      setShowCommitCostConfirm(false)
+      setCommitError(null)
     },
   })
 
@@ -527,7 +537,18 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
           <form
             onSubmit={(e) => {
               e.preventDefault()
+              setCommitError(null)
               if (!repoUrl.trim()) return
+              // Client-side depth validation — mirrors backend [1, 2000] range.
+              if (trackCommitHistory && (commitHistoryDepth < 1 || commitHistoryDepth > 2000)) {
+                setCommitError('Commit history depth must be between 1 and 2000.')
+                return
+              }
+              // First-enable confirmation gate.
+              if (trackCommitHistory && !showCommitCostConfirm) {
+                setShowCommitCostConfirm(true)
+                return
+              }
               configureMut.mutate()
             }}
             className="space-y-3"
@@ -582,6 +603,56 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
               />
             </div>
 
+            {/* Commit History (NODE-6) */}
+            <div className="p-3 border border-border/60 rounded-md bg-muted/30">
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="selfhosted-track-commit-history"
+                  data-testid="selfhosted-track-commit-history"
+                  checked={trackCommitHistory}
+                  onChange={(e) => setTrackCommitHistory(e.target.checked)}
+                  className="mt-1 rounded border-input"
+                />
+                <label htmlFor="selfhosted-track-commit-history" className="text-sm cursor-pointer">
+                  Track commit history (Advanced)
+                  <span className="block text-xs text-muted-foreground font-normal">
+                    Build a running, AI-elaborated record of commits. Each commit becomes a
+                    searchable knowledge entry linked to the files it touched. Increases
+                    first-sync time and LLM cost.
+                  </span>
+                </label>
+              </div>
+
+              {trackCommitHistory && (
+                <div className="mt-3 space-y-2">
+                  <label htmlFor="selfhosted-commit-history-depth" className="block text-xs font-medium">
+                    Commit history depth
+                  </label>
+                  <input
+                    id="selfhosted-commit-history-depth"
+                    data-testid="selfhosted-commit-history-depth"
+                    type="number"
+                    min={1}
+                    max={2000}
+                    value={commitHistoryDepth}
+                    onChange={(e) => setCommitHistoryDepth(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Default 500. Platform ceiling 2000.
+                  </p>
+                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-200">
+                    If the platform AI is unavailable, commits will be recorded without AI elaboration.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {commitError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{commitError}</p>
+            )}
+
             {configureMut.error && (
               <p className="text-sm text-red-600 dark:text-red-400">
                 {configureMut.error instanceof Error ? configureMut.error.message : 'Configuration failed'}
@@ -611,6 +682,50 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
             </div>
           </form>
         )
+      )}
+
+      {/* Commit History Cost Confirmation Modal (NODE-6) */}
+      {showCommitCostConfirm && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          data-testid="selfhosted-commit-history-cost-confirm"
+        >
+          <div className="bg-card rounded-xl p-6 max-w-md w-full space-y-3 shadow-sm">
+            <h2 className="text-lg font-semibold">Confirm commit-history backfill</h2>
+            <p className="text-sm text-muted-foreground">
+              Enabling commit-history will elaborate up to {commitHistoryDepth} commits with AI.
+              Estimated cost: approximately {commitHistoryDepth * 1200} tokens
+              (~${(commitHistoryDepth * 0.0007).toFixed(2)}).
+            </p>
+            <p className="text-sm text-muted-foreground">
+              If the platform AI is unavailable, commits will be recorded without AI elaboration.
+              This is a one-time backfill; subsequent syncs process only new commits.
+            </p>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCommitCostConfirm(false)
+                  setTrackCommitHistory(false)
+                }}
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCommitCostConfirm(false)
+                  configureMut.mutate()
+                }}
+                disabled={configureMut.isPending}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50"
+              >
+                Confirm &amp; Enable
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Remove Confirmation Modal */}

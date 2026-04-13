@@ -85,10 +85,12 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         CancellationToken cancellationToken = default)
     {
         var tokenBudget = researchMode ? ResearchTokenBudget : DefaultTokenBudget;
-        var contextText = BuildContext(searchResults, tokenBudget);
+        // FEAT_SelfHostedTemporalAwareness
+        var contextText = BuildContext(searchResults, tokenBudget, userTimezone, _logger);
 
         if (string.IsNullOrWhiteSpace(contextText))
         {
@@ -102,7 +104,17 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
 
         try
         {
-            var systemPrompt = vaultSystemPrompt ?? _defaultSystemPrompt;
+            // FEAT_SelfHostedTemporalAwareness: build dynamic system prompt.
+            // Note: the platform AI service is a proxy — the main platform
+            // has its own temporal awareness for its own chat pipelines. We
+            // still build a temporal system prompt here because the completion
+            // endpoint used is a plain LLM completion, not the platform's
+            // full chat pipeline.
+            var customOverride = !string.IsNullOrWhiteSpace(vaultSystemPrompt)
+                ? vaultSystemPrompt
+                : _defaultSystemPrompt;
+            var systemPrompt = TemporalPromptBuilder.BuildSystemPrompt(
+                customOverride, userTimezone, DateTime.UtcNow, _logger);
             var completionRequest = new PlatformCompletionRequest(
                 Messages: new[]
                 {
@@ -159,10 +171,12 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var tokenBudget = researchMode ? ResearchTokenBudget : DefaultTokenBudget;
-        var contextText = BuildContext(searchResults, tokenBudget);
+        // FEAT_SelfHostedTemporalAwareness
+        var contextText = BuildContext(searchResults, tokenBudget, userTimezone, _logger);
 
         if (string.IsNullOrWhiteSpace(contextText))
         {
@@ -170,7 +184,11 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
             yield break;
         }
 
-        var systemPrompt = vaultSystemPrompt ?? _defaultSystemPrompt;
+        var customOverride = !string.IsNullOrWhiteSpace(vaultSystemPrompt)
+            ? vaultSystemPrompt
+            : _defaultSystemPrompt;
+        var systemPrompt = TemporalPromptBuilder.BuildSystemPrompt(
+            customOverride, userTimezone, DateTime.UtcNow, _logger);
         var completionRequest = new PlatformCompletionRequest(
             Messages: new[]
             {
@@ -322,7 +340,11 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
 
     // --- Internal helpers (visible for testing via InternalsVisibleTo) ---
 
-    internal static string BuildContext(List<SearchResultItem> results, int tokenBudget)
+    internal static string BuildContext(
+        List<SearchResultItem> results,
+        int tokenBudget,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var charBudget = tokenBudget * ApproxCharsPerToken;
         var sb = new StringBuilder();
@@ -330,7 +352,7 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
 
         foreach (var result in results.OrderByDescending(r => r.Score))
         {
-            var block = FormatSourceBlock(result);
+            var block = FormatSourceBlock(result, userTimezone, logger);
             if (currentLength + block.Length > charBudget)
             {
                 var remaining = charBudget - currentLength;
@@ -348,10 +370,32 @@ public class PlatformAIService : IOpenAIService, IStreamingOpenAIService, IConte
         return sb.ToString().TrimEnd();
     }
 
-    internal static string FormatSourceBlock(SearchResultItem result)
+    internal static string FormatSourceBlock(
+        SearchResultItem result,
+        string userTimezone = "UTC",
+        ILogger? logger = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"### {result.Title} [{result.KnowledgeId}]");
+
+        // FEAT_SelfHostedTemporalAwareness: emit Created/Updated before body.
+        var createdLocal = ChatTimezoneHelper.FormatDateInTimezone(
+            result.CreatedAt, userTimezone, logger);
+        if (!string.IsNullOrEmpty(createdLocal))
+        {
+            sb.AppendLine($"Created: {createdLocal}");
+        }
+        if (result.UpdatedAt.HasValue
+            && !ChatTimezoneHelper.SameLocalDay(
+                result.CreatedAt, result.UpdatedAt.Value, userTimezone))
+        {
+            var updatedLocal = ChatTimezoneHelper.FormatDateInTimezone(
+                result.UpdatedAt.Value, userTimezone, logger);
+            if (!string.IsNullOrEmpty(updatedLocal))
+            {
+                sb.AppendLine($"Updated: {updatedLocal}");
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(result.Summary))
         {

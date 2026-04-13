@@ -486,6 +486,59 @@ public static class KnowledgeEndpoints
             });
         }).Produces<object>().Produces(404);
 
+        // Re-enrich a single knowledge item (triggers re-summarization, re-indexing, BriefSummary generation)
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        group.MapPost("/{id:guid}/re-enrich", async (
+            SelfHostedDbContext db,
+            ITenantProvider tenantProvider,
+            IEnrichmentOutboxWriter enrichmentWriter,
+            Guid id,
+            CancellationToken ct) =>
+        {
+            var knowledge = await db.KnowledgeItems
+                .Where(k => k.Id == id)
+                .Select(k => new { k.Id, k.TenantId })
+                .FirstOrDefaultAsync(ct);
+
+            if (knowledge == null)
+                return Results.NotFound(new { error = "Knowledge item not found" });
+
+            await enrichmentWriter.EnqueueAsync(knowledge.Id, knowledge.TenantId, ct);
+            return Results.Accepted(value: new { message = "Re-enrichment queued", knowledgeId = id });
+        }).Produces<object>(202).Produces(404);
+
+        // Bulk re-enrich all items missing BriefSummary or that haven't been indexed
+        // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+        group.MapPost("/re-enrich-all", async (
+            SelfHostedDbContext db,
+            ITenantProvider tenantProvider,
+            IEnrichmentOutboxWriter enrichmentWriter,
+            CancellationToken ct) =>
+        {
+            var callerTenantId = tenantProvider.TenantId;
+
+            // Find items missing BriefSummary or not indexed
+            var itemsToReEnrich = await db.KnowledgeItems
+                .Where(k => k.BriefSummary == null || !k.IsIndexed)
+                .Select(k => new { k.Id, k.TenantId })
+                .Take(200) // Safety cap
+                .ToListAsync(ct);
+
+            var enqueued = 0;
+            foreach (var item in itemsToReEnrich)
+            {
+                await enrichmentWriter.EnqueueAsync(item.Id, item.TenantId, ct);
+                enqueued++;
+            }
+
+            return Results.Ok(new
+            {
+                message = $"Re-enrichment queued for {enqueued} items",
+                totalFound = itemsToReEnrich.Count,
+                enqueued
+            });
+        }).Produces<object>(200);
+
         // --- Relationship endpoints ---
 
         group.MapGet("/{id:guid}/relationships", async (
@@ -657,5 +710,50 @@ public static class KnowledgeEndpoints
 
             return Results.Ok(new { success = true, data = types });
         });
+    }
+
+    /// <summary>
+    /// Maps the per-item commit-history query endpoint under the vault-scoped
+    /// URL space. Call this from Program.cs: app.MapVaultKnowledgeCommitHistoryEndpoints().
+    ///
+    /// Route: GET /api/v1/vaults/{vaultId:guid}/knowledge/{knowledgeId:guid}/commit-history
+    ///
+    /// WorkGroupID: kc-feat-commit-knowledge-link-20260410-230500
+    /// NodeID: SelfHostedKnowledgeCommitHistoryQuery
+    /// </summary>
+    public static void MapVaultKnowledgeCommitHistoryEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/api/v1/vaults").WithTags("Knowledge");
+
+        group.MapGet("/{vaultId:guid}/knowledge/{knowledgeId:guid}/commit-history", async (
+            KnowledgeService svc,
+            IVaultAccessService vaultAccessService,
+            HttpContext context,
+            Guid vaultId,
+            Guid knowledgeId,
+            int page = 1,
+            int pageSize = 20,
+            CancellationToken ct = default) =>
+        {
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            // Auth step 1: caller must have access to the vault in the URL path.
+            var accessibleVaultIds = await VaultEndpoints.ResolveAccessibleVaultIdsAsync(context, vaultAccessService, ct);
+            if (accessibleVaultIds != null && !accessibleVaultIds.Contains(vaultId))
+            {
+                return Results.Json(new { error = "Access denied to this vault." }, statusCode: 403);
+            }
+
+            // Auth step 2: knowledge item must belong to the vault in the URL path.
+            var vaultIds = await svc.GetKnowledgeVaultIdsAsync(knowledgeId, ct);
+            if (!vaultIds.Contains(vaultId))
+            {
+                return Results.NotFound(new { error = "Knowledge item not found in this vault." });
+            }
+
+            var (items, total) = await svc.GetCommitHistoryForItemAsync(knowledgeId, page, pageSize, ct);
+            return Results.Ok(new CommitHistoryResponse(items, total, page, pageSize));
+        }).Produces<CommitHistoryResponse>().Produces(403).Produces(404);
     }
 }

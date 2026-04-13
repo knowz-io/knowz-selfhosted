@@ -45,6 +45,7 @@ import type {
   Comment,
   CreateCommentData,
   UpdateCommentData,
+  CommentDeleteResult,
   ConfigCategoryDto,
   ConfigEntryUpdateDto,
   ConfigUpdateResult,
@@ -60,6 +61,7 @@ import type {
   AuditLogEntry,
   GitSyncStatus,
   GitSyncHistoryEntry,
+  CommitHistoryResponse,
   PlatformConnectionDto,
   UpsertPlatformConnectionRequest,
   PlatformConnectionTestResult,
@@ -509,10 +511,14 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  deleteComment: (commentId: string) =>
-    request<{ id: string; deleted: boolean }>(`/api/v1/comments/${commentId}`, {
-      method: 'DELETE',
-    }),
+  // WorkGroupID: kc-fix-attach-delete-transcript-20260411-080000 — FEAT_CommentDeleteAttachmentChoice.
+  // `deleteFiles` defaults to false (preserve). The backend returns the CommentDeleteResult
+  // envelope with counts of preserved/deleted files so the UI can show an accurate toast.
+  deleteComment: (commentId: string, deleteFiles: boolean = false) =>
+    request<CommentDeleteResult>(
+      `/api/v1/comments/${commentId}?deleteFiles=${deleteFiles}`,
+      { method: 'DELETE' }
+    ),
 
   attachFileToComment: (commentId: string, fileRecordId: string) =>
     request<FileAttachmentDto>(`/api/v1/comments/${commentId}/attachments`, {
@@ -769,6 +775,15 @@ export const api = {
       body: JSON.stringify(pkg),
     }),
 
+  exportZip: () =>
+    requestBlob('/api/v1/portability/export?mode=full'),
+
+  importZip: (file: File, strategy: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    return requestUpload<unknown>(`/api/v1/portability/import/zip?strategy=${strategy}`, form)
+  },
+
   getSchema: () =>
     request<{ version: number; minReadableVersion: number; compatibility: string }>('/api/v1/portability/schema'),
 
@@ -855,6 +870,20 @@ export const api = {
       method: 'POST',
     }),
 
+  // --- Commit History ---
+  getKnowledgeCommitHistory: (
+    vaultId: string,
+    knowledgeId: string,
+    page: number = 1,
+    pageSize: number = 20,
+  ) =>
+    request<CommitHistoryResponse>(
+      `/api/v1/vaults/${vaultId}/knowledge/${knowledgeId}/commit-history${buildQuery({
+        page: String(page),
+        pageSize: String(pageSize),
+      })}`,
+    ),
+
   // --- Audit Logs ---
   getAuditLogs: (params?: { entityId?: string; entityType?: string; page?: number; pageSize?: number }) =>
     request<PaginatedResult<AuditLogEntry>>(
@@ -870,7 +899,7 @@ export const api = {
   getGitSyncStatus: (vaultId: string) =>
     request<GitSyncStatus>(`/api/v1/vaults/${vaultId}/git-sync`),
 
-  configureGitSync: (vaultId: string, config: { repositoryUrl: string; branch: string; pat?: string; filePatterns?: string }) =>
+  configureGitSync: (vaultId: string, config: { repositoryUrl: string; branch: string; pat?: string; filePatterns?: string; trackCommitHistory?: boolean; commitHistoryDepth?: number }) =>
     request<GitSyncStatus>(`/api/v1/vaults/${vaultId}/git-sync`, {
       method: 'PUT',
       body: JSON.stringify(config),

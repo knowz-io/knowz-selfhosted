@@ -33,6 +33,7 @@ public class NoOpOpenAIService : IOpenAIService, IContentAmendmentService, IStre
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         CancellationToken cancellationToken = default)
     {
         _logger.LogWarning("OpenAI is not configured. Q&A is unavailable.");
@@ -49,6 +50,7 @@ public class NoOpOpenAIService : IOpenAIService, IContentAmendmentService, IStre
         List<SearchResultItem> searchResults,
         string? vaultSystemPrompt = null,
         bool researchMode = false,
+        string userTimezone = "UTC",
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         _logger.LogWarning("OpenAI is not configured. Streaming Q&A is unavailable.");

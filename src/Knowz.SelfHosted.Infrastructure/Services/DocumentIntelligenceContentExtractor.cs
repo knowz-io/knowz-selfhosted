@@ -8,7 +8,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class DocumentIntelligenceContentExtractor : IFileContentExtractor
 {
-    private const int MaxExtractionChars = 524_288; // ~1MB UTF-16
+    private const int MaxExtractionChars = 10_000_000; // 10M chars
 
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {

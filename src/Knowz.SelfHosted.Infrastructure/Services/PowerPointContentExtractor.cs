@@ -8,7 +8,7 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class PowerPointContentExtractor : IFileContentExtractor
 {
-    internal const int MaxExtractionChars = 2_097_152; // ~2MB
+    internal const int MaxExtractionChars = 10_000_000; // 10M chars
 
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -118,7 +118,7 @@ public class PowerPointContentExtractor : IFileContentExtractor
                                 textParts.Add(shapeText[..remaining]);
 
                             _logger.LogWarning(
-                                "PowerPoint {FileRecordId} ({FileName}) exceeded 2MB extraction limit at slide {Slide}, content truncated",
+                                "PowerPoint {FileRecordId} ({FileName}) exceeded 10M char extraction limit at slide {Slide}, content truncated",
                                 fileRecord.Id, fileRecord.FileName, slideNumber);
                             truncated = true;
                             break;

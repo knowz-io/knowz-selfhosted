@@ -6,7 +6,7 @@ import {
   ArrowLeft, Pencil, Trash2, Save, X, Paperclip, Download, Upload,
   Loader2, RefreshCw, History, RotateCcw, ChevronDown, ChevronRight,
   Sparkles, FileText, PanelRightClose, PanelRightOpen, Eye,
-  MessageCircle, Send, Maximize2, Minimize2,
+  MessageCircle, Send, Maximize2, Minimize2, GitCommit,
 } from 'lucide-react'
 import CommentSection from '../components/CommentSection'
 import MarkdownContent from '../components/MarkdownContent'
@@ -15,7 +15,7 @@ import DetailSidebar from '../components/DetailSidebar'
 import EnrichmentBanner from '../components/EnrichmentBanner'
 import AttachmentViewer from '../components/AttachmentViewer'
 import type { TabId } from '../components/ContentTabs'
-import type { FileMetadataDto, KnowledgeVersion } from '../lib/types'
+import type { FileMetadataDto, KnowledgeVersion, CommitHistoryEntry, CommitHistoryResponse } from '../lib/types'
 import { formatFileSize } from '../lib/format-utils'
 import { useFormatters } from '../hooks/useFormatters'
 
@@ -39,6 +39,9 @@ export default function KnowledgeDetailPage() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<number | null>(null)
   const [viewingAttachment, setViewingAttachment] = useState<FileMetadataDto | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [showRefinementModal, setShowRefinementModal] = useState(false)
+  const [refinementGuidance, setRefinementGuidance] = useState('')
+  const [commitPage, setCommitPage] = useState(1)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -64,6 +67,28 @@ export default function KnowledgeDetailPage() {
     queryFn: () => api.getVersionHistory(id!),
     enabled: !!id && activeTab === 'history',
   })
+
+  // Commit history — lazy fetch when the Commits tab is active, only for Code-type items
+  const primaryVaultId = data?.vaults?.find((v) => v.isPrimary)?.id ?? data?.vaults?.[0]?.id
+  const {
+    data: commitHistory,
+    isLoading: commitsLoading,
+    error: commitsError,
+  } = useQuery<CommitHistoryResponse>({
+    queryKey: ['knowledge-commit-history', id, primaryVaultId, commitPage],
+    queryFn: () => api.getKnowledgeCommitHistory(primaryVaultId!, id!, commitPage, 20),
+    enabled:
+      !!id &&
+      !!primaryVaultId &&
+      activeTab === 'commit-history' &&
+      data?.type === 'Code',
+    staleTime: 30_000,
+  })
+
+  // Reset paging when the user navigates away from the Commits tab
+  useEffect(() => {
+    if (activeTab !== 'commit-history') setCommitPage(1)
+  }, [activeTab])
 
   // Enrichment status polling — resilient to 404 if endpoint not yet deployed
   const { data: enrichmentStatus } = useQuery({
@@ -137,6 +162,16 @@ export default function KnowledgeDetailPage() {
     },
     onError: (err) => {
       setReprocessMsg({ type: 'error', text: err instanceof Error ? err.message : 'Reprocess failed' })
+    },
+  })
+
+  const refinementMut = useMutation({
+    mutationFn: () => api.updateKnowledge(id!, { summaryRefinementGuidance: refinementGuidance }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge', id] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status', id] })
+      setShowRefinementModal(false)
+      reprocessMut.mutate()
     },
   })
 
@@ -225,15 +260,22 @@ export default function KnowledgeDetailPage() {
 
   const attachmentCount = attachments?.length ?? 0
 
-  const contentTabs = useMemo(
-    () => [
+  useEffect(() => {
+    setRefinementGuidance(data?.summaryRefinementGuidance ?? '')
+  }, [data?.summaryRefinementGuidance])
+
+  const contentTabs = useMemo(() => {
+    const tabs = [
       { id: 'summary' as TabId, label: 'AI Summary', icon: Sparkles },
       { id: 'original' as TabId, label: 'Original', icon: FileText },
       { id: 'attachments' as TabId, label: 'Attachments', icon: Paperclip, count: attachmentCount },
       { id: 'history' as TabId, label: 'History', icon: History },
-    ],
-    [attachmentCount],
-  )
+    ]
+    if (data?.type === 'Code' && (data.vaults?.length ?? 0) > 0) {
+      tabs.push({ id: 'commit-history' as TabId, label: 'Commits', icon: GitCommit })
+    }
+    return tabs
+  }, [attachmentCount, data?.type, data?.vaults?.length])
 
   if (isLoading) {
     return (
@@ -416,6 +458,7 @@ export default function KnowledgeDetailPage() {
                   <SummaryTabContent
                     summary={data.summary}
                     reprocessMut={reprocessMut}
+                    onRefine={() => setShowRefinementModal(true)}
                   />
                 )}
 
@@ -452,6 +495,18 @@ export default function KnowledgeDetailPage() {
                     showRestoreConfirm={showRestoreConfirm}
                     onShowRestoreConfirm={setShowRestoreConfirm}
                     restoreMut={restoreMut}
+                  />
+                )}
+
+                {activeTab === 'commit-history' && (
+                  <CommitHistoryPanel
+                    entries={commitHistory?.items ?? []}
+                    total={commitHistory?.total ?? 0}
+                    page={commitPage}
+                    pageSize={20}
+                    isLoading={commitsLoading}
+                    error={commitsError as Error | null}
+                    onPageChange={setCommitPage}
                   />
                 )}
               </div>
@@ -513,6 +568,44 @@ export default function KnowledgeDetailPage() {
         </div>
       )}
 
+      {/* Refine Summary Modal */}
+      {showRefinementModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl p-6 max-w-md w-full space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Sparkles size={18} className="text-primary" /> Refine Summary
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Provide guidance for how the AI should summarise this item. Leave empty to use the default.
+            </p>
+            <textarea
+              value={refinementGuidance}
+              onChange={(e) => setRefinementGuidance(e.target.value)}
+              maxLength={1000}
+              rows={4}
+              placeholder="e.g. Use bullet points. Focus on dates and people. Keep under 3 sentences."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <div className="text-xs text-muted-foreground text-right">{refinementGuidance.length}/1000</div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowRefinementModal(false)}
+                className="px-4 py-2 border border-input rounded-md text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => refinementMut.mutate()}
+                disabled={refinementMut.isPending}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {refinementMut.isPending ? 'Saving...' : 'Save & Regenerate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Attachment Viewer Modal */}
       {viewingAttachment && (
         <AttachmentViewer
@@ -550,9 +643,11 @@ export default function KnowledgeDetailPage() {
 function SummaryTabContent({
   summary,
   reprocessMut,
+  onRefine,
 }: {
   summary?: string
   reprocessMut: { mutate: () => void; isPending: boolean }
+  onRefine?: () => void
 }) {
   if (!summary) {
     return (
@@ -573,6 +668,17 @@ function SummaryTabContent({
 
   return (
     <div className="bg-card border border-border/60 rounded-xl p-5">
+      {onRefine && (
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={onRefine}
+            className="flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-[10px] font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Sparkles size={12} /> Refine summary
+          </button>
+        </div>
+      )}
       <MarkdownContent content={summary} />
     </div>
   )
@@ -990,6 +1096,156 @@ function VersionHistoryPanel({
                 {restoreMut.isPending ? 'Restoring...' : 'Restore'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Commit History Panel ---
+
+function CommitHistoryPanel({
+  entries,
+  total,
+  page,
+  pageSize,
+  isLoading,
+  error,
+  onPageChange,
+}: {
+  entries: CommitHistoryEntry[]
+  total: number
+  page: number
+  pageSize: number
+  isLoading: boolean
+  error: Error | null
+  onPageChange: (page: number) => void
+}) {
+  const fmt = useFormatters()
+  const [expandedSha, setExpandedSha] = useState<string | null>(null)
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:border-red-700 dark:text-red-400">
+        {error instanceof Error ? error.message : 'Failed to load commit history'}
+      </div>
+    )
+  }
+
+  if (entries.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <GitCommit size={32} className="mx-auto text-muted-foreground mb-3" />
+        <p className="text-muted-foreground">No commit history yet.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          This file has not been linked to any commits in this vault&apos;s git repository.
+        </p>
+      </div>
+    )
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const fromIdx = (page - 1) * pageSize + 1
+  const toIdx = Math.min(page * pageSize, total)
+  const showPagination = total > pageSize
+
+  return (
+    <div className="space-y-3">
+      <ul className="space-y-3">
+        {entries.map((entry) => {
+          const isExpanded = expandedSha === entry.sha
+          return (
+            <li
+              key={entry.sha}
+              className="border border-border/60 rounded-xl shadow-sm overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => setExpandedSha(isExpanded ? null : entry.sha)}
+                className="w-full flex items-start justify-between gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+              >
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  {isExpanded ? (
+                    <ChevronDown size={16} className="text-muted-foreground flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <ChevronRight size={16} className="text-muted-foreground flex-shrink-0 mt-0.5" />
+                  )}
+                  <GitCommit size={16} className="text-muted-foreground flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium truncate">{entry.title}</span>
+                      <time
+                        dateTime={entry.committedAt}
+                        title={new Date(entry.committedAt).toISOString()}
+                        className="text-xs text-muted-foreground flex-shrink-0"
+                      >
+                        {fmt.relative(entry.committedAt)}
+                      </time>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <span>{entry.authorName}</span>
+                      <span>&middot;</span>
+                      <span className="font-mono">{entry.shortSha}</span>
+                      <span>&middot;</span>
+                      <span>
+                        {entry.changedFileCount} {entry.changedFileCount === 1 ? 'file' : 'files'}
+                      </span>
+                      <span>&middot;</span>
+                      <span className="text-green-600 dark:text-green-400">+{entry.linesAdded}</span>
+                      <span className="text-red-600 dark:text-red-400">-{entry.linesDeleted}</span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              {isExpanded && entry.content && (
+                <div className="border-t border-border/60 px-4 py-3">
+                  <div className="whitespace-pre-wrap text-sm bg-muted border border-border/60 rounded-lg p-3 max-h-80 overflow-y-auto font-mono">
+                    {entry.content}
+                  </div>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {showPagination && (
+        <div className="flex items-center justify-between pt-2 border-t border-border/60">
+          <p className="text-xs text-muted-foreground">
+            Showing {fromIdx}-{toIdx} of {total} commits
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-input rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(page + 1)}
+              disabled={page >= totalPages}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-input rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}

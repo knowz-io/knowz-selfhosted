@@ -1,5 +1,6 @@
 namespace Knowz.SelfHosted.Application.Services;
 
+using System.IO.Compression;
 using System.Text.Json;
 using Knowz.Core.Configuration;
 using Knowz.Core.Interfaces;
@@ -330,6 +331,61 @@ public class PortableExportService : IPortableExportService
             portableComments.Count, portableFiles.Count, archiveData.Count);
 
         return package;
+    }
+
+    public async Task<Stream> ExportZipAsync(CancellationToken ct = default)
+    {
+        var package = await ExportAsync(ct);
+        package.Mode = ExportMode.Full;
+
+        var skippedItems = new List<PortableSkippedItem>();
+        var tenantId = _tenantProvider.TenantId;
+
+        var memoryStream = new MemoryStream();
+        using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var file in package.Data.FileRecords)
+            {
+                file.BinaryContentBase64 = null;
+
+                try
+                {
+                    var (downloadStream, _, _) = await _storageProvider.DownloadAsync(tenantId, file.Id, ct);
+                    using (downloadStream)
+                    {
+                        var ext = Path.GetExtension(file.FileName);
+                        if (string.IsNullOrEmpty(ext)) ext = ".bin";
+                        var entryPath = $"files/{file.Id}{ext}";
+
+                        var entry = archive.CreateEntry(entryPath, CompressionLevel.Optimal);
+                        using var entryStream = entry.Open();
+                        await downloadStream.CopyToAsync(entryStream, ct);
+
+                        file.BinaryFilePath = entryPath;
+                        _logger.LogInformation(
+                            "Added binary file to ZIP: {FileRecordId} ({FileName})",
+                            file.Id, file.FileName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to download binary for file {FileRecordId} ({FileName}). Skipping in ZIP.",
+                        file.Id, file.FileName);
+                    skippedItems.Add(new PortableSkippedItem
+                    {
+                        Id = file.Id,
+                        Title = file.FileName,
+                        Reason = $"Binary download failed: {ex.Message}"
+                    });
+                }
+            }
+
+            PortableZipWriter.WriteToZip(archive, package, skippedItems);
+        }
+
+        memoryStream.Position = 0;
+        return memoryStream;
     }
 
     private static void MergePlatformData(string? platformData, Action<Dictionary<string, JsonElement>?> setter)

@@ -121,6 +121,8 @@ public class LocalVectorSearchService : ISearchService
                 .ToListAsync(cancellationToken);
 
             // Load knowledge item metadata for results
+            // FEAT_SelfHostedTemporalAwareness: also project UpdatedAt
+            // FEAT_SelfHostedRetrievalPolicy: also project BriefSummary for field-weighted scoring
             var knowledgeItems = await baseQuery
                 .Select(k => new
                 {
@@ -128,8 +130,10 @@ public class LocalVectorSearchService : ISearchService
                     k.Title,
                     k.Content,
                     k.Summary,
+                    k.BriefSummary,
                     k.FilePath,
-                    k.CreatedAt
+                    k.CreatedAt,
+                    k.UpdatedAt
                 })
                 .ToListAsync(cancellationToken);
 
@@ -149,7 +153,8 @@ public class LocalVectorSearchService : ISearchService
             foreach (var item in knowledgeItems)
             {
                 contextSummaryMap.TryGetValue(item.Id, out var contextSummary);
-                var keywordScore = ComputeFieldWeightedScore(item.Title, item.Summary, item.Content, contextSummary, query);
+                var keywordScore = ComputeFieldWeightedScore(item.Title, item.Summary, item.Content, contextSummary, query,
+                    briefSummary: item.BriefSummary);
                 scoredResults[item.Id] = (0.0, keywordScore);
             }
 
@@ -207,7 +212,9 @@ public class LocalVectorSearchService : ISearchService
                         FilePath = item.FilePath,
                         Score = fusedScore,
                         Highlights = new List<string>(),
-                        Tags = new List<string>()
+                        Tags = new List<string>(),
+                        CreatedAt = item.CreatedAt,
+                        UpdatedAt = item.UpdatedAt,
                     };
                 })
                 .Where(r => r.Score > 0)
@@ -247,6 +254,8 @@ public class LocalVectorSearchService : ISearchService
         string? filePath,
         float[]? contentVector,
         int? chunkIndex = null,
+        DateTime? knowledgeCreatedAt = null,
+        DateTime? knowledgeUpdatedAt = null,
         CancellationToken cancellationToken = default)
     {
         // No-op: embeddings are stored directly in ContentChunks by the enrichment pipeline
@@ -298,10 +307,11 @@ public class LocalVectorSearchService : ISearchService
     /// Computes a term-frequency field-weighted score.
     /// Splits query into terms, counts occurrences per field, normalizes by field length,
     /// applies field boost weights, and averages across terms.
-    /// Field boosts: title=3.0, content=2.5, summary=2.0, contextSummary=1.5.
+    /// Field boosts: title=3.0, content=2.5, briefSummary=2.5, summary=2.0, contextSummary=1.5.
     /// </summary>
     internal static double ComputeFieldWeightedScore(
-        string title, string? summary, string content, string? contextSummary, string query)
+        string title, string? summary, string content, string? contextSummary, string query,
+        string? briefSummary = null)
     {
         if (string.IsNullOrWhiteSpace(query))
             return 0.0;
@@ -317,6 +327,9 @@ public class LocalVectorSearchService : ISearchService
             var termScore = 0.0;
             termScore += ComputeFieldTermScore(title, term, 3.0);
             termScore += ComputeFieldTermScore(content, term, 2.5);
+            // BriefSummary: high-signal condensed summary for search quality
+            // WorkGroupID: kc-feat-selfhosted-retrieval-policy-20260413-030000
+            termScore += ComputeFieldTermScore(briefSummary, term, 2.5);
             termScore += ComputeFieldTermScore(summary, term, 2.0);
             termScore += ComputeFieldTermScore(contextSummary, term, 1.5);
             totalScore += termScore;
@@ -378,7 +391,8 @@ public class LocalVectorSearchService : ISearchService
             baseQuery = baseQuery.Where(k =>
                 EF.Functions.Like(k.Title, pattern) ||
                 EF.Functions.Like(k.Content, pattern) ||
-                (k.Summary != null && EF.Functions.Like(k.Summary, pattern)));
+                (k.Summary != null && EF.Functions.Like(k.Summary, pattern)) ||
+                (k.BriefSummary != null && EF.Functions.Like(k.BriefSummary, pattern)));
         }
 
         if (vaultId.HasValue)
@@ -421,12 +435,13 @@ public class LocalVectorSearchService : ISearchService
             baseQuery = baseQuery.Where(k => k.CreatedAt <= endDate.Value);
 
         var items = await baseQuery
-            .Select(k => new { k.Id, k.Title, k.Content, k.Summary, k.FilePath })
+            .Select(k => new { k.Id, k.Title, k.Content, k.Summary, k.BriefSummary, k.FilePath, k.CreatedAt, k.UpdatedAt })
             .ToListAsync(cancellationToken);
 
         return items.Select(k =>
             {
-                var score = ComputeFieldWeightedScore(k.Title, k.Summary, k.Content, null, query);
+                var score = ComputeFieldWeightedScore(k.Title, k.Summary, k.Content, null, query,
+                    briefSummary: k.BriefSummary);
                 return new SearchResultItem
                 {
                     KnowledgeId = k.Id,
@@ -436,7 +451,9 @@ public class LocalVectorSearchService : ISearchService
                     FilePath = k.FilePath,
                     Score = score,
                     Highlights = new List<string>(),
-                    Tags = new List<string>()
+                    Tags = new List<string>(),
+                    CreatedAt = k.CreatedAt,
+                    UpdatedAt = k.UpdatedAt,
                 };
             })
             .OrderByDescending(r => r.Score)

@@ -125,11 +125,15 @@ public class KnowledgeService
             {
                 var embedding = await _openAIService.GenerateEmbeddingAsync(chunk.EmbeddingText, ct);
 
+                // FEAT_SelfHostedTemporalAwareness: pass the entity's real
+                // creation/update dates so the chat feature can cite them.
                 await _searchService.IndexDocumentAsync(
                     item.Id, title, chunk.Content, null,
                     vault?.Name, vaultId, ancestorVaultIds, null,
                     tagNames, typeStr, null, embedding,
                     chunkIndex: chunks.Count > 1 ? chunk.Position : null,
+                    knowledgeCreatedAt: item.CreatedAt,
+                    knowledgeUpdatedAt: item.UpdatedAt,
                     cancellationToken: ct);
             }
 
@@ -538,6 +542,123 @@ public class KnowledgeService
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// Returns the paginated list of commit children whose <c>References</c> edges
+    /// target the given knowledge item, ordered most-recent-first. Reads the
+    /// <see cref="KnowledgeRelationship"/> edges written by the selfhosted
+    /// commit-history ingestion path and hydrates each source (commit child)
+    /// into a compact <see cref="CommitHistoryEntry"/> DTO.
+    ///
+    /// Tenant scoping is automatic via the DbContext query filter on
+    /// <see cref="KnowledgeRelationship"/> and <see cref="Knowledge"/>.
+    /// Authorization (vault-access gate) is the endpoint's responsibility,
+    /// not this method.
+    ///
+    /// WorkGroupID: kc-feat-commit-knowledge-link-20260410-230500
+    /// NodeID: SelfHostedKnowledgeCommitHistoryQuery
+    /// </summary>
+    public async Task<(IReadOnlyList<CommitHistoryEntry> items, int total)> GetCommitHistoryForItemAsync(
+        Guid knowledgeId,
+        int page,
+        int pageSize,
+        CancellationToken ct)
+    {
+        var baseQuery =
+            from rel in _db.KnowledgeRelationships
+            where rel.TargetKnowledgeId == knowledgeId
+                && rel.RelationshipType == KnowledgeRelationshipType.References
+                && !rel.IsDeleted
+            join k in _db.KnowledgeItems on rel.SourceKnowledgeId equals k.Id
+            where k.Type == KnowledgeType.Commit && !k.IsDeleted
+            select k;
+
+        var total = await baseQuery.CountAsync(ct);
+
+        // NODE-2: Sort by CommittedAt column first (true commit timestamp) with
+        // CreatedAt as the fallback when the column is NULL (pre-NODE-2 rows).
+        // COALESCE translates to ORDER BY COALESCE(CommittedAt, CreatedAt) DESC in SQL.
+        // WorkGroupID: kc-feat-commit-history-polish-20260411-051000
+        var rows = await baseQuery
+            .OrderByDescending(k => k.CommittedAt ?? k.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var items = rows.Select(MapCommitHistoryEntry).ToList();
+        return (items, total);
+    }
+
+    private static CommitHistoryEntry MapCommitHistoryEntry(Knowledge k)
+    {
+        string sha = string.Empty;
+        string authorName = string.Empty;
+        // R-5 NODE-2 precedence: column wins > JSON > CreatedAt final fallback.
+        // Start with column-or-CreatedAt; JSON only overrides when the column is NULL.
+        // WorkGroupID: kc-feat-commit-history-polish-20260411-051000
+        DateTime committedAt = k.CommittedAt ?? k.CreatedAt;
+        int changedFileCount = 0;
+        int linesAdded = 0;
+        int linesDeleted = 0;
+
+        if (!string.IsNullOrEmpty(k.PlatformData))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(k.PlatformData);
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("commitSha", out var shaEl) && shaEl.ValueKind == JsonValueKind.String)
+                    {
+                        sha = shaEl.GetString() ?? string.Empty;
+                    }
+                    if (root.TryGetProperty("authorName", out var aEl) && aEl.ValueKind == JsonValueKind.String)
+                    {
+                        authorName = aEl.GetString() ?? string.Empty;
+                    }
+                    // Only fall back to JSON when the column is NULL (NODE-2 R-5 precedence).
+                    if (!k.CommittedAt.HasValue
+                        && root.TryGetProperty("committedAt", out var cEl)
+                        && cEl.ValueKind == JsonValueKind.String
+                        && DateTime.TryParse(cEl.GetString(), out var parsed))
+                    {
+                        committedAt = parsed;
+                    }
+                    if (root.TryGetProperty("changedFileCount", out var fcEl) && fcEl.TryGetInt32(out var fc))
+                    {
+                        changedFileCount = fc;
+                    }
+                    if (root.TryGetProperty("linesAddedTotal", out var laEl) && laEl.TryGetInt32(out var la))
+                    {
+                        linesAdded = la;
+                    }
+                    if (root.TryGetProperty("linesDeletedTotal", out var ldEl) && ldEl.TryGetInt32(out var ld))
+                    {
+                        linesDeleted = ld;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Defensive fallback — keep the CommittedAt/CreatedAt + empty defaults.
+            }
+        }
+
+        var shortSha = sha.Length >= 7 ? sha[..7] : sha;
+
+        return new CommitHistoryEntry(
+            KnowledgeId: k.Id,
+            Sha: sha,
+            ShortSha: shortSha,
+            Title: k.Title,
+            AuthorName: authorName,
+            CommittedAt: committedAt,
+            ChangedFileCount: changedFileCount,
+            LinesAdded: linesAdded,
+            LinesDeleted: linesDeleted,
+            Content: k.Content);
+    }
+
     public async Task<List<CreatorRef>> GetKnowledgeCreatorsAsync(CancellationToken ct)
     {
         return await _db.KnowledgeItems
@@ -651,12 +772,15 @@ public class KnowledgeService
 
                 chunkData[chunk.Position] = (hash, embeddingJson);
 
+                // FEAT_SelfHostedTemporalAwareness: thread entity dates
                 await _searchService.IndexDocumentAsync(
                     item.Id, item.Title, chunk.Content, item.Summary,
                     vaultName, vaultId, ancestorVaultIds, topicName,
                     currentTags, item.Type.ToString(),
                     item.FilePath, embedding,
                     chunkIndex: chunks.Count > 1 ? chunk.Position : null,
+                    knowledgeCreatedAt: item.CreatedAt,
+                    knowledgeUpdatedAt: item.UpdatedAt,
                     cancellationToken: ct);
             }
 
