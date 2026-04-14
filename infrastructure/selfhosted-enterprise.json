@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "1140019996675236492"
+      "templateHash": "2549604604811776458"
     }
   },
   "parameters": {
@@ -69,6 +69,20 @@
         "description": "External OpenAI API key (required when deployOpenAI is false)"
       }
     },
+    "existingOpenAiName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of existing Azure OpenAI resource to reuse (leave empty to deploy new or use external)"
+      }
+    },
+    "existingOpenAiResourceGroup": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource group of existing OpenAI resource (defaults to current RG)"
+      }
+    },
     "chatDeploymentName": {
       "type": "string",
       "defaultValue": "gpt-5.2-chat",
@@ -104,6 +118,20 @@
         "description": "External Azure AI Vision API key (required when deployVision is false)"
       }
     },
+    "existingVisionName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of existing Azure AI Vision resource to reuse (leave empty to deploy new or use external)"
+      }
+    },
+    "existingVisionResourceGroup": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource group of existing Vision resource (defaults to current RG)"
+      }
+    },
     "deployDocumentIntelligence": {
       "type": "bool",
       "defaultValue": true,
@@ -123,6 +151,20 @@
       "defaultValue": "",
       "metadata": {
         "description": "External Document Intelligence API key (required when deployDocumentIntelligence is false)"
+      }
+    },
+    "existingDocIntelName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of existing Document Intelligence resource to reuse (leave empty to deploy new or use external)"
+      }
+    },
+    "existingDocIntelResourceGroup": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource group of existing Document Intelligence resource (defaults to current RG)"
       }
     },
     "searchSku": {
@@ -2062,6 +2104,14 @@
     "documentIntelligenceName": {
       "type": "string",
       "value": "[if(parameters('deployDocumentIntelligence'), format('{0}-docintel-{1}', parameters('prefix'), parameters('location')), 'external')]"
+    },
+    "aiConfigurationSummary": {
+      "type": "object",
+      "value": {
+        "openai": "[if(parameters('deployOpenAI'), 'deployed', if(not(equals(parameters('existingOpenAiName'), '')), format('existing:{0}', parameters('existingOpenAiName')), 'external'))]",
+        "vision": "[if(parameters('deployVision'), 'deployed', if(not(equals(parameters('existingVisionName'), '')), format('existing:{0}', parameters('existingVisionName')), 'external'))]",
+        "docIntel": "[if(parameters('deployDocumentIntelligence'), 'deployed', if(not(equals(parameters('existingDocIntelName'), '')), format('existing:{0}', parameters('existingDocIntelName')), 'external'))]"
+      }
     },
     "sqlServerFqdn": {
       "type": "string",

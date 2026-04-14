@@ -50,23 +50,35 @@ locals {
 
   storage_connection_string = "DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=${azurerm_storage_account.main.name};AccountKey=${azurerm_storage_account.main.primary_access_key}"
 
-  # Effective OpenAI endpoint (local or external)
-  effective_openai_endpoint = var.deploy_openai ? azurerm_cognitive_account.openai[0].endpoint : var.external_openai_endpoint
+  # Effective OpenAI endpoint — 3-tier resolution: deployed -> existing -> external
+  effective_openai_endpoint = var.deploy_openai ? azurerm_cognitive_account.openai[0].endpoint : (
+    var.existing_openai_resource_name != "" ? data.azurerm_cognitive_account.openai_existing[0].endpoint : var.external_openai_endpoint
+  )
 
-  # Effective OpenAI key (local or external)
-  effective_openai_key = var.deploy_openai ? azurerm_cognitive_account.openai[0].primary_access_key : var.external_openai_key
+  # Effective OpenAI key — 3-tier resolution: deployed -> existing -> external
+  effective_openai_key = var.deploy_openai ? azurerm_cognitive_account.openai[0].primary_access_key : (
+    var.existing_openai_resource_name != "" ? data.azurerm_cognitive_account.openai_existing[0].primary_access_key : var.external_openai_key
+  )
 
-  # Effective Document Intelligence endpoint (local or external)
-  effective_doc_intel_endpoint = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].endpoint : var.external_doc_intel_endpoint
+  # Effective Document Intelligence endpoint — 3-tier resolution: deployed -> existing -> external
+  effective_doc_intel_endpoint = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].endpoint : (
+    var.existing_docintel_resource_name != "" ? data.azurerm_cognitive_account.docintel_existing[0].endpoint : var.external_doc_intel_endpoint
+  )
 
-  # Effective Document Intelligence key (local or external)
-  effective_doc_intel_key = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].primary_access_key : var.external_doc_intel_key
+  # Effective Document Intelligence key — 3-tier resolution: deployed -> existing -> external
+  effective_doc_intel_key = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].primary_access_key : (
+    var.existing_docintel_resource_name != "" ? data.azurerm_cognitive_account.docintel_existing[0].primary_access_key : var.external_doc_intel_key
+  )
 
-  # Effective Vision endpoint (local or external)
-  effective_vision_endpoint = var.deploy_vision ? azurerm_cognitive_account.vision[0].endpoint : var.external_vision_endpoint
+  # Effective Vision endpoint — 3-tier resolution: deployed -> existing -> external
+  effective_vision_endpoint = var.deploy_vision ? azurerm_cognitive_account.vision[0].endpoint : (
+    var.existing_vision_resource_name != "" ? data.azurerm_cognitive_account.vision_existing[0].endpoint : var.external_vision_endpoint
+  )
 
-  # Effective Vision key (local or external)
-  effective_vision_key = var.deploy_vision ? azurerm_cognitive_account.vision[0].primary_access_key : var.external_vision_key
+  # Effective Vision key — 3-tier resolution: deployed -> existing -> external
+  effective_vision_key = var.deploy_vision ? azurerm_cognitive_account.vision[0].primary_access_key : (
+    var.existing_vision_resource_name != "" ? data.azurerm_cognitive_account.vision_existing[0].primary_access_key : var.external_vision_key
+  )
 
   # App Insights connection string (empty when monitoring not deployed)
   effective_app_insights_connection_string = var.deploy_monitoring ? azurerm_application_insights.main[0].connection_string : ""
@@ -99,4 +111,51 @@ resource "random_password" "jwt_secret" {
   count   = var.jwt_secret == "" ? 1 : 0
   length  = 64
   special = true
+}
+
+# --- Data sources for existing AI resources ---
+# Look up pre-existing Cognitive / AIServices resources to reuse (tier-2 mode).
+# Enabled when deploy_* = false AND existing_*_resource_name is set.
+
+data "azurerm_cognitive_account" "openai_existing" {
+  count               = (!var.deploy_openai && var.existing_openai_resource_name != "") ? 1 : 0
+  name                = var.existing_openai_resource_name
+  resource_group_name = var.existing_openai_resource_group
+}
+
+data "azurerm_cognitive_account" "vision_existing" {
+  count               = (!var.deploy_vision && var.existing_vision_resource_name != "") ? 1 : 0
+  name                = var.existing_vision_resource_name
+  resource_group_name = var.existing_vision_resource_group
+}
+
+data "azurerm_cognitive_account" "docintel_existing" {
+  count               = (!var.deploy_document_intelligence && var.existing_docintel_resource_name != "") ? 1 : 0
+  name                = var.existing_docintel_resource_name
+  resource_group_name = var.existing_docintel_resource_group
+}
+
+# --- AI service configuration validation ---
+# Ensures at least one credential source is configured per AI service.
+# Check blocks emit warnings rather than hard errors (unlike variable validation).
+
+check "openai_credentials" {
+  assert {
+    condition     = var.deploy_openai || var.existing_openai_resource_name != "" || (var.external_openai_endpoint != "" && var.external_openai_key != "")
+    error_message = "When deploy_openai=false, provide either existing_openai_resource_name+resource_group OR external_openai_endpoint+key."
+  }
+}
+
+check "vision_credentials" {
+  assert {
+    condition     = var.deploy_vision || var.existing_vision_resource_name != "" || (var.external_vision_endpoint != "" && var.external_vision_key != "")
+    error_message = "When deploy_vision=false, provide either existing_vision_resource_name+resource_group OR external_vision_endpoint+key."
+  }
+}
+
+check "docintel_credentials" {
+  assert {
+    condition     = var.deploy_document_intelligence || var.existing_docintel_resource_name != "" || (var.external_doc_intel_endpoint != "" && var.external_doc_intel_key != "")
+    error_message = "When deploy_document_intelligence=false, provide either existing_docintel_resource_name+resource_group OR external_doc_intel_endpoint+key."
+  }
 }

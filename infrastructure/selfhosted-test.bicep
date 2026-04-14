@@ -42,6 +42,12 @@ param externalOpenAiEndpoint string = ''
 @secure()
 param externalOpenAiKey string = ''
 
+@description('Name of existing Azure OpenAI resource to reuse (leave empty to deploy new or use external)')
+param existingOpenAiName string = ''
+
+@description('Resource group of existing OpenAI resource (defaults to current RG)')
+param existingOpenAiResourceGroup string = ''
+
 @description('Deploy Azure Document Intelligence for advanced document extraction (scanned PDFs, images, legacy Office formats)')
 param deployDocumentIntelligence bool = true
 
@@ -52,6 +58,12 @@ param externalDocIntelEndpoint string = ''
 @description('External Document Intelligence API key (required if deployDocumentIntelligence is false)')
 param externalDocIntelKey string = ''
 
+@description('Name of existing Document Intelligence resource to reuse (leave empty to deploy new or use external)')
+param existingDocIntelName string = ''
+
+@description('Resource group of existing Document Intelligence resource (defaults to current RG)')
+param existingDocIntelResourceGroup string = ''
+
 @description('Deploy Azure AI Vision for image and diagram analysis')
 param deployVision bool = true
 
@@ -61,6 +73,12 @@ param externalVisionEndpoint string = ''
 @secure()
 @description('External Azure AI Vision API key (required if deployVision is false)')
 param externalVisionKey string = ''
+
+@description('Name of existing Azure AI Vision resource to reuse (leave empty to deploy new or use external)')
+param existingVisionName string = ''
+
+@description('Resource group of existing Vision resource (defaults to current RG)')
+param existingVisionResourceGroup string = ''
 
 @description('Azure AI Search SKU')
 @allowed(['free', 'basic', 'standard'])
@@ -256,8 +274,16 @@ resource deploymentEmbedding 'Microsoft.CognitiveServices/accounts/deployments@2
   dependsOn: [deploymentMini]
 }
 
-// Effective OpenAI endpoint (local or external)
-var effectiveOpenAiEndpoint = deployOpenAI ? cognitiveServices.properties.endpoint : externalOpenAiEndpoint
+// Existing OpenAI resource reference (when not deploying new and existing name provided).
+// NOTE: Bicep cannot resolve a conditional scope at compile time, so cross-RG existing resources
+// are handled by the deploy script (selfhosted-deploy.ps1), which performs the lookup and passes
+// in resolved endpoint/key via external* parameters. Here we only support same-RG existing.
+resource existingOpenAi 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!deployOpenAI && existingOpenAiName != '' && empty(existingOpenAiResourceGroup)) {
+  name: existingOpenAiName
+}
+
+// 3-tier resolution: deploy new -> use existing (same RG) -> external endpoint
+var effectiveOpenAiEndpoint = deployOpenAI ? cognitiveServices.properties.endpoint : (existingOpenAiName != '' && empty(existingOpenAiResourceGroup) ? existingOpenAi.properties.endpoint : externalOpenAiEndpoint)
 
 // ============================================================================
 // DOCUMENT INTELLIGENCE (Form Recognizer)
@@ -277,8 +303,13 @@ resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' 
   }
 }
 
-// Effective Document Intelligence endpoint (local or external)
-var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
+// Existing Document Intelligence resource reference (same RG only — see note on OpenAI).
+resource existingDocIntel 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!deployDocumentIntelligence && existingDocIntelName != '' && empty(existingDocIntelResourceGroup)) {
+  name: existingDocIntelName
+}
+
+// 3-tier resolution: deploy new -> use existing (same RG) -> external endpoint
+var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : (existingDocIntelName != '' && empty(existingDocIntelResourceGroup) ? existingDocIntel.properties.endpoint : externalDocIntelEndpoint)
 
 // ============================================================================
 // AZURE AI VISION / COMPUTER VISION
@@ -298,8 +329,13 @@ resource visionAccount 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (d
   }
 }
 
-// Effective Vision endpoint (local or external)
-var effectiveVisionEndpoint = deployVision ? visionAccount.properties.endpoint : externalVisionEndpoint
+// Existing Vision resource reference (same RG only — see note on OpenAI).
+resource existingVision 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = if (!deployVision && existingVisionName != '' && empty(existingVisionResourceGroup)) {
+  name: existingVisionName
+}
+
+// 3-tier resolution: deploy new -> use existing (same RG) -> external endpoint
+var effectiveVisionEndpoint = deployVision ? visionAccount.properties.endpoint : (existingVisionName != '' && empty(existingVisionResourceGroup) ? existingVision.properties.endpoint : externalVisionEndpoint)
 
 // ============================================================================
 // SQL SERVER + DATABASE
@@ -468,7 +504,7 @@ resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   parent: keyVault
   name: 'AzureOpenAI--ApiKey'
   properties: {
-    value: deployOpenAI ? cognitiveServices.listKeys().key1 : externalOpenAiKey
+    value: deployOpenAI ? cognitiveServices.listKeys().key1 : (existingOpenAiName != '' && empty(existingOpenAiResourceGroup) ? existingOpenAi.listKeys().key1 : externalOpenAiKey)
   }
 }
 
@@ -484,7 +520,7 @@ resource kvSecretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   parent: keyVault
   name: 'AzureDocumentIntelligence--ApiKey'
   properties: {
-    value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
+    value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : (existingDocIntelName != '' && empty(existingDocIntelResourceGroup) ? existingDocIntel.listKeys().key1 : externalDocIntelKey)
   }
 }
 
@@ -500,7 +536,7 @@ resource kvSecretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = i
   parent: keyVault
   name: 'AzureAIVision--ApiKey'
   properties: {
-    value: deployVision ? visionAccount.listKeys().key1 : externalVisionKey
+    value: deployVision ? visionAccount.listKeys().key1 : (existingVisionName != '' && empty(existingVisionResourceGroup) ? existingVision.listKeys().key1 : externalVisionKey)
   }
 }
 
@@ -725,7 +761,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
         }
         {
           name: 'openai-apikey'
-          value: deployOpenAI ? cognitiveServices.listKeys().key1 : externalOpenAiKey
+          value: deployOpenAI ? cognitiveServices.listKeys().key1 : (existingOpenAiName != '' && empty(existingOpenAiResourceGroup) ? existingOpenAi.listKeys().key1 : externalOpenAiKey)
         }
         {
           name: 'search-endpoint'
@@ -833,7 +869,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             }
             {
               name: 'AzureDocumentIntelligence__ApiKey'
-              value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
+              value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : (existingDocIntelName != '' && empty(existingDocIntelResourceGroup) ? existingDocIntel.listKeys().key1 : externalDocIntelKey)
             }
             {
               name: 'AzureAIVision__Endpoint'
@@ -841,7 +877,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             }
             {
               name: 'AzureAIVision__ApiKey'
-              value: deployVision ? visionAccount.listKeys().key1 : externalVisionKey
+              value: deployVision ? visionAccount.listKeys().key1 : (existingVisionName != '' && empty(existingVisionResourceGroup) ? existingVision.listKeys().key1 : externalVisionKey)
             }
           ]
         }
@@ -991,18 +1027,25 @@ output searchIndexName string = 'knowledge'
 
 // Azure OpenAI (non-secret: endpoint, deployment names, resource name)
 output openAiEndpoint string = effectiveOpenAiEndpoint
-output openAiResourceName string = deployOpenAI ? cognitiveServices.name : 'external'
+output openAiResourceName string = deployOpenAI ? cognitiveServices.name : (existingOpenAiName != '' ? existingOpenAiName : 'external')
 output chatDeploymentName string = chatDeploymentName
 output miniDeploymentName string = 'gpt-5-mini'
 output embeddingDeploymentName string = embeddingDeploymentName
 
 // Document Intelligence (non-secret: endpoint, resource name)
-output documentIntelligenceEndpoint string = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
-output documentIntelligenceName string = deployDocumentIntelligence ? documentIntelligence.name : 'external'
+output documentIntelligenceEndpoint string = effectiveDocIntelEndpoint
+output documentIntelligenceName string = deployDocumentIntelligence ? documentIntelligence.name : (existingDocIntelName != '' ? existingDocIntelName : 'external')
 
 // Azure AI Vision (non-secret: endpoint, resource name)
-output visionEndpoint string = deployVision ? visionAccount.properties.endpoint : externalVisionEndpoint
-output visionName string = deployVision ? visionAccount.name : 'external'
+output visionEndpoint string = effectiveVisionEndpoint
+output visionName string = deployVision ? visionAccount.name : (existingVisionName != '' ? existingVisionName : 'external')
+
+// AI Configuration Summary (mode per service)
+output aiConfigurationSummary object = {
+  openai: deployOpenAI ? 'deployed' : (existingOpenAiName != '' ? 'existing:${existingOpenAiName}' : 'external')
+  vision: deployVision ? 'deployed' : (existingVisionName != '' ? 'existing:${existingVisionName}' : 'external')
+  docIntel: deployDocumentIntelligence ? 'deployed' : (existingDocIntelName != '' ? 'existing:${existingDocIntelName}' : 'external')
+}
 
 // SQL Database (non-secret: FQDN, database name, server name)
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName

@@ -78,23 +78,40 @@
         "label": "AI Services",
         "elements": [
           {
-            "name": "deployOpenAI",
+            "name": "openaiMode",
             "type": "Microsoft.Common.OptionsGroup",
-            "label": "Deploy Azure OpenAI",
-            "toolTip": "Deploy a new Azure OpenAI resource with chat and embedding models. Select 'No' to use your own OpenAI-compatible endpoint.",
-            "defaultValue": "Yes",
+            "label": "Azure OpenAI Configuration",
+            "toolTip": "Choose how to configure Azure OpenAI. 'Deploy New' creates a new resource. 'Use Existing' references an Azure OpenAI resource you already have. 'External' uses a non-Azure OpenAI-compatible endpoint.",
+            "defaultValue": "Deploy New",
             "constraints": {
               "allowedValues": [
-                {
-                  "label": "Yes",
-                  "value": true
-                },
-                {
-                  "label": "No",
-                  "value": false
-                }
+                { "label": "Deploy New", "value": "new" },
+                { "label": "Use Existing Azure Resource", "value": "existing" },
+                { "label": "External Endpoint", "value": "external" }
               ],
               "required": true
+            }
+          },
+          {
+            "name": "existingOpenAiName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Existing OpenAI Resource Name",
+            "toolTip": "Name of your existing Azure OpenAI or AI Services resource.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').openaiMode, 'existing')]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').openaiMode, 'existing')]"
+            }
+          },
+          {
+            "name": "existingOpenAiResourceGroup",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Resource Group",
+            "toolTip": "Resource group containing the existing OpenAI resource. Leave empty to use the deployment resource group.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').openaiMode, 'existing')]",
+            "constraints": {
+              "required": false
             }
           },
           {
@@ -103,9 +120,9 @@
             "label": "External OpenAI Endpoint",
             "toolTip": "Your OpenAI-compatible API endpoint URL (e.g., https://your-openai.openai.azure.com/).",
             "defaultValue": "",
-            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "visible": "[equals(steps('aiServices').openaiMode, 'external')]",
             "constraints": {
-              "required": "[equals(steps('aiServices').deployOpenAI, false)]",
+              "required": "[equals(steps('aiServices').openaiMode, 'external')]",
               "regex": "^https?://.+$",
               "validationMessage": "Must be a valid URL starting with http:// or https://."
             }
@@ -118,9 +135,9 @@
               "confirmPassword": "Confirm API Key"
             },
             "toolTip": "API key for your external OpenAI-compatible endpoint.",
-            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "visible": "[equals(steps('aiServices').openaiMode, 'external')]",
             "constraints": {
-              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+              "required": "[equals(steps('aiServices').openaiMode, 'external')]"
             },
             "options": {
               "hideConfirmation": true
@@ -130,22 +147,22 @@
             "name": "caDeploymentName",
             "type": "Microsoft.Common.TextBox",
             "label": "Chat Model Deployment Name",
-            "toolTip": "The deployment name for the chat completion model on your external endpoint.",
+            "toolTip": "The deployment name for the chat completion model on your existing or external endpoint.",
             "defaultValue": "gpt-4o",
-            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "visible": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]",
             "constraints": {
-              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+              "required": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]"
             }
           },
           {
             "name": "caEmbeddingDeploymentName",
             "type": "Microsoft.Common.TextBox",
             "label": "Embedding Model Deployment Name",
-            "toolTip": "The deployment name for the embedding model on your external endpoint.",
+            "toolTip": "The deployment name for the embedding model on your existing or external endpoint.",
             "defaultValue": "text-embedding-3-small",
-            "visible": "[equals(steps('aiServices').deployOpenAI, false)]",
+            "visible": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]",
             "constraints": {
-              "required": "[equals(steps('aiServices').deployOpenAI, false)]"
+              "required": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]"
             }
           },
           {
@@ -189,23 +206,40 @@
             "elements": []
           },
           {
-            "name": "deployDocumentIntelligence",
+            "name": "docIntelMode",
             "type": "Microsoft.Common.OptionsGroup",
-            "label": "Deploy Document Intelligence",
-            "toolTip": "Deploy Azure Document Intelligence (Form Recognizer) for advanced document extraction — scanned PDFs, images, and legacy Office formats. Select 'No' to use your own endpoint or skip this feature.",
-            "defaultValue": "Yes",
+            "label": "Document Intelligence Configuration",
+            "toolTip": "Choose how to configure Document Intelligence. 'Deploy New' creates a new resource. 'Use Existing' references a Document Intelligence resource you already have. 'External' uses a non-Azure endpoint.",
+            "defaultValue": "Deploy New",
             "constraints": {
               "allowedValues": [
-                {
-                  "label": "Yes",
-                  "value": true
-                },
-                {
-                  "label": "No",
-                  "value": false
-                }
+                { "label": "Deploy New", "value": "new" },
+                { "label": "Use Existing Azure Resource", "value": "existing" },
+                { "label": "External Endpoint", "value": "external" }
               ],
               "required": true
+            }
+          },
+          {
+            "name": "existingDocIntelName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Existing Document Intelligence Resource Name",
+            "toolTip": "Name of your existing Azure Document Intelligence (Form Recognizer) resource.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').docIntelMode, 'existing')]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').docIntelMode, 'existing')]"
+            }
+          },
+          {
+            "name": "existingDocIntelResourceGroup",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Resource Group",
+            "toolTip": "Resource group containing the existing Document Intelligence resource. Leave empty to use the deployment resource group.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').docIntelMode, 'existing')]",
+            "constraints": {
+              "required": false
             }
           },
           {
@@ -214,9 +248,9 @@
             "label": "External Document Intelligence Endpoint",
             "toolTip": "Your Document Intelligence API endpoint URL (e.g., https://your-docintel.cognitiveservices.azure.com/).",
             "defaultValue": "",
-            "visible": "[equals(steps('aiServices').deployDocumentIntelligence, false)]",
+            "visible": "[equals(steps('aiServices').docIntelMode, 'external')]",
             "constraints": {
-              "required": false,
+              "required": "[equals(steps('aiServices').docIntelMode, 'external')]",
               "regex": "^(https?://.+)?$",
               "validationMessage": "Must be a valid URL starting with http:// or https://."
             }
@@ -229,9 +263,9 @@
               "confirmPassword": "Confirm API Key"
             },
             "toolTip": "API key for your external Document Intelligence endpoint.",
-            "visible": "[equals(steps('aiServices').deployDocumentIntelligence, false)]",
+            "visible": "[equals(steps('aiServices').docIntelMode, 'external')]",
             "constraints": {
-              "required": false
+              "required": "[equals(steps('aiServices').docIntelMode, 'external')]"
             },
             "options": {
               "hideConfirmation": true
@@ -244,23 +278,40 @@
             "elements": []
           },
           {
-            "name": "deployVision",
+            "name": "visionMode",
             "type": "Microsoft.Common.OptionsGroup",
-            "label": "Deploy Azure AI Vision",
-            "toolTip": "Deploy Azure AI Vision (Computer Vision) for image and diagram analysis. Select 'No' to use your own endpoint or skip this feature.",
-            "defaultValue": "Yes",
+            "label": "Azure AI Vision Configuration",
+            "toolTip": "Choose how to configure Azure AI Vision. 'Deploy New' creates a new resource. 'Use Existing' references an Azure AI Vision resource you already have. 'External' uses a non-Azure endpoint.",
+            "defaultValue": "Deploy New",
             "constraints": {
               "allowedValues": [
-                {
-                  "label": "Yes",
-                  "value": true
-                },
-                {
-                  "label": "No",
-                  "value": false
-                }
+                { "label": "Deploy New", "value": "new" },
+                { "label": "Use Existing Azure Resource", "value": "existing" },
+                { "label": "External Endpoint", "value": "external" }
               ],
               "required": true
+            }
+          },
+          {
+            "name": "existingVisionName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Existing Azure AI Vision Resource Name",
+            "toolTip": "Name of your existing Azure AI Vision (Computer Vision) resource.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').visionMode, 'existing')]",
+            "constraints": {
+              "required": "[equals(steps('aiServices').visionMode, 'existing')]"
+            }
+          },
+          {
+            "name": "existingVisionResourceGroup",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Resource Group",
+            "toolTip": "Resource group containing the existing Azure AI Vision resource. Leave empty to use the deployment resource group.",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').visionMode, 'existing')]",
+            "constraints": {
+              "required": false
             }
           },
           {
@@ -269,9 +320,9 @@
             "label": "External Vision Endpoint",
             "toolTip": "Your Azure AI Vision API endpoint URL (e.g., https://your-vision.cognitiveservices.azure.com/).",
             "defaultValue": "",
-            "visible": "[equals(steps('aiServices').deployVision, false)]",
+            "visible": "[equals(steps('aiServices').visionMode, 'external')]",
             "constraints": {
-              "required": false,
+              "required": "[equals(steps('aiServices').visionMode, 'external')]",
               "regex": "^(https?://.+)?$",
               "validationMessage": "Must be a valid URL starting with http:// or https://."
             }
@@ -284,9 +335,9 @@
               "confirmPassword": "Confirm API Key"
             },
             "toolTip": "API key for your external Azure AI Vision endpoint.",
-            "visible": "[equals(steps('aiServices').deployVision, false)]",
+            "visible": "[equals(steps('aiServices').visionMode, 'external')]",
             "constraints": {
-              "required": false
+              "required": "[equals(steps('aiServices').visionMode, 'external')]"
             },
             "options": {
               "hideConfirmation": true
@@ -406,22 +457,28 @@
       "sqlAdminUsername": "[steps('databaseSecurity').sqlAdminUsername]",
       "sqlAdminPassword": "[steps('databaseSecurity').sqlAdminPassword]",
       "adminPassword": "[steps('databaseSecurity').adminPassword]",
-      "deployOpenAI": "[steps('aiServices').deployOpenAI]",
-      "externalOpenAiEndpoint": "[steps('aiServices').externalOpenAiEndpoint]",
-      "externalOpenAiKey": "[steps('aiServices').externalOpenAiKey]",
+      "deployOpenAI": "[equals(steps('aiServices').openaiMode, 'new')]",
+      "existingOpenAiName": "[if(equals(steps('aiServices').openaiMode, 'existing'), steps('aiServices').existingOpenAiName, '')]",
+      "existingOpenAiResourceGroup": "[if(equals(steps('aiServices').openaiMode, 'existing'), steps('aiServices').existingOpenAiResourceGroup, '')]",
+      "externalOpenAiEndpoint": "[if(equals(steps('aiServices').openaiMode, 'external'), steps('aiServices').externalOpenAiEndpoint, '')]",
+      "externalOpenAiKey": "[if(equals(steps('aiServices').openaiMode, 'external'), steps('aiServices').externalOpenAiKey, '')]",
       "searchSku": "[steps('aiServices').searchSku]",
       "searchLocation": "[steps('aiServices').searchLocation]",
-      "chatDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
+      "chatDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
       "embeddingDeploymentName": "text-embedding-3-small",
       "embeddingModelName": "text-embedding-3-small",
-      "caDeploymentName": "[if(steps('aiServices').deployOpenAI, 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
-      "caEmbeddingDeploymentName": "[if(steps('aiServices').deployOpenAI, 'text-embedding-3-small', steps('aiServices').caEmbeddingDeploymentName)]",
-      "deployDocumentIntelligence": "[steps('aiServices').deployDocumentIntelligence]",
-      "externalDocIntelEndpoint": "[steps('aiServices').externalDocIntelEndpoint]",
-      "externalDocIntelKey": "[steps('aiServices').externalDocIntelKey]",
-      "deployVision": "[steps('aiServices').deployVision]",
-      "externalVisionEndpoint": "[steps('aiServices').externalVisionEndpoint]",
-      "externalVisionKey": "[steps('aiServices').externalVisionKey]",
+      "caDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'gpt-5.2-chat', steps('aiServices').caDeploymentName)]",
+      "caEmbeddingDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'text-embedding-3-small', steps('aiServices').caEmbeddingDeploymentName)]",
+      "deployDocumentIntelligence": "[equals(steps('aiServices').docIntelMode, 'new')]",
+      "existingDocIntelName": "[if(equals(steps('aiServices').docIntelMode, 'existing'), steps('aiServices').existingDocIntelName, '')]",
+      "existingDocIntelResourceGroup": "[if(equals(steps('aiServices').docIntelMode, 'existing'), steps('aiServices').existingDocIntelResourceGroup, '')]",
+      "externalDocIntelEndpoint": "[if(equals(steps('aiServices').docIntelMode, 'external'), steps('aiServices').externalDocIntelEndpoint, '')]",
+      "externalDocIntelKey": "[if(equals(steps('aiServices').docIntelMode, 'external'), steps('aiServices').externalDocIntelKey, '')]",
+      "deployVision": "[equals(steps('aiServices').visionMode, 'new')]",
+      "existingVisionName": "[if(equals(steps('aiServices').visionMode, 'existing'), steps('aiServices').existingVisionName, '')]",
+      "existingVisionResourceGroup": "[if(equals(steps('aiServices').visionMode, 'existing'), steps('aiServices').existingVisionResourceGroup, '')]",
+      "externalVisionEndpoint": "[if(equals(steps('aiServices').visionMode, 'external'), steps('aiServices').externalVisionEndpoint, '')]",
+      "externalVisionKey": "[if(equals(steps('aiServices').visionMode, 'external'), steps('aiServices').externalVisionKey, '')]",
       "deployKeyVault": "[steps('monitoringAdvanced').deployKeyVault]",
       "deployMonitoring": "[steps('monitoringAdvanced').deployMonitoring]",
       "deployContainerApps": true,

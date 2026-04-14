@@ -72,6 +72,20 @@ variable "external_openai_key" {
   default     = ""
 }
 
+# --- EXISTING RESOURCE LOOKUP (OpenAI) ---
+
+variable "existing_openai_resource_name" {
+  description = "Name of an existing Azure OpenAI/AIServices resource to reuse (alternative to deploying new). Leave empty to deploy new or use external endpoint."
+  type        = string
+  default     = ""
+}
+
+variable "existing_openai_resource_group" {
+  description = "Resource group of the existing OpenAI resource (required if existing_openai_resource_name is set)"
+  type        = string
+  default     = ""
+}
+
 variable "chat_deployment_name" {
   description = "Chat model deployment name (must match appsettings DeploymentName)"
   type        = string
@@ -113,6 +127,20 @@ variable "external_vision_key" {
   default     = ""
 }
 
+# --- EXISTING RESOURCE LOOKUP (Vision) ---
+
+variable "existing_vision_resource_name" {
+  description = "Name of an existing Azure AI Vision resource to reuse (alternative to deploying new). Leave empty to deploy new or use external endpoint."
+  type        = string
+  default     = ""
+}
+
+variable "existing_vision_resource_group" {
+  description = "Resource group of the existing Vision resource (required if existing_vision_resource_name is set)"
+  type        = string
+  default     = ""
+}
+
 # =============================================================================
 # DOCUMENT INTELLIGENCE
 # =============================================================================
@@ -133,6 +161,20 @@ variable "external_doc_intel_key" {
   description = "External Document Intelligence API key (required if deploy_document_intelligence is false)"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+# --- EXISTING RESOURCE LOOKUP (Document Intelligence) ---
+
+variable "existing_docintel_resource_name" {
+  description = "Name of an existing Azure Document Intelligence resource to reuse (alternative to deploying new). Leave empty to deploy new or use external endpoint."
+  type        = string
+  default     = ""
+}
+
+variable "existing_docintel_resource_group" {
+  description = "Resource group of the existing Document Intelligence resource (required if existing_docintel_resource_name is set)"
+  type        = string
   default     = ""
 }
 

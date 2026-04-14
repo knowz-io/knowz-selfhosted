@@ -215,3 +215,16 @@ output "vnet_id" {
   description = "Virtual network resource ID"
   value       = azurerm_virtual_network.main.id
 }
+
+# -----------------------------------------------------------------------------
+# AI Configuration Summary
+# -----------------------------------------------------------------------------
+
+output "ai_configuration_summary" {
+  description = "Summary of AI service configuration modes (deployed / existing / external)"
+  value = {
+    openai   = var.deploy_openai ? "deployed:${azurerm_cognitive_account.openai[0].name}" : (var.existing_openai_resource_name != "" ? "existing:${var.existing_openai_resource_name}" : "external")
+    vision   = var.deploy_vision ? "deployed:${azurerm_cognitive_account.vision[0].name}" : (var.existing_vision_resource_name != "" ? "existing:${var.existing_vision_resource_name}" : "external")
+    docintel = var.deploy_document_intelligence ? "deployed:${azurerm_cognitive_account.docintel[0].name}" : (var.existing_docintel_resource_name != "" ? "existing:${var.existing_docintel_resource_name}" : "external")
+  }
+}

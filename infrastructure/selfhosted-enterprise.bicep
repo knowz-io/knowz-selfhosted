@@ -57,6 +57,12 @@ param externalOpenAiEndpoint string = ''
 @secure()
 param externalOpenAiKey string = ''
 
+@description('Name of existing Azure OpenAI resource to reuse (leave empty to deploy new or use external)')
+param existingOpenAiName string = ''
+
+@description('Resource group of existing OpenAI resource (defaults to current RG)')
+param existingOpenAiResourceGroup string = ''
+
 @description('Chat model deployment name (must match appsettings DeploymentName)')
 param chatDeploymentName string = 'gpt-5.2-chat'
 
@@ -73,6 +79,12 @@ param externalVisionEndpoint string = ''
 @secure()
 param externalVisionKey string = ''
 
+@description('Name of existing Azure AI Vision resource to reuse (leave empty to deploy new or use external)')
+param existingVisionName string = ''
+
+@description('Resource group of existing Vision resource (defaults to current RG)')
+param existingVisionResourceGroup string = ''
+
 @description('Deploy Azure Document Intelligence for advanced document extraction')
 param deployDocumentIntelligence bool = true
 
@@ -82,6 +94,12 @@ param externalDocIntelEndpoint string = ''
 @description('External Document Intelligence API key (required when deployDocumentIntelligence is false)')
 @secure()
 param externalDocIntelKey string = ''
+
+@description('Name of existing Document Intelligence resource to reuse (leave empty to deploy new or use external)')
+param existingDocIntelName string = ''
+
+@description('Resource group of existing Document Intelligence resource (defaults to current RG)')
+param existingDocIntelResourceGroup string = ''
 
 @description('Azure AI Search SKU (enterprise requires standard or higher for private endpoint support)')
 @allowed(['standard', 'standard2', 'standard3'])
@@ -1916,6 +1934,17 @@ output embeddingDeploymentNameOutput string = embeddingDeploymentName
 // Document Intelligence
 output documentIntelligenceEndpoint string = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
 output documentIntelligenceName string = deployDocumentIntelligence ? documentIntelligence.name : 'external'
+
+// AI Configuration Summary (mode per service)
+// NOTE: Enterprise template does not currently wire `existing*` params into resource resolution
+// (private-endpoint + cross-RG complexity). The deploy script (selfhosted-deploy.ps1) performs
+// the lookup and passes resolved endpoint/key via external* parameters. These params are
+// accepted here so the portal UI can pass them without deployment failures.
+output aiConfigurationSummary object = {
+  openai: deployOpenAI ? 'deployed' : (existingOpenAiName != '' ? 'existing:${existingOpenAiName}' : 'external')
+  vision: deployVision ? 'deployed' : (existingVisionName != '' ? 'existing:${existingVisionName}' : 'external')
+  docIntel: deployDocumentIntelligence ? 'deployed' : (existingDocIntelName != '' ? 'existing:${existingDocIntelName}' : 'external')
+}
 
 // SQL Database
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName

@@ -32,6 +32,14 @@ param(
     [switch]$SkipVision,
     [switch]$DisableStorageSharedKey,
 
+    # Existing AI resource references (use instead of deploying new)
+    [string]$ExistingOpenAiName = "",
+    [string]$ExistingOpenAiResourceGroup = "",
+    [string]$ExistingVisionName = "",
+    [string]$ExistingVisionResourceGroup = "",
+    [string]$ExistingDocIntelName = "",
+    [string]$ExistingDocIntelResourceGroup = "",
+
     # Container Apps deployment (opt-in)
     [switch]$DeployContainerApps,
     [string]$ImageTag = "latest",
@@ -88,6 +96,46 @@ if ($DeployContainerApps) {
         $JwtSecretOverride = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
         Write-Host "  Auto-generated JWT secret for Container Apps." -ForegroundColor DarkGray
     }
+}
+
+# Step 0.5: Validate existing AI resource references (if any)
+if ($ExistingOpenAiName -or $ExistingVisionName -or $ExistingDocIntelName) {
+    Write-Host "[0.5/7] Validating existing AI resource references..." -ForegroundColor Yellow
+
+    if ($ExistingOpenAiName) {
+        if (-not $ExistingOpenAiResourceGroup) {
+            throw "-ExistingOpenAiResourceGroup is required when -ExistingOpenAiName is specified"
+        }
+        $existingOai = az cognitiveservices account show --name $ExistingOpenAiName --resource-group $ExistingOpenAiResourceGroup -o json 2>$null | ConvertFrom-Json
+        if (-not $existingOai) {
+            throw "Existing OpenAI resource '$ExistingOpenAiName' not found in resource group '$ExistingOpenAiResourceGroup'"
+        }
+        Write-Host "  OpenAI: $($existingOai.properties.endpoint)" -ForegroundColor Green
+    }
+
+    if ($ExistingVisionName) {
+        if (-not $ExistingVisionResourceGroup) {
+            throw "-ExistingVisionResourceGroup is required when -ExistingVisionName is specified"
+        }
+        $existingVis = az cognitiveservices account show --name $ExistingVisionName --resource-group $ExistingVisionResourceGroup -o json 2>$null | ConvertFrom-Json
+        if (-not $existingVis) {
+            throw "Existing Vision resource '$ExistingVisionName' not found in resource group '$ExistingVisionResourceGroup'"
+        }
+        Write-Host "  Vision: $($existingVis.properties.endpoint)" -ForegroundColor Green
+    }
+
+    if ($ExistingDocIntelName) {
+        if (-not $ExistingDocIntelResourceGroup) {
+            throw "-ExistingDocIntelResourceGroup is required when -ExistingDocIntelName is specified"
+        }
+        $existingDi = az cognitiveservices account show --name $ExistingDocIntelName --resource-group $ExistingDocIntelResourceGroup -o json 2>$null | ConvertFrom-Json
+        if (-not $existingDi) {
+            throw "Existing Doc Intelligence resource '$ExistingDocIntelName' not found in resource group '$ExistingDocIntelResourceGroup'"
+        }
+        Write-Host "  Doc Intel: $($existingDi.properties.endpoint)" -ForegroundColor Green
+    }
+
+    Write-Host "  Existing AI resources validated." -ForegroundColor Green
 }
 
 # Step 1: Create resource group
@@ -187,6 +235,12 @@ $deployBody = @{
             apiKey = @{ value = $ApiKeyOverride }
             jwtSecret = @{ value = $JwtSecretOverride }
             adminPassword = @{ value = $AdminPassword }
+            existingOpenAiName = @{ value = $ExistingOpenAiName }
+            existingOpenAiResourceGroup = @{ value = $ExistingOpenAiResourceGroup }
+            existingVisionName = @{ value = $ExistingVisionName }
+            existingVisionResourceGroup = @{ value = $ExistingVisionResourceGroup }
+            existingDocIntelName = @{ value = $ExistingDocIntelName }
+            existingDocIntelResourceGroup = @{ value = $ExistingDocIntelResourceGroup }
         }
     }
 } | ConvertTo-Json -Depth 100 -Compress
@@ -320,20 +374,44 @@ Write-Host "  Secrets retrieved and connection strings built." -ForegroundColor 
 if ($keyVaultName) {
     Write-Host "[3/7] Verifying Key Vault secrets..." -ForegroundColor Yellow
 
-    # Wait briefly for RBAC propagation (Key Vault Secrets User role)
-    Start-Sleep -Seconds 10
+    # Wait for RBAC propagation with retry (can take up to 60s)
+    $kvRetryCount = 0
+    $kvMaxRetries = 4
+    $kvVerified = $false
 
-    # Verify by reading one secret
-    $kvTestSecret = az keyvault secret show `
-        --vault-name $keyVaultName `
-        --name "AzureAISearch--Endpoint" `
-        --query value -o tsv 2>$null
+    while ($kvRetryCount -lt $kvMaxRetries -and -not $kvVerified) {
+        $kvRetryCount++
+        Write-Host "  Verifying Key Vault access (attempt $kvRetryCount/$kvMaxRetries)..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 15
 
-    if ($kvTestSecret -eq $searchEndpoint) {
-        Write-Host "  Key Vault secrets verified (7 secrets populated)." -ForegroundColor Green
-    } else {
-        Write-Host "  Warning: Key Vault secret verification failed. RBAC may still be propagating." -ForegroundColor DarkYellow
-        Write-Host "  Secrets were populated by Bicep. Retry in a few minutes if needed." -ForegroundColor DarkYellow
+        $kvTestSecret = az keyvault secret show `
+            --vault-name $keyVaultName `
+            --name "AzureAISearch--Endpoint" `
+            --query value -o tsv 2>$null
+
+        if ($kvTestSecret -eq $searchEndpoint) {
+            $kvVerified = $true
+            Write-Host "  Key Vault secrets verified (7 secrets populated)." -ForegroundColor Green
+        }
+    }
+
+    if (-not $kvVerified) {
+        Write-Host "  Key Vault RBAC still propagating. Assigning Secrets Officer role to current user..." -ForegroundColor DarkYellow
+        $currentUserOid = az ad signed-in-user show --query id -o tsv 2>$null
+        if ($currentUserOid) {
+            $kvScope = az keyvault show --name $keyVaultName --resource-group $ResourceGroup --query id -o tsv 2>$null
+            if ($kvScope) {
+                az role assignment create --role "Key Vault Secrets Officer" `
+                    --assignee-object-id $currentUserOid `
+                    --assignee-principal-type User `
+                    --scope $kvScope `
+                    -o none 2>$null
+                Start-Sleep -Seconds 20
+                Write-Host "  Role assigned. Secrets should be accessible shortly." -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  Warning: Could not determine current user. Manual RBAC assignment may be needed." -ForegroundColor DarkYellow
+        }
     }
 } else {
     Write-Host "[3/7] Key Vault not deployed (skipped)." -ForegroundColor DarkGray
