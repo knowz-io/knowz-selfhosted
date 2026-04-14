@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Download, FileText, Image, File, Loader2 } from 'lucide-react'
+import { X, Download, FileText, Image, File, Loader2, ChevronDown, ChevronUp, Tag } from 'lucide-react'
 import { formatFileSize } from '../lib/format-utils'
 import { api } from '../lib/api-client'
 import type { FileMetadataDto } from '../lib/types'
@@ -16,6 +16,92 @@ function isImageType(contentType?: string): boolean {
 
 function hasExtractedContent(file: FileMetadataDto): boolean {
   return !!(file.extractedText || file.transcriptionText)
+}
+
+function hasAnyAIData(file: FileMetadataDto): boolean {
+  return !!(
+    file.visionDescription ||
+    file.visionExtractedText ||
+    file.visionTagsJson ||
+    file.visionObjectsJson ||
+    file.extractedText ||
+    file.transcriptionText
+  )
+}
+
+function parseJsonArray(json?: string): string[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function VisionTags({ tagsJson }: { tagsJson?: string }) {
+  const tags = parseJsonArray(tagsJson)
+  if (tags.length === 0) return null
+
+  return (
+    <div data-testid="vision-tags">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        Vision Tags
+      </h3>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((tag, i) => (
+          <span
+            key={i}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400"
+          >
+            <Tag size={10} />
+            {tag}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function VisionObjects({ objectsJson }: { objectsJson?: string }) {
+  const objects = parseJsonArray(objectsJson)
+  if (objects.length === 0) return null
+
+  return (
+    <div data-testid="vision-objects">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        Detected Objects
+      </h3>
+      <p className="text-sm text-foreground/80">
+        {objects.join(', ')}
+      </p>
+    </div>
+  )
+}
+
+function CollapsibleOcrText({ text }: { text?: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (!text) return null
+
+  return (
+    <div data-testid="ocr-text">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors"
+      >
+        {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        OCR Text
+      </button>
+      {expanded && (
+        <div className="bg-muted/30 border border-border/60 rounded-lg p-4 max-h-80 overflow-y-auto">
+          <pre className="text-sm whitespace-pre-wrap font-mono text-foreground/80">
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function AttachmentViewer({ file, onClose, onDownload }: AttachmentViewerProps) {
@@ -133,9 +219,9 @@ export default function AttachmentViewer({ file, onClose, onDownload }: Attachme
             </div>
           )}
 
-          {/* Vision description for images */}
+          {/* Vision description (AI caption) */}
           {file.visionDescription && (
-            <div>
+            <div data-testid="vision-description">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 AI Description
               </h3>
@@ -145,7 +231,16 @@ export default function AttachmentViewer({ file, onClose, onDownload }: Attachme
             </div>
           )}
 
-          {/* Extracted text */}
+          {/* Vision tags as pills */}
+          <VisionTags tagsJson={file.visionTagsJson} />
+
+          {/* Vision objects */}
+          <VisionObjects objectsJson={file.visionObjectsJson} />
+
+          {/* OCR text (collapsible) */}
+          <CollapsibleOcrText text={file.visionExtractedText} />
+
+          {/* Extracted text (document extraction) */}
           {file.extractedText && (
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -173,13 +268,18 @@ export default function AttachmentViewer({ file, onClose, onDownload }: Attachme
             </div>
           )}
 
-          {/* If nothing to show inline, show file info + download */}
-          {!isImageType(file.contentType) && !file.extractedText && !file.transcriptionText && !file.visionDescription && (
-            <div className="text-center py-8 space-y-3">
+          {/* No AI analysis message */}
+          {!hasAnyAIData(file) && (
+            <div className="text-center py-8 space-y-3" data-testid="no-ai-analysis">
               <File size={40} className="mx-auto text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                No preview available for this file type.
+                No AI analysis available.
               </p>
+              {file.attachmentAIProvider === 'NoOp' && (
+                <p className="text-xs text-muted-foreground/70">
+                  AI analysis is not configured for this deployment.
+                </p>
+              )}
             </div>
           )}
 

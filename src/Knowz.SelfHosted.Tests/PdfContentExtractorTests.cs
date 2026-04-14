@@ -242,6 +242,19 @@ public class PdfContentExtractorTests
         Assert.Contains("Hello from PDF", result.ExtractedText);
     }
 
+    [Fact]
+    public async Task ExtractAsync_SetsNativeFallbackMetadata_OnSuccess()
+    {
+        var record = MakeRecord("application/pdf");
+        using var stream = CreatePdfWithText("Hello from PDF");
+
+        await _extractor.ExtractAsync(record, stream);
+
+        Assert.Equal(2, record.TextExtractionStatus);
+        Assert.NotNull(record.TextExtractedAt);
+        Assert.Equal("NativeFallback", record.AttachmentAIProvider);
+    }
+
     /// <summary>
     /// Helper stream that wraps a byte array but reports CanSeek = false.
     /// </summary>

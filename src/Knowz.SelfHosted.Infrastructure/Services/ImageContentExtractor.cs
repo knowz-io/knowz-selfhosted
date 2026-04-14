@@ -1,38 +1,25 @@
-using Azure;
-using Azure.AI.OpenAI;
+using System.Text.Json;
 using Knowz.Core.Entities;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using OpenAI.Chat;
 
 namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class ImageContentExtractor : IFileContentExtractor
 {
-    private const int MaxOutputTokens = 4096;
-
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff"
     };
 
-    private const string SystemPrompt =
-        "You are a document analyzer. Describe this image in detail, extract ALL visible text (OCR), " +
-        "describe diagrams, charts, or visual elements. Be comprehensive.";
-
-    private readonly string? _endpoint;
-    private readonly string? _apiKey;
-    private readonly string? _deploymentName;
+    private readonly IAttachmentAIProvider _attachmentAIProvider;
     private readonly ILogger<ImageContentExtractor> _logger;
 
     public ImageContentExtractor(
-        IConfiguration configuration,
+        IAttachmentAIProvider attachmentAIProvider,
         ILogger<ImageContentExtractor> logger)
     {
-        _endpoint = configuration["AzureOpenAI:Endpoint"];
-        _apiKey = configuration["AzureOpenAI:ApiKey"];
-        _deploymentName = configuration["AzureOpenAI:DeploymentName"];
+        _attachmentAIProvider = attachmentAIProvider;
         _logger = logger;
     }
 
@@ -50,22 +37,8 @@ public class ImageContentExtractor : IFileContentExtractor
         if (!CanExtract(fileRecord.ContentType))
             return new FileExtractionResult(false, ErrorMessage: "Unsupported content type");
 
-        // Check if OpenAI is configured
-        if (string.IsNullOrWhiteSpace(_endpoint) ||
-            string.IsNullOrWhiteSpace(_apiKey) ||
-            string.IsNullOrWhiteSpace(_deploymentName))
-        {
-            _logger.LogWarning(
-                "OpenAI is not configured — image extraction for {FileRecordId} ({FileName}) skipped. " +
-                "Set AzureOpenAI:Endpoint, AzureOpenAI:ApiKey, and AzureOpenAI:DeploymentName to enable image extraction.",
-                fileRecord.Id, fileRecord.FileName);
-            return new FileExtractionResult(false,
-                ErrorMessage: "OpenAI is not configured for image extraction");
-        }
-
         try
         {
-            // Read image bytes
             using var ms = new MemoryStream();
             await fileStream.CopyToAsync(ms, ct);
             var imageBytes = ms.ToArray();
@@ -73,37 +46,57 @@ public class ImageContentExtractor : IFileContentExtractor
             if (imageBytes.Length == 0)
                 return new FileExtractionResult(false, ErrorMessage: "Image file is empty");
 
-            // Create Azure OpenAI client and call vision API
-            var client = new AzureOpenAIClient(
-                new Uri(_endpoint),
-                new AzureKeyCredential(_apiKey));
-
-            var chatClient = client.GetChatClient(_deploymentName);
-
-            var imageData = BinaryData.FromBytes(imageBytes);
             var mimeType = fileRecord.ContentType ?? "image/png";
-            var imagePart = ChatMessageContentPart.CreateImagePart(imageData, mimeType);
-            var textPart = ChatMessageContentPart.CreateTextPart("Analyze this image:");
+            var result = await _attachmentAIProvider.AnalyzeImageAsync(imageBytes, mimeType, ct);
 
-            var messages = new List<ChatMessage>
+            if (result.NotAvailable)
             {
-                ChatMessage.CreateSystemMessage(SystemPrompt),
-                new UserChatMessage(textPart, imagePart)
-            };
+                _logger.LogWarning(
+                    "Attachment AI provider is not available — image extraction for {FileRecordId} ({FileName}) skipped. {Reason}",
+                    fileRecord.Id, fileRecord.FileName, result.ErrorMessage);
+                return new FileExtractionResult(false, ErrorMessage: result.ErrorMessage);
+            }
 
-            var options = new ChatCompletionOptions
-            {
-                MaxOutputTokenCount = MaxOutputTokens
-            };
+            if (!result.Success)
+                return new FileExtractionResult(false, ErrorMessage: result.ErrorMessage);
 
-            var result = await chatClient.CompleteChatAsync(messages, options, ct);
-            var extractedText = result.Value.Content[0].Text;
+            // Map structured results to FileRecord
+            fileRecord.VisionDescription = result.Caption;
+            fileRecord.VisionTagsJson = result.Tags != null ? JsonSerializer.Serialize(result.Tags) : null;
+            fileRecord.VisionObjectsJson = result.Objects != null ? JsonSerializer.Serialize(result.Objects) : null;
+            fileRecord.VisionExtractedText = result.ExtractedText;
+            fileRecord.VisionAnalyzedAt = DateTime.UtcNow;
+            fileRecord.AttachmentAIProvider = _attachmentAIProvider is AzureAttachmentAIProvider azureProvider
+                ? (azureProvider.HasVisionCapability ? "AzureAIVision" : "AzureOpenAI")
+                : _attachmentAIProvider.ProviderName;
+
+            // Build combined extracted text for enrichment pipeline compatibility
+            var textParts = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(result.Caption))
+                textParts.Add(result.Caption);
+
+            if (!string.IsNullOrWhiteSpace(result.ExtractedText))
+                textParts.Add(result.ExtractedText);
+
+            if (result.Tags is { Count: > 0 })
+                textParts.Add($"Tags: {string.Join(", ", result.Tags)}");
+
+            if (result.Objects is { Count: > 0 })
+                textParts.Add($"Objects: {string.Join(", ", result.Objects)}");
+
+            var extractedText = string.Join("\n\n", textParts);
 
             if (string.IsNullOrWhiteSpace(extractedText))
                 return new FileExtractionResult(false,
-                    ErrorMessage: "OpenAI returned no text for image analysis");
+                    ErrorMessage: "Vision analysis returned no text");
 
-            return new FileExtractionResult(true, ExtractedText: extractedText);
+            return new FileExtractionResult(true,
+                ExtractedText: extractedText,
+                VisionDescription: result.Caption,
+                VisionTagsJson: fileRecord.VisionTagsJson,
+                VisionObjectsJson: fileRecord.VisionObjectsJson,
+                VisionExtractedText: result.ExtractedText);
         }
         catch (OperationCanceledException)
         {

@@ -23,6 +23,10 @@ public static class ReviewStep
             table.AddRow("OpenAI Key", MaskSecret(config.AzureOpenAiApiKey));
             table.AddRow("Chat Deployment", config.AzureOpenAiDeployment);
             table.AddRow("Embedding Deployment", config.AzureOpenAiEmbedding);
+            table.AddRow("Vision Endpoint", string.IsNullOrWhiteSpace(config.AzureAiVisionEndpoint) ? "(not set)" : config.AzureAiVisionEndpoint);
+            table.AddRow("Vision Key", MaskSecret(config.AzureAiVisionApiKey));
+            table.AddRow("DocInt Endpoint", string.IsNullOrWhiteSpace(config.AzureDocumentIntelligenceEndpoint) ? "(not set)" : config.AzureDocumentIntelligenceEndpoint);
+            table.AddRow("DocInt Key", MaskSecret(config.AzureDocumentIntelligenceApiKey));
             table.AddRow("Search Endpoint", config.AzureSearchEndpoint);
             table.AddRow("Search Key", MaskSecret(config.AzureSearchApiKey));
             table.AddRow("Search Index", config.AzureSearchIndex);

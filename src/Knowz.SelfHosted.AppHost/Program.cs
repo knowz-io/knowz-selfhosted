@@ -44,6 +44,10 @@ var openAiEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
 var openAiApiKey = builder.Configuration["AzureOpenAI:ApiKey"];
 var openAiDeployment = builder.Configuration["AzureOpenAI:DeploymentName"];
 var openAiEmbedding = builder.Configuration["AzureOpenAI:EmbeddingDeploymentName"];
+var visionEndpoint = builder.Configuration["AzureAIVision:Endpoint"];
+var visionApiKey = builder.Configuration["AzureAIVision:ApiKey"];
+var docIntelEndpoint = builder.Configuration["AzureDocumentIntelligence:Endpoint"];
+var docIntelApiKey = builder.Configuration["AzureDocumentIntelligence:ApiKey"];
 var searchEndpoint = builder.Configuration["AzureAISearch:Endpoint"];
 var searchApiKey = builder.Configuration["AzureAISearch:ApiKey"];
 var searchIndexName = builder.Configuration["AzureAISearch:IndexName"];
@@ -113,6 +117,14 @@ if (!string.IsNullOrWhiteSpace(openAiDeployment))
     api.WithEnvironment("AzureOpenAI__DeploymentName", openAiDeployment);
 if (!string.IsNullOrWhiteSpace(openAiEmbedding))
     api.WithEnvironment("AzureOpenAI__EmbeddingDeploymentName", openAiEmbedding);
+if (!string.IsNullOrWhiteSpace(visionEndpoint))
+    api.WithEnvironment("AzureAIVision__Endpoint", visionEndpoint);
+if (!string.IsNullOrWhiteSpace(visionApiKey))
+    api.WithEnvironment("AzureAIVision__ApiKey", visionApiKey);
+if (!string.IsNullOrWhiteSpace(docIntelEndpoint))
+    api.WithEnvironment("AzureDocumentIntelligence__Endpoint", docIntelEndpoint);
+if (!string.IsNullOrWhiteSpace(docIntelApiKey))
+    api.WithEnvironment("AzureDocumentIntelligence__ApiKey", docIntelApiKey);
 
 if (!string.IsNullOrWhiteSpace(searchEndpoint))
     api.WithEnvironment("AzureAISearch__Endpoint", searchEndpoint);

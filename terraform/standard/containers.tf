@@ -209,6 +209,16 @@ resource "azurerm_container_app" "api" {
         name  = "AzureDocumentIntelligence__ApiKey"
         value = local.effective_doc_intel_key
       }
+
+      env {
+        name  = "AzureAIVision__Endpoint"
+        value = local.effective_vision_endpoint
+      }
+
+      env {
+        name  = "AzureAIVision__ApiKey"
+        value = local.effective_vision_key
+      }
     }
   }
 }

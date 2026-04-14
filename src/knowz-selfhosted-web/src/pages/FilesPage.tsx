@@ -19,6 +19,8 @@ import {
   Eye,
   Mic,
   FileSearch,
+  Cpu,
+  AlertCircle,
 } from 'lucide-react'
 import { formatFileSize, parseAsUtc, formatDate } from '../lib/format-utils'
 
@@ -58,6 +60,22 @@ function contentTypeLabel(contentType?: string): string {
   return parts[parts.length - 1].toUpperCase()
 }
 
+const EXTRACTION_STATUS_LABELS: Record<number, string> = {
+  0: 'Not Started',
+  1: 'Processing',
+  2: 'Completed',
+  3: 'Failed',
+}
+
+function extractionStatusBadgeClass(status?: number): string {
+  switch (status) {
+    case 2: return 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400'
+    case 1: return 'bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400'
+    case 3: return 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400'
+    default: return 'bg-muted text-muted-foreground'
+  }
+}
+
 const TRUNCATE_LENGTH = 200
 
 function TruncatedText({ text, label, icon }: { text: string; label: string; icon: React.ReactNode }) {
@@ -88,89 +106,116 @@ function TruncatedText({ text, label, icon }: { text: string; label: string; ico
 function FileDetailPanel({ file }: { file: FileMetadataDto }) {
   const hasAiDetails = file.extractedText || file.transcriptionText || file.visionDescription
   const hasAssociations = file.knowledgeId || file.vaultId
-
-  if (!hasAiDetails && !hasAssociations) {
-    return (
-      <div className="px-4 py-4 bg-muted/50 text-sm text-muted-foreground">
-        No additional details available for this file.
-      </div>
-    )
-  }
+  const extractionStatus = file.textExtractionStatus ?? 0
+  const hasNoAIData = !hasAiDetails && !file.visionTagsJson && !file.visionObjectsJson && !file.visionExtractedText
 
   return (
     <div className="px-4 py-4 bg-muted/50">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left: Associations */}
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Associations
-          </h4>
-          {hasAssociations ? (
-            <div className="space-y-2">
-              {file.knowledgeId && (
-                <div className="flex items-center gap-2 text-sm">
-                  <BookOpen size={14} className="text-blue-500 shrink-0" />
-                  <span className="text-muted-foreground">Knowledge:</span>
-                  <Link
-                    to={`/knowledge/${file.knowledgeId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-blue-600 dark:text-blue-400 hover:underline truncate"
-                  >
-                    {file.knowledgeTitle || file.knowledgeId}
-                  </Link>
-                </div>
-              )}
-              {file.vaultId && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Archive size={14} className="text-green-500 shrink-0" />
-                  <span className="text-muted-foreground">Vault:</span>
-                  <Link
-                    to={`/vaults/${file.vaultId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-green-600 dark:text-green-400 hover:underline truncate"
-                  >
-                    {file.vaultName || file.vaultId}
-                  </Link>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Not attached to any knowledge item.</p>
-          )}
-        </div>
+      {/* Status badges row */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {/* Extraction status badge */}
+        <span
+          data-testid="extraction-status-badge"
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${extractionStatusBadgeClass(extractionStatus)}`}
+        >
+          <FileSearch size={10} />
+          Extraction: {EXTRACTION_STATUS_LABELS[extractionStatus] ?? 'Unknown'}
+        </span>
 
-        {/* Right: AI Details */}
-        {hasAiDetails && (
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              AI Details
-            </h4>
-            <div className="space-y-3">
-              {file.extractedText && (
-                <TruncatedText
-                  text={file.extractedText}
-                  label="Extracted Text"
-                  icon={<FileSearch size={12} />}
-                />
-              )}
-              {file.transcriptionText && (
-                <TruncatedText
-                  text={file.transcriptionText}
-                  label="Transcription"
-                  icon={<Mic size={12} />}
-                />
-              )}
-              {file.visionDescription && (
-                <TruncatedText
-                  text={file.visionDescription}
-                  label="Vision Description"
-                  icon={<Eye size={12} />}
-                />
-              )}
-            </div>
-          </div>
+        {/* Provider badge */}
+        {file.attachmentAIProvider && (
+          <span
+            data-testid="provider-badge"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400"
+          >
+            <Cpu size={10} />
+            {file.attachmentAIProvider}
+          </span>
         )}
       </div>
+
+      {hasNoAIData && !hasAssociations ? (
+        <div className="text-sm text-muted-foreground flex items-center gap-2" data-testid="no-ai-analysis-message">
+          <AlertCircle size={14} className="shrink-0" />
+          <span>
+            No AI analysis available.
+            {file.attachmentAIProvider === 'NoOp' && ' AI analysis is not configured for this deployment.'}
+          </span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Left: Associations */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Associations
+            </h4>
+            {hasAssociations ? (
+              <div className="space-y-2">
+                {file.knowledgeId && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <BookOpen size={14} className="text-blue-500 shrink-0" />
+                    <span className="text-muted-foreground">Knowledge:</span>
+                    <Link
+                      to={`/knowledge/${file.knowledgeId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-blue-600 dark:text-blue-400 hover:underline truncate"
+                    >
+                      {file.knowledgeTitle || file.knowledgeId}
+                    </Link>
+                  </div>
+                )}
+                {file.vaultId && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Archive size={14} className="text-green-500 shrink-0" />
+                    <span className="text-muted-foreground">Vault:</span>
+                    <Link
+                      to={`/vaults/${file.vaultId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-green-600 dark:text-green-400 hover:underline truncate"
+                    >
+                      {file.vaultName || file.vaultId}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Not attached to any knowledge item.</p>
+            )}
+          </div>
+
+          {/* Right: AI Details */}
+          {hasAiDetails && (
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                AI Details
+              </h4>
+              <div className="space-y-3">
+                {file.extractedText && (
+                  <TruncatedText
+                    text={file.extractedText}
+                    label="Extracted Text"
+                    icon={<FileSearch size={12} />}
+                  />
+                )}
+                {file.transcriptionText && (
+                  <TruncatedText
+                    text={file.transcriptionText}
+                    label="Transcription"
+                    icon={<Mic size={12} />}
+                  />
+                )}
+                {file.visionDescription && (
+                  <TruncatedText
+                    text={file.visionDescription}
+                    label="Vision Description"
+                    icon={<Eye size={12} />}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

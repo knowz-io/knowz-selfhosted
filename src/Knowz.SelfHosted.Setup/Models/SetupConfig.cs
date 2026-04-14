@@ -36,6 +36,10 @@ public class SetupConfig
     public string AzureOpenAiApiKey { get; set; } = string.Empty;
     public string AzureOpenAiDeployment { get; set; } = "gpt-4o";
     public string AzureOpenAiEmbedding { get; set; } = "text-embedding-3-small";
+    public string AzureAiVisionEndpoint { get; set; } = string.Empty;
+    public string AzureAiVisionApiKey { get; set; } = string.Empty;
+    public string AzureDocumentIntelligenceEndpoint { get; set; } = string.Empty;
+    public string AzureDocumentIntelligenceApiKey { get; set; } = string.Empty;
 
     // Azure AI Search
     public string AzureSearchEndpoint { get; set; } = string.Empty;

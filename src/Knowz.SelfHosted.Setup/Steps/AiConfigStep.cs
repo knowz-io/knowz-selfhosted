@@ -62,6 +62,30 @@ public static class AiConfigStep
             new TextPrompt<string>("Embedding deployment name:")
                 .DefaultValue("text-embedding-3-small"));
 
+        config.AzureAiVisionEndpoint = AnsiConsole.Prompt(
+            new TextPrompt<string>("Azure AI Vision [green]endpoint[/] (optional but recommended for images/diagrams):")
+                .AllowEmpty()
+                .Validate(url => string.IsNullOrWhiteSpace(url) || ConfigValidator.IsValidHttpsUrl(url)
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("Must be a valid HTTPS URL")));
+
+        config.AzureAiVisionApiKey = AnsiConsole.Prompt(
+            new TextPrompt<string>("Azure AI Vision [green]API key[/] (optional):")
+                .Secret()
+                .AllowEmpty());
+
+        config.AzureDocumentIntelligenceEndpoint = AnsiConsole.Prompt(
+            new TextPrompt<string>("Azure Document Intelligence [green]endpoint[/] (optional but recommended for PDFs/docs):")
+                .AllowEmpty()
+                .Validate(url => string.IsNullOrWhiteSpace(url) || ConfigValidator.IsValidHttpsUrl(url)
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("Must be a valid HTTPS URL")));
+
+        config.AzureDocumentIntelligenceApiKey = AnsiConsole.Prompt(
+            new TextPrompt<string>("Azure Document Intelligence [green]API key[/] (optional):")
+                .Secret()
+                .AllowEmpty());
+
         config.AzureSearchEndpoint = AnsiConsole.Prompt(
             new TextPrompt<string>("Azure AI Search [green]endpoint[/]:")
                 .Validate(url => ConfigValidator.IsValidHttpsUrl(url)
@@ -242,6 +266,10 @@ public static class AiConfigStep
         summary.AddRow("OpenAI Key", string.IsNullOrEmpty(config.AzureOpenAiApiKey) ? "[red]Not set[/]" : "[green]Set[/]");
         summary.AddRow("Chat Deployment", config.AzureOpenAiDeployment.EscapeMarkup());
         summary.AddRow("Embedding Deployment", config.AzureOpenAiEmbedding.EscapeMarkup());
+        summary.AddRow("Vision Endpoint", MaskOrEmpty(config.AzureAiVisionEndpoint));
+        summary.AddRow("Vision Key", string.IsNullOrEmpty(config.AzureAiVisionApiKey) ? "[red]Not set[/]" : "[green]Set[/]");
+        summary.AddRow("DocInt Endpoint", MaskOrEmpty(config.AzureDocumentIntelligenceEndpoint));
+        summary.AddRow("DocInt Key", string.IsNullOrEmpty(config.AzureDocumentIntelligenceApiKey) ? "[red]Not set[/]" : "[green]Set[/]");
         summary.AddRow("Search Endpoint", MaskOrEmpty(config.AzureSearchEndpoint));
         summary.AddRow("Search Key", string.IsNullOrEmpty(config.AzureSearchApiKey) ? "[red]Not set[/]" : "[green]Set[/]");
         summary.AddRow("Search Index", config.AzureSearchIndex.EscapeMarkup());

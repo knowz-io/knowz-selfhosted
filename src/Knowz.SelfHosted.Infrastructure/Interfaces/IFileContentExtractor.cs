@@ -13,4 +13,8 @@ public interface IFileContentExtractor
 public record FileExtractionResult(
     bool Success,
     string? ExtractedText = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    string? VisionDescription = null,
+    string? VisionTagsJson = null,
+    string? VisionObjectsJson = null,
+    string? VisionExtractedText = null);

@@ -99,6 +99,20 @@ resource "azurerm_key_vault_secret" "docintel_key" {
   depends_on   = [azurerm_role_assignment.keyvault_secrets_user]
 }
 
+resource "azurerm_key_vault_secret" "vision_endpoint" {
+  name         = "AzureAIVision--Endpoint"
+  value        = local.effective_vision_endpoint
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.keyvault_secrets_user]
+}
+
+resource "azurerm_key_vault_secret" "vision_key" {
+  name         = "AzureAIVision--ApiKey"
+  value        = local.effective_vision_key
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.keyvault_secrets_user]
+}
+
 resource "azurerm_key_vault_secret" "storage_connection" {
   name         = "Storage--Azure--ConnectionString"
   value        = local.storage_connection_string

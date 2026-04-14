@@ -210,7 +210,10 @@ public class FileStorageService
                 .Select(kv => (Guid?)kv.VaultId).FirstOrDefault(),
             f.Attachments.Where(a => a.KnowledgeId != null && a.Knowledge != null)
                 .SelectMany(a => a.Knowledge!.KnowledgeVaults)
-                .Select(kv => kv.Vault.Name).FirstOrDefault()
+                .Select(kv => kv.Vault.Name).FirstOrDefault(),
+            f.VisionTagsJson, f.VisionObjectsJson, f.VisionExtractedText,
+            f.VisionAnalyzedAt, f.LayoutDataJson, f.TextExtractionStatus,
+            f.TextExtractedAt, f.AttachmentAIProvider
         );
 
     public async Task<FileMetadataDto?> GetMetadataAsync(Guid fileRecordId, CancellationToken ct = default)
@@ -498,5 +501,9 @@ public class FileStorageService
     private static FileMetadataDto MapToDto(FileRecord f) => new(
         f.Id, f.FileName, f.ContentType, f.SizeBytes, f.BlobUri,
         f.TranscriptionText, f.ExtractedText, f.VisionDescription,
-        f.BlobMigrationPending, f.CreatedAt, f.UpdatedAt);
+        f.BlobMigrationPending, f.CreatedAt, f.UpdatedAt,
+        VisionTagsJson: f.VisionTagsJson, VisionObjectsJson: f.VisionObjectsJson,
+        VisionExtractedText: f.VisionExtractedText, VisionAnalyzedAt: f.VisionAnalyzedAt,
+        LayoutDataJson: f.LayoutDataJson, TextExtractionStatus: f.TextExtractionStatus,
+        TextExtractedAt: f.TextExtractedAt, AttachmentAIProvider: f.AttachmentAIProvider);
 }

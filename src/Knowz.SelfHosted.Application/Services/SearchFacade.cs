@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Knowz.Core.Interfaces;
 using Knowz.Core.Models;
 using Knowz.SelfHosted.Application.DTOs;
@@ -435,16 +436,51 @@ public class SearchFacade
         if (!string.IsNullOrWhiteSpace(knowledge.Content))
             contextParts.Add(knowledge.Content);
 
-        // Add attachment extracted text
+        var attachmentContext = await AttachmentContextBuilder.BuildKnowledgeAttachmentContextAsync(
+            _db,
+            knowledgeId,
+            AttachmentContextRenderMode.SearchScopedChat,
+            50_000,
+            ct);
+
+        if (!string.IsNullOrWhiteSpace(attachmentContext))
+        {
+            contextParts.Add(attachmentContext);
+        }
+        else
+        {
+
+        // Add attachment extracted text and structured AI fields
         var attachmentTexts = await _db.FileAttachments
             .Where(fa => fa.KnowledgeId == knowledgeId)
-            .Join(_db.FileRecords, fa => fa.FileRecordId, fr => fr.Id, (fa, fr) => new { fr.ExtractedText, fr.TranscriptionText, fr.FileName })
+            .Join(_db.FileRecords, fa => fa.FileRecordId, fr => fr.Id, (fa, fr) => new
+            {
+                fr.ContentType,
+                fr.ExtractedText,
+                fr.TranscriptionText,
+                fr.FileName,
+                fr.VisionDescription,
+                fr.VisionExtractedText,
+                fr.VisionTagsJson,
+                fr.VisionObjectsJson,
+                fr.LayoutDataJson
+            })
             .ToListAsync(ct);
 
         foreach (var att in attachmentTexts)
         {
-            if (!string.IsNullOrWhiteSpace(att.ExtractedText))
-                contextParts.Add($"[Attachment: {att.FileName}]\n{att.ExtractedText}");
+            var structuredBlock = BuildKnowledgeScopedAttachmentBlock(
+                att.FileName,
+                att.ContentType,
+                att.ExtractedText,
+                att.VisionDescription,
+                att.VisionExtractedText,
+                att.VisionTagsJson,
+                att.VisionObjectsJson,
+                att.LayoutDataJson);
+
+            if (!string.IsNullOrWhiteSpace(structuredBlock))
+                contextParts.Add(structuredBlock);
 
             if (!string.IsNullOrWhiteSpace(att.TranscriptionText))
             {
@@ -465,6 +501,7 @@ public class SearchFacade
                 contextParts.Add(sb.ToString().TrimEnd());
             }
         }
+        }
 
         var fullContent = string.Join("\n\n", contextParts);
 
@@ -484,6 +521,80 @@ public class SearchFacade
         });
 
         return results;
+    }
+
+    private static string? BuildKnowledgeScopedAttachmentBlock(
+        string fileName,
+        string? contentType,
+        string? extractedText,
+        string? visionDescription,
+        string? visionExtractedText,
+        string? visionTagsJson,
+        string? visionObjectsJson,
+        string? layoutDataJson)
+    {
+        var isImageWithStructuredVision =
+            contentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true &&
+            (!string.IsNullOrWhiteSpace(visionDescription) ||
+             !string.IsNullOrWhiteSpace(visionExtractedText) ||
+             !string.IsNullOrWhiteSpace(visionTagsJson) ||
+             !string.IsNullOrWhiteSpace(visionObjectsJson));
+
+        if (isImageWithStructuredVision)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"[Image Analysis: {fileName}]");
+
+            if (!string.IsNullOrWhiteSpace(visionDescription))
+                sb.AppendLine(visionDescription);
+
+            var tags = TryDeserializeStringList(visionTagsJson);
+            if (tags.Count > 0)
+                sb.AppendLine($"Tags: {string.Join(", ", tags)}");
+
+            var objects = TryDeserializeStringList(visionObjectsJson);
+            if (objects.Count > 0)
+                sb.AppendLine($"Objects detected: {string.Join(", ", objects)}");
+
+            if (!string.IsNullOrWhiteSpace(visionExtractedText))
+            {
+                sb.AppendLine("Text from image:");
+                sb.AppendLine(visionExtractedText);
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        if (!string.IsNullOrWhiteSpace(extractedText) || !string.IsNullOrWhiteSpace(layoutDataJson))
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"[Attachment: {fileName}]");
+
+            if (!string.IsNullOrWhiteSpace(extractedText))
+                sb.AppendLine(extractedText);
+
+            if (!string.IsNullOrWhiteSpace(layoutDataJson))
+                sb.AppendLine("Structured layout data available");
+
+            return sb.ToString().TrimEnd();
+        }
+
+        return null;
+    }
+
+    private static List<string> TryDeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<string>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
     }
 
     internal static string BuildCompositeQuestion(

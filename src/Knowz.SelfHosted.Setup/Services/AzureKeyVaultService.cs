@@ -13,6 +13,10 @@ public static class AzureKeyVaultService
     {
         ["openai--endpoint"] = (c, v) => c.AzureOpenAiEndpoint = v,
         ["openai--primary--key"] = (c, v) => c.AzureOpenAiApiKey = v,
+        ["vision--endpoint"] = (c, v) => c.AzureAiVisionEndpoint = v,
+        ["vision--primary--key"] = (c, v) => c.AzureAiVisionApiKey = v,
+        ["documentintelligence--endpoint"] = (c, v) => c.AzureDocumentIntelligenceEndpoint = v,
+        ["documentintelligence--primary--key"] = (c, v) => c.AzureDocumentIntelligenceApiKey = v,
         ["search--endpoint"] = (c, v) => c.AzureSearchEndpoint = v,
         ["search--primary--key"] = (c, v) => c.AzureSearchApiKey = v,
     };
@@ -130,6 +134,10 @@ public static class AzureKeyVaultService
     {
         "openai--endpoint" => config.AzureOpenAiEndpoint,
         "openai--primary--key" => config.AzureOpenAiApiKey,
+        "vision--endpoint" => config.AzureAiVisionEndpoint,
+        "vision--primary--key" => config.AzureAiVisionApiKey,
+        "documentintelligence--endpoint" => config.AzureDocumentIntelligenceEndpoint,
+        "documentintelligence--primary--key" => config.AzureDocumentIntelligenceApiKey,
         "search--endpoint" => config.AzureSearchEndpoint,
         "search--primary--key" => config.AzureSearchApiKey,
         _ => string.Empty,

@@ -238,6 +238,19 @@ public class DocxContentExtractorTests
         Assert.Equal("Hello from DOCX", result.ExtractedText);
     }
 
+    [Fact]
+    public async Task ExtractAsync_SetsNativeFallbackMetadata_OnSuccess()
+    {
+        var record = MakeRecord("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        using var stream = CreateDocxWithParagraphs("Hello from DOCX");
+
+        await _extractor.ExtractAsync(record, stream);
+
+        Assert.Equal(2, record.TextExtractionStatus);
+        Assert.NotNull(record.TextExtractedAt);
+        Assert.Equal("NativeFallback", record.AttachmentAIProvider);
+    }
+
     // =============================================
     // ExtractAsync — Non-seekable stream
     // =============================================

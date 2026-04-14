@@ -1,6 +1,5 @@
-using Azure;
-using Azure.AI.DocumentIntelligence;
 using Knowz.Core.Entities;
+using Knowz.Core.Enums;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -8,27 +7,41 @@ namespace Knowz.SelfHosted.Infrastructure.Services;
 
 public class DocumentIntelligenceContentExtractor : IFileContentExtractor
 {
-    private const int MaxExtractionChars = 10_000_000; // 10M chars
-
+    // Only document types — image/* routes to ImageContentExtractor for vision analysis.
+    // Azure Document Intelligence also supports image/jpeg, image/png, image/tiff, image/bmp
+    // but for self-hosted parity we want images to go through the vision pipeline (caption,
+    // tags, objects, OCR) rather than document extraction (text-only).
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp"
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     };
 
-    private readonly DocumentIntelligenceClient _client;
+    private readonly IAttachmentAIProvider _provider;
     private readonly ILogger<DocumentIntelligenceContentExtractor> _logger;
 
     public DocumentIntelligenceContentExtractor(
-        DocumentIntelligenceClient client,
+        IAttachmentAIProvider provider,
         ILogger<DocumentIntelligenceContentExtractor> logger)
     {
-        _client = client;
+        _provider = provider;
         _logger = logger;
     }
 
     public bool CanExtract(string? contentType)
     {
         if (string.IsNullOrEmpty(contentType))
+            return false;
+
+        // When provider is NoOp, or the direct Azure provider lacks document capability,
+        // return false so CompositeContentExtractor falls through to native extractors.
+        if (_provider is NoOpAttachmentAIProvider)
+            return false;
+
+        if (_provider is AzureAttachmentAIProvider azureProvider &&
+            !azureProvider.HasDocumentIntelligenceCapability)
             return false;
 
         return SupportedTypes.Contains(contentType);
@@ -42,50 +55,48 @@ public class DocumentIntelligenceContentExtractor : IFileContentExtractor
 
         try
         {
-            // Buffer stream into BinaryData for the API
-            var bytesSource = await ReadStreamAsBinaryDataAsync(fileStream, ct);
+            // Buffer stream into byte array for the provider
+            using var ms = new MemoryStream();
+            await fileStream.CopyToAsync(ms, ct);
+            var documentBytes = ms.ToArray();
 
-            var operation = await _client.AnalyzeDocumentAsync(
-                WaitUntil.Completed, "prebuilt-read", bytesSource, ct);
+            if (documentBytes.Length == 0)
+                return new FileExtractionResult(false, ErrorMessage: "Document file is empty");
 
-            var analyzeResult = operation.Value;
-            var textParts = new List<string>();
-            var totalChars = 0;
+            // Set status to Processing
+            fileRecord.TextExtractionStatus = (int)TextExtractionStatus.Processing;
 
-            foreach (var page in analyzeResult.Pages)
+            var mimeType = fileRecord.ContentType ?? "application/pdf";
+            var result = await _provider.ExtractDocumentAsync(documentBytes, mimeType, ct);
+
+            if (result.NotAvailable)
             {
-                ct.ThrowIfCancellationRequested();
-
-                foreach (var line in page.Lines)
-                {
-                    var lineText = line.Content;
-                    if (string.IsNullOrEmpty(lineText))
-                        continue;
-
-                    if (totalChars + lineText.Length > MaxExtractionChars)
-                    {
-                        var remaining = MaxExtractionChars - totalChars;
-                        if (remaining > 0)
-                            textParts.Add(lineText[..remaining]);
-
-                        _logger.LogWarning(
-                            "Document Intelligence extraction for {FileRecordId} ({FileName}) exceeded limit at page {Page}, content truncated",
-                            fileRecord.Id, fileRecord.FileName, page.PageNumber);
-                        goto done;
-                    }
-
-                    textParts.Add(lineText);
-                    totalChars += lineText.Length;
-                }
+                _logger.LogWarning(
+                    "Attachment AI provider is not available — document extraction for {FileRecordId} ({FileName}) skipped. {Reason}",
+                    fileRecord.Id, fileRecord.FileName, result.ErrorMessage);
+                fileRecord.TextExtractionStatus = (int)TextExtractionStatus.Failed;
+                fileRecord.TextExtractionError = result.ErrorMessage;
+                return new FileExtractionResult(false, ErrorMessage: result.ErrorMessage);
             }
 
-            done:
-            if (textParts.Count == 0)
-                return new FileExtractionResult(false,
-                    ErrorMessage: "Document Intelligence returned no extractable text");
+            if (!result.Success)
+            {
+                fileRecord.TextExtractionStatus = (int)TextExtractionStatus.Failed;
+                fileRecord.TextExtractionError = result.ErrorMessage;
+                return new FileExtractionResult(false, ErrorMessage: result.ErrorMessage);
+            }
 
-            var text = string.Join("\n", textParts);
-            return new FileExtractionResult(true, ExtractedText: text);
+            // Success — populate FileRecord fields
+            fileRecord.ExtractedText = result.ExtractedText;
+            fileRecord.LayoutDataJson = result.LayoutDataJson;
+            fileRecord.TextExtractedAt = DateTime.UtcNow;
+            fileRecord.TextExtractionStatus = (int)TextExtractionStatus.Completed;
+            fileRecord.TextExtractionError = null;
+            fileRecord.AttachmentAIProvider = _provider is AzureAttachmentAIProvider
+                ? "AzureDocumentIntelligence"
+                : _provider.ProviderName;
+
+            return new FileExtractionResult(true, ExtractedText: result.ExtractedText);
         }
         catch (OperationCanceledException)
         {
@@ -93,15 +104,10 @@ public class DocumentIntelligenceContentExtractor : IFileContentExtractor
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Document Intelligence extraction failed for FileRecord {Id}", fileRecord.Id);
+            _logger.LogWarning(ex, "Document extraction failed for FileRecord {Id}", fileRecord.Id);
+            fileRecord.TextExtractionStatus = (int)TextExtractionStatus.Failed;
+            fileRecord.TextExtractionError = ex.Message;
             return new FileExtractionResult(false, ErrorMessage: ex.Message);
         }
-    }
-
-    private static async Task<BinaryData> ReadStreamAsBinaryDataAsync(Stream stream, CancellationToken ct)
-    {
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms, ct);
-        return BinaryData.FromBytes(ms.ToArray());
     }
 }

@@ -73,6 +73,7 @@ public class PdfContentExtractor : IFileContentExtractor
                         ErrorMessage: "PDF contains no extractable text (may be image-only/scanned)");
 
                 var text = string.Join("\n\n", textParts);
+                NativeDocumentExtractionMetadata.ApplySuccess(fileRecord);
                 return new FileExtractionResult(true, ExtractedText: text);
             }
             finally

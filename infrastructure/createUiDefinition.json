@@ -236,6 +236,61 @@
             "options": {
               "hideConfirmation": true
             }
+          },
+          {
+            "name": "visionSeparator",
+            "type": "Microsoft.Common.Section",
+            "label": "Azure AI Vision",
+            "elements": []
+          },
+          {
+            "name": "deployVision",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Deploy Azure AI Vision",
+            "toolTip": "Deploy Azure AI Vision (Computer Vision) for image and diagram analysis. Select 'No' to use your own endpoint or skip this feature.",
+            "defaultValue": "Yes",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Yes",
+                  "value": true
+                },
+                {
+                  "label": "No",
+                  "value": false
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "externalVisionEndpoint",
+            "type": "Microsoft.Common.TextBox",
+            "label": "External Vision Endpoint",
+            "toolTip": "Your Azure AI Vision API endpoint URL (e.g., https://your-vision.cognitiveservices.azure.com/).",
+            "defaultValue": "",
+            "visible": "[equals(steps('aiServices').deployVision, false)]",
+            "constraints": {
+              "required": false,
+              "regex": "^(https?://.+)?$",
+              "validationMessage": "Must be a valid URL starting with http:// or https://."
+            }
+          },
+          {
+            "name": "externalVisionKey",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "External Vision API Key",
+              "confirmPassword": "Confirm API Key"
+            },
+            "toolTip": "API key for your external Azure AI Vision endpoint.",
+            "visible": "[equals(steps('aiServices').deployVision, false)]",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": true
+            }
           }
         ]
       },
@@ -364,6 +419,9 @@
       "deployDocumentIntelligence": "[steps('aiServices').deployDocumentIntelligence]",
       "externalDocIntelEndpoint": "[steps('aiServices').externalDocIntelEndpoint]",
       "externalDocIntelKey": "[steps('aiServices').externalDocIntelKey]",
+      "deployVision": "[steps('aiServices').deployVision]",
+      "externalVisionEndpoint": "[steps('aiServices').externalVisionEndpoint]",
+      "externalVisionKey": "[steps('aiServices').externalVisionKey]",
       "deployKeyVault": "[steps('monitoringAdvanced').deployKeyVault]",
       "deployMonitoring": "[steps('monitoringAdvanced').deployMonitoring]",
       "deployContainerApps": true,

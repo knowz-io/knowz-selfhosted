@@ -282,7 +282,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
 
             Assert.Contains("photo.jpg", result);
             Assert.Contains("[Image: photo.jpg", result);
-            Assert.Contains("not yet analyzed", result);
+            Assert.Contains("analysis unavailable", result);
         }
     }
 
@@ -362,7 +362,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
 
             Assert.Contains("analyzed.jpg", result);
             Assert.Contains("A cat sitting on a windowsill", result);
-            Assert.DoesNotContain("not yet analyzed", result);
+            Assert.DoesNotContain("analysis unavailable", result);
         }
     }
 
@@ -409,7 +409,7 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
 
             Assert.Contains("diagram.png", result);
             Assert.Contains("[Image: diagram.png", result);
-            Assert.Contains("not yet analyzed", result);
+            Assert.Contains("analysis unavailable", result);
         }
     }
 
@@ -670,5 +670,487 @@ public class EnrichmentAttachmentAggregationTests : IDisposable
             Arg.Any<string>(),
             Arg.Is<string>(s => s.Contains("Main content") && s.Contains("artificial intelligence")),
             Arg.Any<int>(), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
+    }
+
+    // =============================================
+    // SelfHostedAttachmentContext (VERIFY_CTX_01-09)
+    // =============================================
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithVisionDescription_ProducesImageAnalysisHeader()
+    {
+        // VERIFY_CTX_01: Image with VisionDescription produces "Image Analysis:" header
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "sunset.jpg", ContentType = "image/jpeg",
+                VisionDescription = "A beautiful sunset over the ocean"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Image Analysis: sunset.jpg ---", result);
+            Assert.Contains("Caption: A beautiful sunset over the ocean", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithVisionExtractedText_IncludesTextFromImageSection()
+    {
+        // VERIFY_CTX_02: Image with VisionExtractedText includes "Text from image:" section
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "sign.png", ContentType = "image/png",
+                VisionDescription = "A street sign",
+                VisionExtractedText = "Main Street 123"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("Text from image:", result);
+            Assert.Contains("Main Street 123", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithVisionTagsJson_IncludesCommaSeparatedTags()
+    {
+        // VERIFY_CTX_03: Image with VisionTagsJson includes comma-separated tags
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "beach.jpg", ContentType = "image/jpeg",
+                VisionDescription = "Beach scene",
+                VisionTagsJson = "[\"ocean\",\"sand\",\"sky\"]"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("Tags: ocean, sand, sky", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithVisionObjectsJson_IncludesObjectsDetected()
+    {
+        // VERIFY_CTX_04: Image with VisionObjectsJson includes "Objects detected:"
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "room.jpg", ContentType = "image/jpeg",
+                VisionDescription = "A living room",
+                VisionObjectsJson = "[\"chair\",\"table\",\"lamp\"]"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("Objects detected: chair, table, lamp", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithOnlyExtractedText_UsesGenericFormat()
+    {
+        // VERIFY_CTX_05: Image with only ExtractedText (GPT-4V fallback) uses generic format
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "gpt4v.jpg", ContentType = "image/jpeg",
+                ExtractedText = "GPT-4V description of the image",
+                // No VisionDescription, no VisionExtractedText — GPT-4V fallback
+                VisionDescription = null,
+                VisionExtractedText = null,
+                VisionTagsJson = null,
+                VisionObjectsJson = null
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Attachment: gpt4v.jpg ---", result);
+            Assert.Contains("GPT-4V description of the image", result);
+            Assert.DoesNotContain("Image Analysis:", result);
+            Assert.DoesNotContain("Caption:", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithBothVisionAndExtractedText_UsesStructuredNoDuplication()
+    {
+        // VERIFY_CTX_06: Image with both VisionDescription and ExtractedText uses structured, no duplication
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "dual.jpg", ContentType = "image/jpeg",
+                ExtractedText = "Old GPT-4V text that should be ignored",
+                VisionDescription = "A structured vision caption",
+                VisionExtractedText = "OCR text from vision API"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            // Should use structured format
+            Assert.Contains("--- Image Analysis: dual.jpg ---", result);
+            Assert.Contains("Caption: A structured vision caption", result);
+            Assert.Contains("OCR text from vision API", result);
+            // Should NOT duplicate ExtractedText in a separate generic section
+            Assert.DoesNotContain("Old GPT-4V text that should be ignored", result);
+            // Count occurrences of the file name — should appear exactly once as a section header
+            var headerCount = result.Split("dual.jpg").Length - 1;
+            Assert.Equal(1, headerCount);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_DocumentWithExtractedText_UsesStandardFormat()
+    {
+        // VERIFY_CTX_07: Document attachment with ExtractedText uses standard format
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var docFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "report.pdf", ContentType = "application/pdf",
+                ExtractedText = "Quarterly financial report Q4 2025"
+            };
+            db.FileRecords.Add(docFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = docFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Attachment: report.pdf ---", result);
+            Assert.Contains("Quarterly financial report Q4 2025", result);
+            Assert.DoesNotContain("Image Analysis:", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_CommentImageWithVisionFields_UsesStructuredFormat()
+    {
+        // Comment-level image attachments should also use structured vision format
+        var knowledgeId = Guid.NewGuid();
+        var commentId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            db.Comments.Add(new KnowledgeComment
+            {
+                Id = commentId, KnowledgeId = knowledgeId,
+                TenantId = TenantId, AuthorName = "Alice",
+                Body = "Check this photo"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "meeting.jpg", ContentType = "image/jpeg",
+                VisionDescription = "Team meeting in progress",
+                VisionTagsJson = "[\"people\",\"office\"]",
+                VisionObjectsJson = "[\"whiteboard\",\"laptop\"]"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                CommentId = commentId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Comment Image Analysis: meeting.jpg ---", result);
+            Assert.Contains("Caption: Team meeting in progress", result);
+            Assert.Contains("Tags: people, office", result);
+            Assert.Contains("Objects detected: whiteboard, laptop", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithAllVisionFields_ProducesFullStructuredSection()
+    {
+        // Integration: All fields together produce the complete structured format
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "complete.jpg", ContentType = "image/jpeg",
+                VisionDescription = "A detailed scene description",
+                VisionTagsJson = "[\"nature\",\"landscape\"]",
+                VisionObjectsJson = "[\"mountain\",\"river\"]",
+                VisionExtractedText = "Welcome to National Park"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Image Analysis: complete.jpg ---", result);
+            Assert.Contains("Caption: A detailed scene description", result);
+            Assert.Contains("Objects detected: mountain, river", result);
+            Assert.Contains("Tags: nature, landscape", result);
+            Assert.Contains("Text from image:", result);
+            Assert.Contains("Welcome to National Park", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_DocumentWithTextExtractionFailed_ShowsFailedStatus()
+    {
+        // Rule: Document with TextExtractionStatus=Failed includes failure note
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var docFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "broken.pdf", ContentType = "application/pdf",
+                ExtractedText = null,
+                TextExtractionStatus = 3 // Failed
+            };
+            db.FileRecords.Add(docFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = docFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("[Document: broken.pdf", result);
+            Assert.Contains("extraction failed", result);
+        }
+    }
+
+    [Fact]
+    public async Task GetAllAttachmentText_ImageWithOnlyVisionExtractedText_UsesStructuredFormat()
+    {
+        // Image with VisionExtractedText but no VisionDescription still uses structured format
+        var knowledgeId = Guid.NewGuid();
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            db.KnowledgeItems.Add(new Knowledge
+            {
+                Id = knowledgeId, TenantId = TenantId,
+                Title = "Test", Content = "Main"
+            });
+            var imageFile = new FileRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId,
+                FileName = "receipt.png", ContentType = "image/png",
+                VisionExtractedText = "Total: $42.50"
+            };
+            db.FileRecords.Add(imageFile);
+            db.FileAttachments.Add(new FileAttachment
+            {
+                Id = Guid.NewGuid(), FileRecordId = imageFile.Id,
+                KnowledgeId = knowledgeId, TenantId = TenantId
+            });
+            await db.SaveChangesAsync();
+            TenantContext.CurrentTenantId = null;
+        }
+
+        using (var db = GetDb())
+        {
+            TenantContext.CurrentTenantId = TenantId;
+            var result = await EnrichmentBackgroundService.GetAllAttachmentTextAsync(db, knowledgeId, CancellationToken.None);
+            TenantContext.CurrentTenantId = null;
+
+            Assert.Contains("--- Image Analysis: receipt.png ---", result);
+            Assert.Contains("Text from image:", result);
+            Assert.Contains("Total: $42.50", result);
+        }
     }
 }

@@ -39,6 +39,10 @@ public static class DeployParamsWriter
             parameters["azureOpenAiApiKey"] = config.AzureOpenAiApiKey;
             parameters["azureOpenAiDeployment"] = config.AzureOpenAiDeployment;
             parameters["azureOpenAiEmbedding"] = config.AzureOpenAiEmbedding;
+            parameters["azureAiVisionEndpoint"] = config.AzureAiVisionEndpoint;
+            parameters["azureAiVisionApiKey"] = config.AzureAiVisionApiKey;
+            parameters["azureDocumentIntelligenceEndpoint"] = config.AzureDocumentIntelligenceEndpoint;
+            parameters["azureDocumentIntelligenceApiKey"] = config.AzureDocumentIntelligenceApiKey;
             parameters["azureSearchEndpoint"] = config.AzureSearchEndpoint;
             parameters["azureSearchApiKey"] = config.AzureSearchApiKey;
             parameters["azureSearchIndex"] = config.AzureSearchIndex;

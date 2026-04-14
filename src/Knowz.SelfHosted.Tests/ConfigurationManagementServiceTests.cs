@@ -54,14 +54,16 @@ public class ConfigurationManagementServiceTests : IDisposable
     // --- GetAllCategoriesAsync ---
 
     [Fact]
-    public async Task GetAllCategories_ReturnsAllSevenCategories()
+    public async Task GetAllCategories_ReturnsAllCategoriesIncludingAttachmentAICategories()
     {
         var result = await _service.GetAllCategoriesAsync();
 
-        Assert.Equal(9, result.Count);
+        Assert.Equal(11, result.Count);
         var categoryNames = result.Select(c => c.Category).ToList();
         Assert.Contains("ConnectionStrings", categoryNames);
         Assert.Contains("AzureOpenAI", categoryNames);
+        Assert.Contains("AzureAIVision", categoryNames);
+        Assert.Contains("AzureDocumentIntelligence", categoryNames);
         Assert.Contains("AzureAISearch", categoryNames);
         Assert.Contains("Storage", categoryNames);
         Assert.Contains("SelfHosted", categoryNames);
@@ -512,11 +514,67 @@ public class ConfigurationManagementServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllCategories_ReturnsSevenCategories()
+    public async Task GetAllCategories_ReturnsCategoryCountIncludingAttachmentAICategories()
     {
         var result = await _service.GetAllCategoriesAsync();
 
-        Assert.Equal(9, result.Count);
+        Assert.Equal(11, result.Count);
+    }
+
+    [Fact]
+    public async Task TestConnection_AzureAIVision_ReturnsConfigured_WhenEndpointAndKeySet()
+    {
+        _db.SystemConfigurations.AddRange(
+            new SystemConfiguration
+            {
+                Category = "AzureAIVision",
+                Key = "Endpoint",
+                EncryptedValue = _dataProtector.Protect("https://vision.cognitiveservices.azure.com"),
+                IsSecret = false,
+                RequiresRestart = true
+            },
+            new SystemConfiguration
+            {
+                Category = "AzureAIVision",
+                Key = "ApiKey",
+                EncryptedValue = _dataProtector.Protect("vision-key"),
+                IsSecret = true,
+                RequiresRestart = true
+            });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.TestConnectionAsync("AzureAIVision");
+
+        Assert.True(result.IsHealthy);
+        Assert.Equal("Configured", result.Status);
+    }
+
+    [Fact]
+    public async Task TestConnection_AzureDocumentIntelligence_ReturnsConfigured_WhenEndpointAndKeySet()
+    {
+        _db.SystemConfigurations.AddRange(
+            new SystemConfiguration
+            {
+                Category = "AzureDocumentIntelligence",
+                Key = "Endpoint",
+                EncryptedValue = _dataProtector.Protect("https://docint.cognitiveservices.azure.com"),
+                IsSecret = false,
+                RequiresRestart = true
+            },
+            new SystemConfiguration
+            {
+                Category = "AzureDocumentIntelligence",
+                Key = "ApiKey",
+                EncryptedValue = _dataProtector.Protect("docint-key"),
+                IsSecret = true,
+                RequiresRestart = true
+            });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.TestConnectionAsync("AzureDocumentIntelligence");
+
+        Assert.True(result.IsHealthy);
+        Assert.Equal("Configured", result.Status);
     }
 
     [Fact]

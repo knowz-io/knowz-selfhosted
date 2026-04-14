@@ -4,6 +4,7 @@ using Knowz.SelfHosted.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(SelfHostedDbContext))]
-    partial class SelfHostedDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260414031856_AddStructuredVisionFields")]
+    partial class AddStructuredVisionFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -34,7 +37,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TagsId");
 
-                    b.ToTable("KnowledgeTags", (string)null);
+                    b.ToTable("KnowledgeTags");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.AuditLog", b =>
@@ -93,7 +96,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "EntityType", "EntityId");
 
-                    b.ToTable("AuditLogs", (string)null);
+                    b.ToTable("AuditLogs");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.ContentChunk", b =>
@@ -151,7 +154,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "KnowledgeId");
 
-                    b.ToTable("ContentChunks", (string)null);
+                    b.ToTable("ContentChunks");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Event", b =>
@@ -183,7 +186,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Events", (string)null);
+                    b.ToTable("Events");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.FileAttachment", b =>
@@ -217,7 +220,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("FileAttachments", (string)null);
+                    b.ToTable("FileAttachments");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.FileRecord", b =>
@@ -297,7 +300,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("FileRecords", (string)null);
+                    b.ToTable("FileRecords");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.GitRepository", b =>
@@ -371,7 +374,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("VaultId")
                         .IsUnique();
 
-                    b.ToTable("GitRepositories", (string)null);
+                    b.ToTable("GitRepositories");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.InboxItem", b =>
@@ -412,7 +415,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "CreatedByUserId", "CreatedAt")
                         .HasDatabaseName("IX_InboxItems_TenantId_CreatedByUserId_CreatedAt");
 
-                    b.ToTable("InboxItems", (string)null);
+                    b.ToTable("InboxItems");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Knowledge", b =>
@@ -490,7 +493,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Type");
 
-                    b.ToTable("KnowledgeItems", (string)null);
+                    b.ToTable("KnowledgeItems");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeComment", b =>
@@ -544,7 +547,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "KnowledgeId");
 
-                    b.ToTable("Comments", (string)null);
+                    b.ToTable("Comments");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeEvent", b =>
@@ -559,7 +562,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.ToTable("KnowledgeEvents", (string)null);
+                    b.ToTable("KnowledgeEvents");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeLocation", b =>
@@ -574,7 +577,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("LocationId");
 
-                    b.ToTable("KnowledgeLocations", (string)null);
+                    b.ToTable("KnowledgeLocations");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgePerson", b =>
@@ -601,7 +604,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("PersonId");
 
-                    b.ToTable("KnowledgePersons", (string)null);
+                    b.ToTable("KnowledgePersons");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeRelationship", b =>
@@ -664,7 +667,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_KnowledgeRelationships_Tenant_Source_Target");
 
-                    b.ToTable("KnowledgeRelationships", (string)null);
+                    b.ToTable("KnowledgeRelationships");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeVault", b =>
@@ -690,7 +693,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("VaultId");
 
-                    b.ToTable("KnowledgeVaults", (string)null);
+                    b.ToTable("KnowledgeVaults");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.KnowledgeVersion", b =>
@@ -747,7 +750,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "KnowledgeId");
 
-                    b.ToTable("KnowledgeVersions", (string)null);
+                    b.ToTable("KnowledgeVersions");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Location", b =>
@@ -779,7 +782,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Locations", (string)null);
+                    b.ToTable("Locations");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Person", b =>
@@ -811,7 +814,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Persons", (string)null);
+                    b.ToTable("Persons");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.PortableArchive", b =>
@@ -843,7 +846,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "OriginalId");
 
-                    b.ToTable("PortableArchives", (string)null);
+                    b.ToTable("PortableArchives");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.SystemConfiguration", b =>
@@ -895,7 +898,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("Category", "Key")
                         .IsUnique();
 
-                    b.ToTable("SystemConfigurations", (string)null);
+                    b.ToTable("SystemConfigurations");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Tag", b =>
@@ -928,7 +931,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "Name")
                         .IsUnique();
 
-                    b.ToTable("Tags", (string)null);
+                    b.ToTable("Tags");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Tenant", b =>
@@ -967,7 +970,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("Tenants", (string)null);
+                    b.ToTable("Tenants");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Topic", b =>
@@ -1002,7 +1005,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Name");
 
-                    b.ToTable("Topics", (string)null);
+                    b.ToTable("Topics");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.User", b =>
@@ -1079,7 +1082,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Username");
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.Vault", b =>
@@ -1127,7 +1130,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Name");
 
-                    b.ToTable("Vaults", (string)null);
+                    b.ToTable("Vaults");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.VaultAncestor", b =>
@@ -1145,7 +1148,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("DescendantVaultId");
 
-                    b.ToTable("VaultAncestors", (string)null);
+                    b.ToTable("VaultAncestors");
                 });
 
             modelBuilder.Entity("Knowz.Core.Entities.VaultPerson", b =>
@@ -1163,7 +1166,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("PersonId");
 
-                    b.ToTable("VaultPersons", (string)null);
+                    b.ToTable("VaultPersons");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.EnrichmentOutboxItem", b =>
@@ -1208,7 +1211,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Status");
 
-                    b.ToTable("EnrichmentOutbox", (string)null);
+                    b.ToTable("EnrichmentOutbox");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.PlatformConnection", b =>
@@ -1265,7 +1268,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId")
                         .IsUnique();
 
-                    b.ToTable("PlatformConnections", (string)null);
+                    b.ToTable("PlatformConnections");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.PlatformSyncRun", b =>
@@ -1330,7 +1333,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_PlatformSyncRuns_TenantId_Status");
 
-                    b.ToTable("PlatformSyncRuns", (string)null);
+                    b.ToTable("PlatformSyncRuns");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.PromptTemplate", b =>
@@ -1390,7 +1393,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_PromptTemplates_Key_Scope_Tenant_User")
                         .HasFilter("[TenantId] IS NOT NULL AND [UserId] IS NOT NULL");
 
-                    b.ToTable("PromptTemplates", (string)null);
+                    b.ToTable("PromptTemplates");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.SyncTombstone", b =>
@@ -1428,7 +1431,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("VaultSyncLinkId", "EntityType", "LocalEntityId");
 
-                    b.ToTable("SyncTombstones", (string)null);
+                    b.ToTable("SyncTombstones");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserPermissions", b =>
@@ -1462,7 +1465,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("UserPermissions", (string)null);
+                    b.ToTable("UserPermissions");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserPreference", b =>
@@ -1494,7 +1497,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("UserPreferences", (string)null);
+                    b.ToTable("UserPreferences");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserTenantMembership", b =>
@@ -1530,7 +1533,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "TenantId")
                         .IsUnique();
 
-                    b.ToTable("UserTenantMemberships", (string)null);
+                    b.ToTable("UserTenantMemberships");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.UserVaultAccess", b =>
@@ -1577,7 +1580,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "VaultId")
                         .IsUnique();
 
-                    b.ToTable("UserVaultAccess", (string)null);
+                    b.ToTable("UserVaultAccess");
                 });
 
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.VaultSyncLink", b =>
@@ -1638,7 +1641,7 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.HasIndex("PlatformConnectionId");
 
-                    b.ToTable("VaultSyncLinks", (string)null);
+                    b.ToTable("VaultSyncLinks");
                 });
 
             modelBuilder.Entity("KnowledgeTags", b =>
