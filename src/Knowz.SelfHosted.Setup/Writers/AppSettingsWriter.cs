@@ -55,6 +55,25 @@ public static class AppSettingsWriter
                 ["ApiKey"] = config.AzureSearchApiKey,
                 ["IndexName"] = config.AzureSearchIndex
             };
+            if (!string.IsNullOrWhiteSpace(config.AzureAiVisionEndpoint) ||
+                !string.IsNullOrWhiteSpace(config.AzureAiVisionApiKey))
+            {
+                root["AzureAIVision"] = new JsonObject
+                {
+                    ["Endpoint"] = config.AzureAiVisionEndpoint,
+                    ["ApiKey"] = config.AzureAiVisionApiKey
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(config.AzureDocumentIntelligenceEndpoint) ||
+                !string.IsNullOrWhiteSpace(config.AzureDocumentIntelligenceApiKey))
+            {
+                root["AzureDocumentIntelligence"] = new JsonObject
+                {
+                    ["Endpoint"] = config.AzureDocumentIntelligenceEndpoint,
+                    ["ApiKey"] = config.AzureDocumentIntelligenceApiKey
+                };
+            }
         }
         else if (config.AiMode == AiMode.PlatformProxy)
         {

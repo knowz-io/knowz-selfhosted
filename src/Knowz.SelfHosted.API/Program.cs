@@ -63,6 +63,7 @@ builder.Services.AddSelfHostedSearch(builder.Configuration);
 builder.Services.AddSelfHostedOpenAI(builder.Configuration);
 builder.Services.AddSelfHostedFileStorage(builder.Configuration);
 builder.Services.AddDocumentIntelligence(builder.Configuration);
+builder.Services.AddAttachmentAI(builder.Configuration);
 builder.Services.AddSelfHostedApplication();
 
 // Enrichment pipeline: bounded channel + background service
@@ -383,6 +384,23 @@ else
         app.Logger.LogInformation("Search Provider: Database (SQL keyword search — no vector/semantic)");
 }
 
+var attachmentVisionConfigured =
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureAIVision:Endpoint"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureAIVision:ApiKey"]);
+var attachmentDocumentConfigured =
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureDocumentIntelligence:Endpoint"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureDocumentIntelligence:ApiKey"]);
+var attachmentSynthesisConfigured =
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:Endpoint"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:ApiKey"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:DeploymentName"]);
+
+app.Logger.LogInformation(
+    "Attachment AI: Vision={VisionConfigured}, DocumentIntelligence={DocumentConfigured}, ModelSynthesis={SynthesisConfigured}",
+    attachmentVisionConfigured,
+    attachmentDocumentConfigured,
+    attachmentSynthesisConfigured);
+
 app.UseCors();
 
 // Rate limiting (after CORS, before auth)
@@ -425,6 +443,7 @@ app.MapSyncEndpoints();
 app.MapApiKeyEndpoints();
 app.MapChatEndpoints();
 app.MapFileEndpoints();
+app.MapAttachmentAIAdminEndpoints();
 app.MapCommentEndpoints();
 app.MapVersionEndpoints();
 app.MapAuditEndpoints();

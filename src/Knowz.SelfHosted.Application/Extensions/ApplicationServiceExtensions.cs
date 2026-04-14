@@ -59,31 +59,37 @@ public static class ApplicationServiceExtensions
         services.AddScoped<FileSyncService>();
 
         // Content extraction — composite pattern (routes by content type)
-        // Native extractors handle common formats directly via OpenXml/PdfPig
+        // Order: AI-powered extractors first (they return CanExtract=false when NoOp),
+        // then native fallbacks (PdfPig, OpenXML)
         services.AddScoped<TextFileContentExtractor>();
         services.AddScoped<PdfContentExtractor>();
         services.AddScoped<DocxContentExtractor>();
         services.AddScoped<ExcelContentExtractor>();
         services.AddScoped<PowerPointContentExtractor>();
         services.AddScoped<ImageContentExtractor>();
-        // DocumentIntelligenceContentExtractor is registered conditionally by AddDocumentIntelligence()
+        // DocumentIntelligenceContentExtractor is registered by AddDocumentIntelligence()
 
         services.AddScoped<IFileContentExtractor>(sp =>
         {
             var extractors = new List<IFileContentExtractor>
             {
-                sp.GetRequiredService<TextFileContentExtractor>(),
-                sp.GetRequiredService<PdfContentExtractor>(),
-                sp.GetRequiredService<DocxContentExtractor>(),
-                sp.GetRequiredService<ExcelContentExtractor>(),
-                sp.GetRequiredService<PowerPointContentExtractor>(),
-                sp.GetRequiredService<ImageContentExtractor>()
+                sp.GetRequiredService<TextFileContentExtractor>(),       // text/* — always first, fastest
             };
 
-            // Document Intelligence as fallback for types not handled natively (e.g. scanned PDFs, legacy formats)
+            // AI-powered extractors go before native fallbacks.
+            // Their CanExtract returns false when provider is NoOp,
+            // so CompositeContentExtractor falls through to native extractors.
             var diExtractor = sp.GetService<DocumentIntelligenceContentExtractor>();
             if (diExtractor != null)
-                extractors.Add(diExtractor);
+                extractors.Add(diExtractor);                             // AI-powered doc extraction (PDF, images via DocIntel)
+
+            extractors.Add(sp.GetRequiredService<ImageContentExtractor>());  // AI-powered vision analysis
+
+            // Native fallbacks
+            extractors.Add(sp.GetRequiredService<PdfContentExtractor>());    // Native PDF fallback (PdfPig)
+            extractors.Add(sp.GetRequiredService<DocxContentExtractor>());   // Native DOCX fallback (OpenXML)
+            extractors.Add(sp.GetRequiredService<ExcelContentExtractor>());
+            extractors.Add(sp.GetRequiredService<PowerPointContentExtractor>());
 
             return new CompositeContentExtractor(extractors);
         });

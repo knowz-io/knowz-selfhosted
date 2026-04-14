@@ -204,6 +204,12 @@ public class ConfigurationManagementService : IConfigurationManagementService
                 case "AzureOpenAI":
                     await TestAzureOpenAIAsync(dbEntries, result);
                     break;
+                case "AzureAIVision":
+                    await TestAzureEndpointConfigurationAsync(dbEntries, result);
+                    break;
+                case "AzureDocumentIntelligence":
+                    await TestAzureEndpointConfigurationAsync(dbEntries, result);
+                    break;
                 case "AzureAISearch":
                     await TestAzureAISearchAsync(dbEntries, result);
                     break;
@@ -439,6 +445,33 @@ public class ConfigurationManagementService : IConfigurationManagementService
     }
 
     private Task TestAzureAISearchAsync(List<SystemConfiguration> entries, ServiceHealthResult result)
+    {
+        var endpoint = entries.FirstOrDefault(e => e.Key == "Endpoint");
+        var apiKey = entries.FirstOrDefault(e => e.Key == "ApiKey");
+
+        if (endpoint?.EncryptedValue is null || apiKey?.EncryptedValue is null)
+        {
+            result.IsHealthy = false;
+            result.Status = "Not Configured";
+            return Task.CompletedTask;
+        }
+
+        var endpointValue = _dataProtector.Unprotect(endpoint.EncryptedValue);
+        if (Uri.TryCreate(endpointValue, UriKind.Absolute, out _))
+        {
+            result.IsHealthy = true;
+            result.Status = "Configured";
+        }
+        else
+        {
+            result.IsHealthy = false;
+            result.Status = "Error: Invalid endpoint URL";
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task TestAzureEndpointConfigurationAsync(List<SystemConfiguration> entries, ServiceHealthResult result)
     {
         var endpoint = entries.FirstOrDefault(e => e.Key == "Endpoint");
         var apiKey = entries.FirstOrDefault(e => e.Key == "ApiKey");
@@ -713,6 +746,26 @@ public class ConfigurationManagementService : IConfigurationManagementService
                 ["ApiKey"] = new() { IsSecret = true, RequiresRestart = true, Description = "Azure OpenAI API key" },
                 ["DeploymentName"] = new() { IsSecret = false, RequiresRestart = true, Description = "Chat model deployment name (e.g., gpt-4o)" },
                 ["EmbeddingDeploymentName"] = new() { IsSecret = false, RequiresRestart = true, Description = "Embedding model deployment name (e.g., text-embedding-3-small)" }
+            }
+        },
+        ["AzureAIVision"] = new CategorySchema
+        {
+            DisplayName = "Azure AI Vision",
+            Description = "Image, diagram, OCR, and object detection configuration for self-hosted attachment intelligence",
+            Keys = new Dictionary<string, KeySchema>
+            {
+                ["Endpoint"] = new() { IsSecret = false, RequiresRestart = true, Description = "Azure AI Vision endpoint URL" },
+                ["ApiKey"] = new() { IsSecret = true, RequiresRestart = true, Description = "Azure AI Vision API key" }
+            }
+        },
+        ["AzureDocumentIntelligence"] = new CategorySchema
+        {
+            DisplayName = "Azure Document Intelligence",
+            Description = "PDF and document extraction configuration for self-hosted attachment intelligence",
+            Keys = new Dictionary<string, KeySchema>
+            {
+                ["Endpoint"] = new() { IsSecret = false, RequiresRestart = true, Description = "Azure Document Intelligence endpoint URL" },
+                ["ApiKey"] = new() { IsSecret = true, RequiresRestart = true, Description = "Azure Document Intelligence API key" }
             }
         },
         ["AzureAISearch"] = new CategorySchema

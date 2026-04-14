@@ -62,6 +62,12 @@ locals {
   # Effective Document Intelligence key (local or external)
   effective_doc_intel_key = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].primary_access_key : var.external_doc_intel_key
 
+  # Effective Vision endpoint (local or external)
+  effective_vision_endpoint = var.deploy_vision ? azurerm_cognitive_account.vision[0].endpoint : var.external_vision_endpoint
+
+  # Effective Vision key (local or external)
+  effective_vision_key = var.deploy_vision ? azurerm_cognitive_account.vision[0].primary_access_key : var.external_vision_key
+
   # App Insights connection string (empty when monitoring not deployed)
   effective_app_insights_connection_string = var.deploy_monitoring ? azurerm_application_insights.main[0].connection_string : ""
 

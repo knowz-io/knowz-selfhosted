@@ -29,7 +29,16 @@ public record FileMetadataDto(
     Guid? KnowledgeId = null,
     string? KnowledgeTitle = null,
     Guid? VaultId = null,
-    string? VaultName = null);
+    string? VaultName = null,
+    // Structured vision fields (NodeID: SelfHostedAttachmentExperience)
+    string? VisionTagsJson = null,
+    string? VisionObjectsJson = null,
+    string? VisionExtractedText = null,
+    DateTime? VisionAnalyzedAt = null,
+    string? LayoutDataJson = null,
+    int TextExtractionStatus = 0,
+    DateTime? TextExtractedAt = null,
+    string? AttachmentAIProvider = null);
 
 /// <summary>
 /// FileAttachment junction record (links FileRecord to Knowledge/Comment).

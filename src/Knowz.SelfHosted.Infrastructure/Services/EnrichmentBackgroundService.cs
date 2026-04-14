@@ -402,94 +402,117 @@ public class EnrichmentBackgroundService : BackgroundService
 
     public static async Task<string> GetAllAttachmentTextAsync(
         SelfHostedDbContext db, Guid knowledgeId, CancellationToken ct)
+        => await AttachmentContextBuilder.BuildKnowledgeAttachmentContextAsync(
+            db,
+            knowledgeId,
+            AttachmentContextRenderMode.Enrichment,
+            50_000,
+            ct);
+
+    internal static string? BuildAttachmentSection(
+        string fileName, string? contentType, string? extractedText,
+        string? visionDescription, string? visionTagsJson, string? visionObjectsJson,
+        string? visionExtractedText, int textExtractionStatus,
+        bool isCommentAttachment)
     {
-        var parts = new List<string>();
-        var totalChars = 0;
-        const int maxChars = 50_000;
+        var isImage = contentType != null &&
+            contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        var hasVisionData = !string.IsNullOrEmpty(visionDescription) ||
+            !string.IsNullOrEmpty(visionExtractedText);
 
-        // 1. Direct knowledge-level attachments (include all non-deleted files)
-        var knowledgeAttachments = await db.FileAttachments
-            .IgnoreQueryFilters()
-            .Where(fa => fa.KnowledgeId == knowledgeId)
-            .Join(
-                db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted),
-                fa => fa.FileRecordId,
-                fr => fr.Id,
-                (fa, fr) => new { fr.FileName, fr.ExtractedText, fr.ContentType, fa.CreatedAt })
-            .OrderBy(x => x.CreatedAt)
-            .ToListAsync(ct);
+        var prefix = isCommentAttachment ? "Comment " : "";
 
-        foreach (var att in knowledgeAttachments)
+        // Image with structured vision fields
+        if (isImage && hasVisionData)
         {
-            if (totalChars >= maxChars) break;
+            var lines = new List<string>
+            {
+                $"--- {prefix}Image Analysis: {fileName} ---"
+            };
 
-            if (!string.IsNullOrEmpty(att.ExtractedText))
+            if (!string.IsNullOrEmpty(visionDescription))
+                lines.Add($"Caption: {visionDescription}");
+
+            if (!string.IsNullOrEmpty(visionObjectsJson))
             {
-                var section = $"--- Attachment: {att.FileName} ---\n{att.ExtractedText}";
-                parts.Add(section);
-                totalChars += section.Length;
+                var objects = ParseJsonArray(visionObjectsJson);
+                if (objects.Count > 0)
+                    lines.Add($"Objects detected: {string.Join(", ", objects)}");
             }
-            else if (att.ContentType != null && att.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+
+            if (!string.IsNullOrEmpty(visionTagsJson))
             {
-                var section = $"--- Attachment: {att.FileName} ---\n[Image: {att.FileName} — not yet analyzed]";
-                parts.Add(section);
-                totalChars += section.Length;
+                var tags = ParseJsonArray(visionTagsJson);
+                if (tags.Count > 0)
+                    lines.Add($"Tags: {string.Join(", ", tags)}");
             }
-            // else: non-image file with no extracted text — skip
+
+            if (!string.IsNullOrEmpty(visionExtractedText))
+            {
+                lines.Add("Text from image:");
+                lines.Add(visionExtractedText);
+            }
+
+            return string.Join("\n", lines);
         }
 
-        // 2. Comments and their attachments
-        var comments = await db.Comments
-            .IgnoreQueryFilters()
-            .Where(c => c.KnowledgeId == knowledgeId && !c.IsDeleted)
-            .OrderBy(c => c.CreatedAt)
-            .Select(c => new { c.Id, c.AuthorName, c.Body })
-            .ToListAsync(ct);
-
-        foreach (var comment in comments)
+        // Image or document with ExtractedText (GPT-4V fallback for images, or standard for docs)
+        if (!string.IsNullOrEmpty(extractedText))
         {
-            if (totalChars >= maxChars) break;
-
-            // Comment body
-            if (!string.IsNullOrWhiteSpace(comment.Body))
-            {
-                var commentSection = $"--- Comment by {comment.AuthorName} ---\n{comment.Body}";
-                parts.Add(commentSection);
-                totalChars += commentSection.Length;
-            }
-
-            // Comment attachments (include all non-deleted files)
-            var commentAttachments = await db.FileAttachments
-                .IgnoreQueryFilters()
-                .Where(fa => fa.CommentId == comment.Id)
-                .Join(
-                    db.FileRecords.IgnoreQueryFilters().Where(fr => !fr.IsDeleted),
-                    fa => fa.FileRecordId,
-                    fr => fr.Id,
-                    (fa, fr) => new { fr.FileName, fr.ExtractedText, fr.ContentType })
-                .ToListAsync(ct);
-
-            foreach (var att in commentAttachments)
-            {
-                if (totalChars >= maxChars) break;
-
-                if (!string.IsNullOrEmpty(att.ExtractedText))
-                {
-                    var section = $"--- Comment Attachment: {att.FileName} ---\n{att.ExtractedText}";
-                    parts.Add(section);
-                    totalChars += section.Length;
-                }
-                else if (att.ContentType != null && att.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                {
-                    var section = $"--- Comment Attachment: {att.FileName} ---\n[Image: {att.FileName} — not yet analyzed]";
-                    parts.Add(section);
-                    totalChars += section.Length;
-                }
-                // else: non-image file with no extracted text — skip
-            }
+            return $"--- {prefix}Attachment: {fileName} ---\n{extractedText}";
         }
 
-        return parts.Count > 0 ? string.Join("\n\n", parts) : string.Empty;
+        // Image with no data at all — placeholder
+        if (isImage)
+        {
+            return $"--- {prefix}Attachment: {fileName} ---\n[Image: {fileName} — not yet analyzed]";
+        }
+
+        // Document with TextExtractionStatus=Failed
+        if (textExtractionStatus == 3) // Failed
+        {
+            return $"[Document: {fileName} — extraction failed]";
+        }
+
+        // Non-image with no extracted text — skip
+        return null;
+    }
+
+    internal static List<string> ParseJsonArray(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<string>();
+
+        try
+        {
+            var document = JsonDocument.Parse(json);
+            var results = new List<string>();
+
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.ValueKind == JsonValueKind.String)
+                {
+                    var value = element.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        results.Add(value);
+                }
+                else if (element.ValueKind == JsonValueKind.Object)
+                {
+                    if (element.TryGetProperty("name", out var nameProp))
+                    {
+                        var value = nameProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            results.Add(value);
+                    }
+                }
+            }
+
+            return results;
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     internal static async Task ReindexAsync(SelfHostedDbContext db, Knowledge knowledge,

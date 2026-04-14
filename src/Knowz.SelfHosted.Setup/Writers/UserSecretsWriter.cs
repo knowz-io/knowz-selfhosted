@@ -44,6 +44,10 @@ public static class UserSecretsWriter
             AddIfNotEmpty(secrets, "AzureOpenAI:ApiKey", config.AzureOpenAiApiKey);
             AddIfNotEmpty(secrets, "AzureOpenAI:DeploymentName", config.AzureOpenAiDeployment);
             AddIfNotEmpty(secrets, "AzureOpenAI:EmbeddingDeployment", config.AzureOpenAiEmbedding);
+            AddIfNotEmpty(secrets, "AzureAIVision:Endpoint", config.AzureAiVisionEndpoint);
+            AddIfNotEmpty(secrets, "AzureAIVision:ApiKey", config.AzureAiVisionApiKey);
+            AddIfNotEmpty(secrets, "AzureDocumentIntelligence:Endpoint", config.AzureDocumentIntelligenceEndpoint);
+            AddIfNotEmpty(secrets, "AzureDocumentIntelligence:ApiKey", config.AzureDocumentIntelligenceApiKey);
             AddIfNotEmpty(secrets, "AzureAISearch:Endpoint", config.AzureSearchEndpoint);
             AddIfNotEmpty(secrets, "AzureAISearch:ApiKey", config.AzureSearchApiKey);
             AddIfNotEmpty(secrets, "AzureAISearch:IndexName", config.AzureSearchIndex);

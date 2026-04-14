@@ -63,6 +63,16 @@ param chatDeploymentName string = 'gpt-5.2-chat'
 @description('Embedding deployment name (must match appsettings EmbeddingDeploymentName)')
 param embeddingDeploymentName string = 'text-embedding-3-small'
 
+@description('Deploy Azure AI Vision for image/diagram analysis (caption, tags, objects, OCR)')
+param deployVision bool = true
+
+@description('External Azure AI Vision endpoint (required when deployVision is false)')
+param externalVisionEndpoint string = ''
+
+@description('External Azure AI Vision API key (required when deployVision is false)')
+@secure()
+param externalVisionKey string = ''
+
 @description('Deploy Azure Document Intelligence for advanced document extraction')
 param deployDocumentIntelligence bool = true
 
@@ -121,6 +131,7 @@ var effectiveTags = union(defaultTags, tags)
 
 // Effective endpoints (local or external)
 var effectiveOpenAiEndpoint = deployOpenAI ? cognitiveServices.properties.endpoint : externalOpenAiEndpoint
+var effectiveVisionEndpoint = deployVision ? visionService.properties.endpoint : externalVisionEndpoint
 var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
 
 // SQL connection string using AAD Managed Identity authentication (no password)
@@ -797,6 +808,22 @@ resource secretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
+resource secretVisionEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'AzureAIVision--Endpoint'
+  properties: {
+    value: effectiveVisionEndpoint
+  }
+}
+
+resource secretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'AzureAIVision--ApiKey'
+  properties: {
+    value: deployVision ? visionService.listKeys().key1 : externalVisionKey
+  }
+}
+
 resource secretStorageConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'Storage--Azure--ConnectionString'
@@ -1063,6 +1090,65 @@ resource docIntelDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGrou
 }
 
 // ============================================================================
+// AZURE AI VISION (private endpoint, public access disabled)
+// ============================================================================
+
+resource visionService 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (deployVision) {
+  name: '${prefix}-vision-${location}'
+  location: location
+  tags: effectiveTags
+  kind: 'ComputerVision'
+  sku: {
+    name: 'S1'
+  }
+  properties: {
+    publicNetworkAccess: 'Disabled'
+    customSubDomainName: '${prefix}-vision-${location}'
+    networkAcls: {
+      defaultAction: 'Deny'
+    }
+  }
+}
+
+// Private endpoint: Azure AI Vision
+resource visionPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (deployVision) {
+  name: '${prefix}-pe-vision'
+  location: location
+  tags: effectiveTags
+  properties: {
+    subnet: {
+      id: vnet.properties.subnets[1].id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${prefix}-plsc-vision'
+        properties: {
+          privateLinkServiceId: visionService.id
+          groupIds: [
+            'account'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource visionDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (deployVision) {
+  parent: visionPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'config'
+        properties: {
+          privateDnsZoneId: dnsZones[4].id // privatelink.cognitiveservices.azure.com (shared with DocIntel)
+        }
+      }
+    ]
+  }
+}
+
+// ============================================================================
 // ROLE ASSIGNMENTS (Managed Identity -> Azure Services)
 // ============================================================================
 
@@ -1233,6 +1319,16 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: managedIdentity.id
         }
         {
+          name: 'vision-endpoint'
+          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/AzureAIVision--Endpoint'
+          identity: managedIdentity.id
+        }
+        {
+          name: 'vision-apikey'
+          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/AzureAIVision--ApiKey'
+          identity: managedIdentity.id
+        }
+        {
           name: 'appinsights-connection'
           keyVaultUrl: '${keyVault.properties.vaultUri}secrets/ApplicationInsights--ConnectionString'
           identity: managedIdentity.id
@@ -1320,6 +1416,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AzureDocumentIntelligence__ApiKey'
               secretRef: 'docintel-apikey'
+            }
+            {
+              name: 'AzureAIVision__Endpoint'
+              secretRef: 'vision-endpoint'
+            }
+            {
+              name: 'AzureAIVision__ApiKey'
+              secretRef: 'vision-apikey'
             }
             {
               name: 'AZURE_CLIENT_ID'

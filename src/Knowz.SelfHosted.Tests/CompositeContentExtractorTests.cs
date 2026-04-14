@@ -22,6 +22,7 @@ public class CompositeContentExtractorTests
         _docxExtractor = new DocxContentExtractor(
             Substitute.For<ILogger<DocxContentExtractor>>());
 
+        // Basic composite with native extractors only (no AI)
         _composite = new CompositeContentExtractor(new IFileContentExtractor[]
         {
             _textExtractor,
@@ -144,5 +145,104 @@ public class CompositeContentExtractorTests
 
         Assert.False(result.Success);
         Assert.Equal("No extractor available for this content type", result.ErrorMessage);
+    }
+
+    // =============================================
+    // VERIFY: CompositeContentExtractor tries AI-powered extractors before native fallbacks
+    // =============================================
+
+    [Fact]
+    public async Task Should_TryAIPoweredExtractor_BeforeNativeFallback_ForPdf()
+    {
+        // Simulates the production ordering: DocIntelligence (AI) before PdfPig (native)
+        var mockProvider = Substitute.For<IAttachmentAIProvider>();
+        mockProvider.ProviderName.Returns("Platform");
+        mockProvider.ExtractDocumentAsync(
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DocumentExtractionResult(
+                Success: true,
+                ExtractedText: "AI-extracted text"));
+
+        var diExtractor = new DocumentIntelligenceContentExtractor(
+            mockProvider,
+            Substitute.For<ILogger<DocumentIntelligenceContentExtractor>>());
+
+        var pdfExtractor = new PdfContentExtractor(
+            Substitute.For<ILogger<PdfContentExtractor>>());
+
+        // AI-powered extractor BEFORE native fallback (matches production ordering)
+        var composite = new CompositeContentExtractor(new IFileContentExtractor[]
+        {
+            diExtractor,   // AI-powered — should be tried first
+            pdfExtractor   // Native fallback — should not be reached
+        });
+
+        var record = MakeRecord("application/pdf", "doc.pdf");
+        using var stream = new MemoryStream(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+
+        var result = await composite.ExtractAsync(record, stream);
+
+        Assert.True(result.Success);
+        Assert.Equal("AI-extracted text", result.ExtractedText);
+
+        // Verify the AI provider was called (proving AI extractor was tried first)
+        await mockProvider.Received(1).ExtractDocumentAsync(
+            Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    // =============================================
+    // VERIFY: PDF with NoOp provider falls through to PdfPig native fallback
+    // =============================================
+
+    [Fact]
+    public void Should_FallThroughToNativeExtractor_WhenProviderIsNoOp()
+    {
+        var noOp = new NoOpAttachmentAIProvider();
+        var diExtractor = new DocumentIntelligenceContentExtractor(
+            noOp,
+            Substitute.For<ILogger<DocumentIntelligenceContentExtractor>>());
+
+        var pdfExtractor = new PdfContentExtractor(
+            Substitute.For<ILogger<PdfContentExtractor>>());
+
+        var composite = new CompositeContentExtractor(new IFileContentExtractor[]
+        {
+            diExtractor,   // NoOp — CanExtract returns false for all types
+            pdfExtractor   // Native fallback — should handle PDF
+        });
+
+        // DocIntelligence with NoOp should NOT claim PDF
+        Assert.False(diExtractor.CanExtract("application/pdf"));
+        // But the composite should still handle PDF via PdfPig fallback
+        Assert.True(composite.CanExtract("application/pdf"));
+    }
+
+    // =============================================
+    // VERIFY: DOCX prefers Document Intelligence when the provider can extract documents
+    // =============================================
+
+    [Fact]
+    public void Should_DocxPreferDocumentIntelligence_WhenProviderHasDocumentCapability()
+    {
+        var mockProvider = Substitute.For<IAttachmentAIProvider>();
+        mockProvider.ProviderName.Returns("AzureDocumentIntelligence");
+
+        var diExtractor = new DocumentIntelligenceContentExtractor(
+            mockProvider,
+            Substitute.For<ILogger<DocumentIntelligenceContentExtractor>>());
+        var docxExtractor = new DocxContentExtractor(
+            Substitute.For<ILogger<DocxContentExtractor>>());
+
+        var composite = new CompositeContentExtractor(new IFileContentExtractor[]
+        {
+            diExtractor,
+            docxExtractor
+        });
+
+        var docxType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+        Assert.True(diExtractor.CanExtract(docxType));
+        Assert.True(docxExtractor.CanExtract(docxType));
+        Assert.True(composite.CanExtract(docxType));
     }
 }

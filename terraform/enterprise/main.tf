@@ -57,6 +57,8 @@ locals {
   effective_openai_key        = var.deploy_openai ? azurerm_cognitive_account.openai[0].primary_access_key : var.external_openai_key
   effective_docintel_endpoint = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].endpoint : var.external_docintel_endpoint
   effective_docintel_key      = var.deploy_document_intelligence ? azurerm_cognitive_account.docintel[0].primary_access_key : var.external_docintel_key
+  effective_vision_endpoint   = var.deploy_vision ? azurerm_cognitive_account.vision[0].endpoint : var.external_vision_endpoint
+  effective_vision_key        = var.deploy_vision ? azurerm_cognitive_account.vision[0].primary_access_key : var.external_vision_key
 
   # SQL connection string using AAD Managed Identity authentication (no password)
   sql_connection_string = "Server=tcp:${azurerm_mssql_server.main.fully_qualified_domain_name},1433;Initial Catalog=McpKnowledge;Authentication=Active Directory Managed Identity;User Id=${azurerm_user_assigned_identity.main.client_id};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"

@@ -96,6 +96,54 @@ public class SearchFacadeTranscriptBoxingTests : IDisposable
         return knowledge.Id;
     }
 
+    private async Task<Guid> SeedKnowledgeWithStructuredAttachmentAsync(
+        string contentType,
+        string fileName,
+        string? extractedText = null,
+        string? transcriptionText = null,
+        string? visionDescription = null,
+        string? visionExtractedText = null,
+        string? visionTagsJson = null,
+        string? visionObjectsJson = null,
+        string? layoutDataJson = null)
+    {
+        var knowledge = new Knowledge
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            Title = "Structured knowledge",
+            Content = "Parent content"
+        };
+        _db.KnowledgeItems.Add(knowledge);
+
+        var fileRecord = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            FileName = fileName,
+            ContentType = contentType,
+            ExtractedText = extractedText,
+            TranscriptionText = transcriptionText,
+            VisionDescription = visionDescription,
+            VisionExtractedText = visionExtractedText,
+            VisionTagsJson = visionTagsJson,
+            VisionObjectsJson = visionObjectsJson,
+            LayoutDataJson = layoutDataJson
+        };
+        _db.FileRecords.Add(fileRecord);
+
+        _db.FileAttachments.Add(new FileAttachment
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            KnowledgeId = knowledge.Id,
+            FileRecordId = fileRecord.Id
+        });
+
+        await _db.SaveChangesAsync();
+        return knowledge.Id;
+    }
+
     /// <summary>
     /// VERIFY-8: Boxing fires for self-hosted BuildKnowledgeScopedContextAsync — when
     /// TranscriptionText is present, the output contains the [Transcription: ...] label,
@@ -225,5 +273,67 @@ public class SearchFacadeTranscriptBoxingTests : IDisposable
 
         Assert.DoesNotContain(SpokenBeginMarker, content);
         Assert.DoesNotContain(SpokenEndMarker, content);
+    }
+
+    [Fact]
+    public async Task BuildKnowledgeScopedContextAsync_WithStructuredImageFields_IncludesImageAnalysisBlock()
+    {
+        var knowledgeId = await SeedKnowledgeWithStructuredAttachmentAsync(
+            contentType: "image/png",
+            fileName: "architecture.png",
+            visionDescription: "Architecture diagram showing API, worker, and SQL database",
+            visionExtractedText: "API -> Queue -> Worker -> SQL",
+            visionTagsJson: "[\"diagram\",\"architecture\",\"api\"]",
+            visionObjectsJson: "[\"api\",\"worker\",\"database\"]");
+
+        var results = await _svc.BuildKnowledgeScopedContextAsync(
+            knowledgeId, "question", CancellationToken.None);
+
+        Assert.Single(results);
+        var content = results[0].Content!;
+
+        Assert.Contains("[Image Analysis: architecture.png]", content);
+        Assert.Contains("Architecture diagram showing API, worker, and SQL database", content);
+        Assert.Contains("Tags: diagram, architecture, api", content);
+        Assert.Contains("Objects detected: api, worker, database", content);
+        Assert.Contains("Text from image:", content);
+        Assert.Contains("API -> Queue -> Worker -> SQL", content);
+    }
+
+    [Fact]
+    public async Task BuildKnowledgeScopedContextAsync_WithDocumentLayoutData_IncludesLayoutMarker()
+    {
+        var knowledgeId = await SeedKnowledgeWithStructuredAttachmentAsync(
+            contentType: "application/pdf",
+            fileName: "design.pdf",
+            extractedText: "Section 1: System overview",
+            layoutDataJson: "{\"pages\":[{\"pageNumber\":1}],\"tables\":[]}");
+
+        var results = await _svc.BuildKnowledgeScopedContextAsync(
+            knowledgeId, "question", CancellationToken.None);
+
+        Assert.Single(results);
+        var content = results[0].Content!;
+
+        Assert.Contains("[Attachment: design.pdf]", content);
+        Assert.Contains("Section 1: System overview", content);
+        Assert.Contains("Structured layout data available", content);
+    }
+
+    [Fact]
+    public async Task BuildKnowledgeScopedContextAsync_WithImageMissingAnalysis_IncludesExplicitUnavailableMarker()
+    {
+        var knowledgeId = await SeedKnowledgeWithStructuredAttachmentAsync(
+            contentType: "image/png",
+            fileName: "pending-diagram.png");
+
+        var results = await _svc.BuildKnowledgeScopedContextAsync(
+            knowledgeId, "question", CancellationToken.None);
+
+        Assert.Single(results);
+        var content = results[0].Content!;
+
+        Assert.Contains("[Image: pending-diagram.png", content);
+        Assert.Contains("analysis unavailable", content, StringComparison.OrdinalIgnoreCase);
     }
 }

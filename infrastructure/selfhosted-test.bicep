@@ -52,6 +52,16 @@ param externalDocIntelEndpoint string = ''
 @description('External Document Intelligence API key (required if deployDocumentIntelligence is false)')
 param externalDocIntelKey string = ''
 
+@description('Deploy Azure AI Vision for image and diagram analysis')
+param deployVision bool = true
+
+@description('External Azure AI Vision endpoint (required if deployVision is false)')
+param externalVisionEndpoint string = ''
+
+@secure()
+@description('External Azure AI Vision API key (required if deployVision is false)')
+param externalVisionKey string = ''
+
 @description('Azure AI Search SKU')
 @allowed(['free', 'basic', 'standard'])
 param searchSku string = 'basic'
@@ -271,6 +281,27 @@ resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' 
 var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
 
 // ============================================================================
+// AZURE AI VISION / COMPUTER VISION
+// ============================================================================
+
+resource visionAccount 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (deployVision) {
+  name: '${prefix}-vision-${location}'
+  location: location
+  tags: tags
+  kind: 'ComputerVision'
+  sku: {
+    name: 'S1'
+  }
+  properties: {
+    publicNetworkAccess: 'Enabled'
+    customSubDomainName: '${prefix}-vision-${location}'
+  }
+}
+
+// Effective Vision endpoint (local or external)
+var effectiveVisionEndpoint = deployVision ? visionAccount.properties.endpoint : externalVisionEndpoint
+
+// ============================================================================
 // SQL SERVER + DATABASE
 // ============================================================================
 
@@ -454,6 +485,22 @@ resource kvSecretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   name: 'AzureDocumentIntelligence--ApiKey'
   properties: {
     value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
+  }
+}
+
+resource kvSecretVisionEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureAIVision--Endpoint'
+  properties: {
+    value: effectiveVisionEndpoint
+  }
+}
+
+resource kvSecretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureAIVision--ApiKey'
+  properties: {
+    value: deployVision ? visionAccount.listKeys().key1 : externalVisionKey
   }
 }
 
@@ -788,6 +835,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
               name: 'AzureDocumentIntelligence__ApiKey'
               value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
             }
+            {
+              name: 'AzureAIVision__Endpoint'
+              value: effectiveVisionEndpoint
+            }
+            {
+              name: 'AzureAIVision__ApiKey'
+              value: deployVision ? visionAccount.listKeys().key1 : externalVisionKey
+            }
           ]
         }
       ]
@@ -944,6 +999,10 @@ output embeddingDeploymentName string = embeddingDeploymentName
 // Document Intelligence (non-secret: endpoint, resource name)
 output documentIntelligenceEndpoint string = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
 output documentIntelligenceName string = deployDocumentIntelligence ? documentIntelligence.name : 'external'
+
+// Azure AI Vision (non-secret: endpoint, resource name)
+output visionEndpoint string = deployVision ? visionAccount.properties.endpoint : externalVisionEndpoint
+output visionName string = deployVision ? visionAccount.name : 'external'
 
 // SQL Database (non-secret: FQDN, database name, server name)
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName

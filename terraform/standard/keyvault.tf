@@ -84,6 +84,22 @@ resource "azurerm_key_vault_secret" "doc_intel_key" {
   key_vault_id = azurerm_key_vault.main[0].id
 }
 
+resource "azurerm_key_vault_secret" "vision_endpoint" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  name         = "AzureAIVision--Endpoint"
+  value        = local.effective_vision_endpoint
+  key_vault_id = azurerm_key_vault.main[0].id
+}
+
+resource "azurerm_key_vault_secret" "vision_key" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  name         = "AzureAIVision--ApiKey"
+  value        = local.effective_vision_key
+  key_vault_id = azurerm_key_vault.main[0].id
+}
+
 resource "azurerm_key_vault_secret" "storage_connection" {
   count = var.deploy_key_vault ? 1 : 0
 

@@ -60,9 +60,11 @@ public class ConfigurationEndpointsTests : IDisposable
         var categories = await _service.GetAllCategoriesAsync();
 
         Assert.NotNull(categories);
-        Assert.Equal(9, categories.Count);
+        Assert.Equal(11, categories.Count);
         Assert.Contains(categories, c => c.Category == "ConnectionStrings");
         Assert.Contains(categories, c => c.Category == "AzureOpenAI");
+        Assert.Contains(categories, c => c.Category == "AzureAIVision");
+        Assert.Contains(categories, c => c.Category == "AzureDocumentIntelligence");
         Assert.Contains(categories, c => c.Category == "AzureAISearch");
         Assert.Contains(categories, c => c.Category == "Storage");
         Assert.Contains(categories, c => c.Category == "SelfHosted");
@@ -185,9 +187,11 @@ public class ConfigurationEndpointsTests : IDisposable
         var results = await _service.TestAllConnectionsAsync();
 
         Assert.NotNull(results);
-        Assert.Equal(9, results.Count);
+        Assert.Equal(11, results.Count);
         Assert.Contains(results, r => r.Category == "ConnectionStrings");
         Assert.Contains(results, r => r.Category == "AzureOpenAI");
+        Assert.Contains(results, r => r.Category == "AzureAIVision");
+        Assert.Contains(results, r => r.Category == "AzureDocumentIntelligence");
     }
 
     [Fact]

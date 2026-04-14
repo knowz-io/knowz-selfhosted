@@ -159,6 +159,7 @@ public class ExcelContentExtractor : IFileContentExtractor
                         ErrorMessage: "Excel file contains no extractable text");
 
                 var text = string.Join("\n", textParts);
+                NativeDocumentExtractionMetadata.ApplySuccess(fileRecord);
                 return new FileExtractionResult(true, ExtractedText: text);
             }
             finally

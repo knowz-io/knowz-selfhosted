@@ -63,6 +63,20 @@ output "document_intelligence_name" {
 }
 
 # -----------------------------------------------------------------------------
+# Azure AI Vision
+# -----------------------------------------------------------------------------
+
+output "vision_endpoint" {
+  description = "Effective Azure AI Vision endpoint (local or external)"
+  value       = var.deploy_vision ? azurerm_cognitive_account.vision[0].endpoint : var.external_vision_endpoint
+}
+
+output "vision_name" {
+  description = "Azure AI Vision resource name (or 'external')"
+  value       = var.deploy_vision ? azurerm_cognitive_account.vision[0].name : "external"
+}
+
+# -----------------------------------------------------------------------------
 # SQL Database
 # -----------------------------------------------------------------------------
 

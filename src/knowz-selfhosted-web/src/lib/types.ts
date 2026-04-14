@@ -351,6 +351,15 @@ export interface FileMetadataDto {
   knowledgeTitle?: string
   vaultId?: string
   vaultName?: string
+  // Structured vision/document fields (NodeID: SelfHostedAttachmentExperience)
+  visionTagsJson?: string
+  visionObjectsJson?: string
+  visionExtractedText?: string
+  visionAnalyzedAt?: string
+  layoutDataJson?: string
+  textExtractionStatus?: number
+  textExtractedAt?: string
+  attachmentAIProvider?: string
 }
 
 export interface FileUploadResult {

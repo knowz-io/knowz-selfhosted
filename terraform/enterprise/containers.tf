@@ -117,6 +117,18 @@ resource "azurerm_container_app" "api" {
   }
 
   secret {
+    name                = "vision-endpoint"
+    key_vault_secret_id = azurerm_key_vault_secret.vision_endpoint.versionless_id
+    identity            = azurerm_user_assigned_identity.main.id
+  }
+
+  secret {
+    name                = "vision-apikey"
+    key_vault_secret_id = azurerm_key_vault_secret.vision_key.versionless_id
+    identity            = azurerm_user_assigned_identity.main.id
+  }
+
+  secret {
     name                = "appinsights-connection"
     key_vault_secret_id = azurerm_key_vault_secret.appinsights_connection.versionless_id
     identity            = azurerm_user_assigned_identity.main.id
@@ -214,6 +226,14 @@ resource "azurerm_container_app" "api" {
       env {
         name        = "AzureDocumentIntelligence__ApiKey"
         secret_name = "docintel-apikey"
+      }
+      env {
+        name        = "AzureAIVision__Endpoint"
+        secret_name = "vision-endpoint"
+      }
+      env {
+        name        = "AzureAIVision__ApiKey"
+        secret_name = "vision-apikey"
       }
       env {
         name  = "AZURE_CLIENT_ID"

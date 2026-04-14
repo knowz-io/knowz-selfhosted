@@ -43,6 +43,10 @@ public static class EnvFileWriter
                 AppendIfNotEmpty(sb, "AZURE_OPENAI_APIKEY", config.AzureOpenAiApiKey);
                 AppendIfNotEmpty(sb, "AZURE_OPENAI_DEPLOYMENT", config.AzureOpenAiDeployment);
                 AppendIfNotEmpty(sb, "AZURE_OPENAI_EMBEDDING", config.AzureOpenAiEmbedding);
+                AppendIfNotEmpty(sb, "AZURE_AI_VISION_ENDPOINT", config.AzureAiVisionEndpoint);
+                AppendIfNotEmpty(sb, "AZURE_AI_VISION_APIKEY", config.AzureAiVisionApiKey);
+                AppendIfNotEmpty(sb, "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", config.AzureDocumentIntelligenceEndpoint);
+                AppendIfNotEmpty(sb, "AZURE_DOCUMENT_INTELLIGENCE_APIKEY", config.AzureDocumentIntelligenceApiKey);
                 AppendIfNotEmpty(sb, "AZURE_SEARCH_ENDPOINT", config.AzureSearchEndpoint);
                 AppendIfNotEmpty(sb, "AZURE_SEARCH_APIKEY", config.AzureSearchApiKey);
                 AppendIfNotEmpty(sb, "AZURE_SEARCH_INDEX", config.AzureSearchIndex);

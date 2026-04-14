@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "8597057204108264877"
+      "templateHash": "1140019996675236492"
     }
   },
   "parameters": {
@@ -81,6 +81,27 @@
       "defaultValue": "text-embedding-3-small",
       "metadata": {
         "description": "Embedding deployment name (must match appsettings EmbeddingDeploymentName)"
+      }
+    },
+    "deployVision": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Azure AI Vision for image/diagram analysis (caption, tags, objects, OCR)"
+      }
+    },
+    "externalVisionEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Azure AI Vision endpoint (required when deployVision is false)"
+      }
+    },
+    "externalVisionKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Azure AI Vision API key (required when deployVision is false)"
       }
     },
     "deployDocumentIntelligence": {
@@ -624,7 +645,7 @@
         "retentionInterval": "PT1H",
         "timeout": "PT10M",
         "arguments": "[format('-SqlServerFqdn {0} -DatabaseName McpKnowledge -AadAdminObjectId {1} -AadAdminDisplayName ''{2}''', reference(resourceId('Microsoft.Sql/servers', variables('sqlServerName')), '2023-08-01-preview').fullyQualifiedDomainName, parameters('aadAdminObjectId'), parameters('aadAdminDisplayName'))]",
-        "scriptContent": "      param($SqlServerFqdn, $DatabaseName, $AadAdminObjectId, $AadAdminDisplayName)\n      Install-Module -Name SqlServer -Force -AllowClobber -Scope CurrentUser\n      $token = (Get-AzAccessToken -ResourceUrl \"https://database.windows.net/\").Token\n      $query = @\"\n        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$AadAdminDisplayName')\n        BEGIN\n          CREATE USER [$AadAdminDisplayName] WITH SID = $(CONVERT(varbinary(16), '$AadAdminObjectId')), TYPE = E;\n          ALTER ROLE db_owner ADD MEMBER [$AadAdminDisplayName];\n        END\n\"@\n      Invoke-Sqlcmd -ServerInstance $SqlServerFqdn -Database $DatabaseName -AccessToken $token -Query $query\n    "
+        "scriptContent": "      param($SqlServerFqdn, $DatabaseName, $AadAdminObjectId, $AadAdminDisplayName)\r\n      Install-Module -Name SqlServer -Force -AllowClobber -Scope CurrentUser\r\n      $token = (Get-AzAccessToken -ResourceUrl \"https://database.windows.net/\").Token\r\n      $query = @\"\r\n        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$AadAdminDisplayName')\r\n        BEGIN\r\n          CREATE USER [$AadAdminDisplayName] WITH SID = $(CONVERT(varbinary(16), '$AadAdminObjectId')), TYPE = E;\r\n          ALTER ROLE db_owner ADD MEMBER [$AadAdminDisplayName];\r\n        END\r\n\"@\r\n      Invoke-Sqlcmd -ServerInstance $SqlServerFqdn -Database $DatabaseName -AccessToken $token -Query $query\r\n    "
       },
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))]",
@@ -903,6 +924,30 @@
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureAIVision--Endpoint')]",
+      "properties": {
+        "value": "[if(parameters('deployVision'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalVisionEndpoint'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureAIVision--ApiKey')]",
+      "properties": {
+        "value": "[if(parameters('deployVision'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalVisionKey'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]"
       ]
     },
     {
@@ -1221,6 +1266,73 @@
       ]
     },
     {
+      "condition": "[parameters('deployVision')]",
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}-vision-{1}', parameters('prefix'), parameters('location'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('effectiveTags')]",
+      "kind": "ComputerVision",
+      "sku": {
+        "name": "S1"
+      },
+      "properties": {
+        "publicNetworkAccess": "Disabled",
+        "customSubDomainName": "[format('{0}-vision-{1}', parameters('prefix'), parameters('location'))]",
+        "networkAcls": {
+          "defaultAction": "Deny"
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployVision')]",
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-pe-vision', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('effectiveTags')]",
+      "properties": {
+        "subnet": {
+          "id": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix'))), '2023-11-01').subnets[1].id]"
+        },
+        "privateLinkServiceConnections": [
+          {
+            "name": "[format('{0}-plsc-vision', parameters('prefix'))]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]",
+              "groupIds": [
+                "account"
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('prefix')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployVision')]",
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}/{1}', format('{0}-pe-vision', parameters('prefix')), 'default')]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "config",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZones')[4])]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZones')[4])]",
+        "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-pe-vision', parameters('prefix')))]"
+      ]
+    },
+    {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Search/searchServices/{0}', format('{0}-search-{1}', parameters('prefix'), parameters('location')))]",
@@ -1328,7 +1440,7 @@
             "transport": "http"
           },
           "registries": "[if(empty(parameters('registryUsername')), createArray(), createArray(createObject('server', variables('registryServer'), 'username', parameters('registryUsername'), 'passwordSecretRef', 'registry-password')))]",
-          "secrets": "[concat(if(empty(parameters('registryUsername')), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword')))), createArray(createObject('name', 'sql-connection', 'keyVaultUrl', format('{0}secrets/ConnectionStrings--McpDb', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'openai-endpoint', 'keyVaultUrl', format('{0}secrets/AzureOpenAI--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'openai-apikey', 'keyVaultUrl', format('{0}secrets/AzureOpenAI--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'search-endpoint', 'keyVaultUrl', format('{0}secrets/AzureAISearch--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'search-apikey', 'keyVaultUrl', format('{0}secrets/AzureAISearch--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'storage-connection-string', 'keyVaultUrl', format('{0}secrets/Storage--Azure--ConnectionString', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-apikey', 'keyVaultUrl', format('{0}secrets/SelfHosted--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-jwtsecret', 'keyVaultUrl', format('{0}secrets/SelfHosted--JwtSecret', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-adminpassword', 'keyVaultUrl', format('{0}secrets/SelfHosted--SuperAdminPassword', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'docintel-endpoint', 'keyVaultUrl', format('{0}secrets/AzureDocumentIntelligence--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'docintel-apikey', 'keyVaultUrl', format('{0}secrets/AzureDocumentIntelligence--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'appinsights-connection', 'keyVaultUrl', format('{0}secrets/ApplicationInsights--ConnectionString', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix'))))))]"
+          "secrets": "[concat(if(empty(parameters('registryUsername')), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword')))), createArray(createObject('name', 'sql-connection', 'keyVaultUrl', format('{0}secrets/ConnectionStrings--McpDb', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'openai-endpoint', 'keyVaultUrl', format('{0}secrets/AzureOpenAI--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'openai-apikey', 'keyVaultUrl', format('{0}secrets/AzureOpenAI--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'search-endpoint', 'keyVaultUrl', format('{0}secrets/AzureAISearch--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'search-apikey', 'keyVaultUrl', format('{0}secrets/AzureAISearch--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'storage-connection-string', 'keyVaultUrl', format('{0}secrets/Storage--Azure--ConnectionString', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-apikey', 'keyVaultUrl', format('{0}secrets/SelfHosted--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-jwtsecret', 'keyVaultUrl', format('{0}secrets/SelfHosted--JwtSecret', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'selfhosted-adminpassword', 'keyVaultUrl', format('{0}secrets/SelfHosted--SuperAdminPassword', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'docintel-endpoint', 'keyVaultUrl', format('{0}secrets/AzureDocumentIntelligence--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'docintel-apikey', 'keyVaultUrl', format('{0}secrets/AzureDocumentIntelligence--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'vision-endpoint', 'keyVaultUrl', format('{0}secrets/AzureAIVision--Endpoint', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'vision-apikey', 'keyVaultUrl', format('{0}secrets/AzureAIVision--ApiKey', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))), createObject('name', 'appinsights-connection', 'keyVaultUrl', format('{0}secrets/ApplicationInsights--ConnectionString', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix'))))))]"
         },
         "template": {
           "containers": [
@@ -1411,6 +1523,14 @@
                 {
                   "name": "AzureDocumentIntelligence__ApiKey",
                   "secretRef": "docintel-apikey"
+                },
+                {
+                  "name": "AzureAIVision__Endpoint",
+                  "secretRef": "vision-endpoint"
+                },
+                {
+                  "name": "AzureAIVision__ApiKey",
+                  "secretRef": "vision-apikey"
                 },
                 {
                   "name": "AZURE_CLIENT_ID",

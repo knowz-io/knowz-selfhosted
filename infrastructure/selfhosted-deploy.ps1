@@ -29,6 +29,7 @@ param(
     [switch]$SkipKeyVault,
     [switch]$SkipMonitoring,
     [switch]$SkipDocumentIntelligence,
+    [switch]$SkipVision,
     [switch]$DisableStorageSharedKey,
 
     # Container Apps deployment (opt-in)
@@ -62,6 +63,7 @@ Write-Host "Embedding:      $EmbeddingModel"
 if (-not $SkipKeyVault) { Write-Host "Key Vault:      Enabled" -ForegroundColor Green }
 if (-not $SkipMonitoring) { Write-Host "Monitoring:     Enabled" -ForegroundColor Green }
 if (-not $SkipDocumentIntelligence) { Write-Host "Doc Intel:      Enabled" -ForegroundColor Green }
+if (-not $SkipVision) { Write-Host "Vision:         Enabled" -ForegroundColor Green }
 if ($DisableStorageSharedKey) {
     Write-Host "Storage:        Shared key DISABLED" -ForegroundColor DarkYellow
     Write-Host "  WARNING: Storage shared key access disabled. Connection strings using AccountKey will not work." -ForegroundColor DarkYellow
@@ -129,7 +131,18 @@ if (-not $SkipDocumentIntelligence) {
     }
 }
 
-if (-not $conflicting -and -not $deletedVaults -and -not $conflictingDI) {
+# Check for soft-deleted Vision account
+if (-not $SkipVision) {
+    $visionName = "$Prefix-vision-$Location"
+    $conflictingVision = $deletedAccounts | Where-Object { $_.name -eq $visionName }
+    if ($conflictingVision) {
+        Write-Host "  Purging soft-deleted Vision account '$visionName'..." -ForegroundColor DarkYellow
+        az cognitiveservices account purge --name $visionName --resource-group $ResourceGroup --location $Location 2>$null
+        Write-Host "  Purged." -ForegroundColor Green
+    }
+}
+
+if (-not $conflicting -and -not $deletedVaults -and -not $conflictingDI -and -not $conflictingVision) {
     Write-Host "  No conflicting soft-deleted resources." -ForegroundColor Green
 }
 
@@ -164,6 +177,7 @@ $deployBody = @{
             deployKeyVault = @{ value = -not [bool]$SkipKeyVault }
             deployMonitoring = @{ value = -not [bool]$SkipMonitoring }
             deployDocumentIntelligence = @{ value = -not [bool]$SkipDocumentIntelligence }
+            deployVision = @{ value = -not [bool]$SkipVision }
             storageAllowSharedKeyAccess = @{ value = -not [bool]$DisableStorageSharedKey }
             deployContainerApps = @{ value = [bool]$DeployContainerApps }
             imageTag = @{ value = $ImageTag }
@@ -250,12 +264,15 @@ $appInsightsName = $outputs.appInsightsName.value
 
 $docIntelEndpoint = $outputs.documentIntelligenceEndpoint.value
 $docIntelName = $outputs.documentIntelligenceName.value
+$visionEndpoint = $outputs.visionEndpoint.value
+$visionName = $outputs.visionName.value
 
 Write-Host "  Outputs extracted:" -ForegroundColor DarkGray
 Write-Host "    Search: $searchEndpoint" -ForegroundColor DarkGray
 Write-Host "    OpenAI: $openAiEndpoint" -ForegroundColor DarkGray
 Write-Host "    SQL:    $sqlServerFqdn" -ForegroundColor DarkGray
 if ($docIntelEndpoint) { Write-Host "    Doc Intel: $docIntelEndpoint" -ForegroundColor DarkGray }
+if ($visionEndpoint) { Write-Host "    Vision:    $visionEndpoint" -ForegroundColor DarkGray }
 if ($keyVaultUri) { Write-Host "    Key Vault: $keyVaultUri" -ForegroundColor DarkGray }
 if ($appInsightsName) { Write-Host "    App Insights: $appInsightsName" -ForegroundColor DarkGray }
 
@@ -286,6 +303,11 @@ if (-not $storageKeys) { throw "Failed to retrieve Storage account key" }
 if ($docIntelName -ne "external" -and $docIntelName) {
     $docIntelKey = (az cognitiveservices account keys list --name $docIntelName --resource-group $ResourceGroup --query key1 -o tsv 2>$null)
     if (-not $docIntelKey) { Write-Host "  Warning: Failed to retrieve Document Intelligence key" -ForegroundColor DarkYellow }
+}
+
+if ($visionName -ne "external" -and $visionName) {
+    $visionKey = (az cognitiveservices account keys list --name $visionName --resource-group $ResourceGroup --query key1 -o tsv 2>$null)
+    if (-not $visionKey) { Write-Host "  Warning: Failed to retrieve Vision key" -ForegroundColor DarkYellow }
 }
 
 # Reconstruct connection strings from non-secret outputs + retrieved secrets
@@ -469,6 +491,14 @@ if ($docIntelEndpoint) {
     }
 }
 
+# Add Vision section
+if ($visionEndpoint) {
+    $localSettings.AzureAIVision = @{
+        Endpoint = $visionEndpoint
+        ApiKey = $visionKey
+    }
+}
+
 # Add Storage section with Azure connection string
 if ($storageConnection) {
     $localSettings.Storage = @{
@@ -536,6 +566,9 @@ Write-Host "  AI Search:      $searchEndpoint"
 Write-Host "  Storage:        $storageAccountName"
 if ($docIntelEndpoint) {
     Write-Host "  Doc Intel:      $docIntelEndpoint" -ForegroundColor White
+}
+if ($visionEndpoint) {
+    Write-Host "  Vision:         $visionEndpoint" -ForegroundColor White
 }
 if ($keyVaultName) {
     Write-Host "  Key Vault:      $keyVaultUri" -ForegroundColor White

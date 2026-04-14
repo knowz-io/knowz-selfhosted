@@ -91,6 +91,29 @@ variable "embedding_model_name" {
 }
 
 # =============================================================================
+# AZURE AI VISION
+# =============================================================================
+
+variable "deploy_vision" {
+  description = "Deploy Azure AI Vision for image/diagram analysis"
+  type        = bool
+  default     = true
+}
+
+variable "external_vision_endpoint" {
+  description = "External Azure AI Vision endpoint (required if deploy_vision is false)"
+  type        = string
+  default     = ""
+}
+
+variable "external_vision_key" {
+  description = "External Azure AI Vision API key (required if deploy_vision is false)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# =============================================================================
 # DOCUMENT INTELLIGENCE
 # =============================================================================
 

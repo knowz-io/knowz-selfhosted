@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "14460149205335989523"
+      "templateHash": "13206793627379414075"
     }
   },
   "parameters": {
@@ -76,6 +76,27 @@
       "defaultValue": "",
       "metadata": {
         "description": "External Document Intelligence API key (required if deployDocumentIntelligence is false)"
+      }
+    },
+    "deployVision": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Azure AI Vision for image and diagram analysis"
+      }
+    },
+    "externalVisionEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Azure AI Vision endpoint (required if deployVision is false)"
+      }
+    },
+    "externalVisionKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "External Azure AI Vision API key (required if deployVision is false)"
       }
     },
     "searchSku": {
@@ -363,6 +384,22 @@
       }
     },
     {
+      "condition": "[parameters('deployVision')]",
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}-vision-{1}', parameters('prefix'), parameters('location'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "kind": "ComputerVision",
+      "sku": {
+        "name": "S1"
+      },
+      "properties": {
+        "publicNetworkAccess": "Enabled",
+        "customSubDomainName": "[format('{0}-vision-{1}', parameters('prefix'), parameters('location'))]"
+      }
+    },
+    {
       "type": "Microsoft.Sql/servers",
       "apiVersion": "2022-05-01-preview",
       "name": "[variables('sqlServerName')]",
@@ -587,6 +624,32 @@
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location')))]",
         "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureAIVision--Endpoint')]",
+      "properties": {
+        "value": "[if(parameters('deployVision'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalVisionEndpoint'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureAIVision--ApiKey')]",
+      "properties": {
+        "value": "[if(parameters('deployVision'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalVisionKey'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]"
       ]
     },
     {
@@ -899,12 +962,20 @@
                 {
                   "name": "AzureDocumentIntelligence__ApiKey",
                   "value": "[if(parameters('deployDocumentIntelligence'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-docintel-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalDocIntelKey'))]"
+                },
+                {
+                  "name": "AzureAIVision__Endpoint",
+                  "value": "[if(parameters('deployVision'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalVisionEndpoint'))]"
+                },
+                {
+                  "name": "AzureAIVision__ApiKey",
+                  "value": "[if(parameters('deployVision'), listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').key1, parameters('externalVisionKey'))]"
                 }
               ]
             }
           ],
           "scale": {
-            "minReplicas": 0,
+            "minReplicas": 1,
             "maxReplicas": 3
           }
         }
@@ -916,7 +987,8 @@
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix')))]",
         "[resourceId('Microsoft.Search/searchServices', format('{0}-search-{1}', parameters('prefix'), parameters('searchLocation')))]",
         "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location')))]"
       ]
     },
     {
@@ -972,7 +1044,7 @@
             }
           ],
           "scale": {
-            "minReplicas": 0,
+            "minReplicas": 1,
             "maxReplicas": 2
           }
         }
@@ -1023,7 +1095,7 @@
             }
           ],
           "scale": {
-            "minReplicas": 0,
+            "minReplicas": 1,
             "maxReplicas": 2
           }
         }
@@ -1074,6 +1146,14 @@
     "documentIntelligenceName": {
       "type": "string",
       "value": "[if(parameters('deployDocumentIntelligence'), format('{0}-docintel-{1}', parameters('prefix'), parameters('location')), 'external')]"
+    },
+    "visionEndpoint": {
+      "type": "string",
+      "value": "[if(parameters('deployVision'), reference(resourceId('Microsoft.CognitiveServices/accounts', format('{0}-vision-{1}', parameters('prefix'), parameters('location'))), '2023-05-01').endpoint, parameters('externalVisionEndpoint'))]"
+    },
+    "visionName": {
+      "type": "string",
+      "value": "[if(parameters('deployVision'), format('{0}-vision-{1}', parameters('prefix'), parameters('location')), 'external')]"
     },
     "sqlServerFqdn": {
       "type": "string",
