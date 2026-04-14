@@ -11,6 +11,7 @@ COPY ["nuget.config", "."]
 COPY ["local-packages/", "local-packages/"]
 
 # Copy project files for NuGet restore caching
+COPY ["src/Knowz.Core/Knowz.Core.csproj", "src/Knowz.Core/"]
 COPY ["src/Knowz.SelfHosted.Infrastructure/Knowz.SelfHosted.Infrastructure.csproj", "src/Knowz.SelfHosted.Infrastructure/"]
 COPY ["src/Knowz.SelfHosted.Application/Knowz.SelfHosted.Application.csproj", "src/Knowz.SelfHosted.Application/"]
 COPY ["src/Knowz.SelfHosted.API/Knowz.SelfHosted.API.csproj", "src/Knowz.SelfHosted.API/"]

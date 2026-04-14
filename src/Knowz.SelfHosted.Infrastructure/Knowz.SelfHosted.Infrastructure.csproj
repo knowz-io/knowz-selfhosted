@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Knowz.Core\Knowz.Core.csproj" />
+    <ProjectReference Include="..\Knowz.Core\Knowz.Core.csproj" />
   </ItemGroup>
 
 </Project>
