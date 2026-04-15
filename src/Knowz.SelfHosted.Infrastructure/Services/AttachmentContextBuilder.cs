@@ -222,6 +222,9 @@ public static class AttachmentContextBuilder
                 : $"{attachmentHeader}\n{marker}";
         }
 
+        if (mode == AttachmentContextRenderMode.SearchScopedChat)
+            return $"[Attachment: {fileName} — content not yet available]";
+
         return null;
     }
 

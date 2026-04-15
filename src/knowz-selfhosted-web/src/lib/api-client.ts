@@ -114,10 +114,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['X-Tenant-Id'] = activeTenantId
   }
 
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...options,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl}${path}`, {
+      ...options,
+      headers,
+    })
+  } catch (networkErr) {
+    // Network failure — if a stale apiUrl (e.g. from a previous deployment) was stored,
+    // clear it and retry transparently against window.location.origin.
+    if (localStorage.getItem('apiUrl')) {
+      localStorage.removeItem('apiUrl')
+      localStorage.removeItem('apiKey')
+      return request<T>(path, options)
+    }
+    throw networkErr
+  }
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {
@@ -151,11 +163,21 @@ async function requestUpload<T>(path: string, formData: FormData): Promise<T> {
     headers['X-Tenant-Id'] = activeTenantId
   }
 
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+  } catch (networkErr) {
+    if (localStorage.getItem('apiUrl')) {
+      localStorage.removeItem('apiUrl')
+      localStorage.removeItem('apiKey')
+      return requestUpload<T>(path, formData)
+    }
+    throw networkErr
+  }
 
   if (!response.ok) {
     if (response.status === 401 && authToken) {

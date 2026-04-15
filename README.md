@@ -127,7 +127,7 @@ dotnet user-secrets set "KnowzPlatform:ApiKey" "ukz_your_key"
 # Option 2: Direct Azure (full-featured -- your own Azure resources)
 dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-openai.openai.azure.com/"
 dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
-dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
+dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-5.2-chat"
 dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
 dotnet user-secrets set "AzureAISearch:Endpoint" "https://your-search.search.windows.net/"
 dotnet user-secrets set "AzureAISearch:ApiKey" "your-key"
