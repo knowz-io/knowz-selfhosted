@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import {
   History,
   RefreshCw,
@@ -148,9 +148,8 @@ export default function SyncHistoryTable({
                       )
                     : null
                 return (
-                  <>
+                  <Fragment key={run.id}>
                     <tr
-                      key={run.id}
                       className={`hover:bg-muted/20 transition-colors ${hasError ? 'cursor-pointer' : ''}`}
                       onClick={() => hasError && toggleExpand(run.id)}
                     >
@@ -165,7 +164,7 @@ export default function SyncHistoryTable({
                       </td>
                       <td className="px-4 py-2 font-medium">{run.operation}</td>
                       <td className="px-4 py-2 text-muted-foreground">
-                        {run.direction === 'None' ? '—' : run.direction}
+                        {run.direction === 'None' ? '-' : run.direction}
                       </td>
                       <td className="px-4 py-2">
                         <StatusBadge status={run.status} />
@@ -175,7 +174,7 @@ export default function SyncHistoryTable({
                         {fmt.dateTime(run.startedAt)}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground text-xs">
-                        {duration != null ? `${duration}s` : '—'}
+                        {duration != null ? `${duration}s` : '-'}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground text-xs truncate max-w-[160px]">
                         {run.userEmail || run.userId.slice(0, 8)}
@@ -194,7 +193,7 @@ export default function SyncHistoryTable({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

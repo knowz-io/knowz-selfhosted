@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
-import { Tag, Plus, Pencil, Trash2, X, Check } from 'lucide-react'
+import { Tag, Plus, Pencil, Trash2, X, Check, Search } from 'lucide-react'
 import type { TagItem } from '../lib/types'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function TagsPage() {
   const queryClient = useQueryClient()
@@ -70,25 +71,35 @@ export default function TagsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-semibold">Tags</span>
-        <button
-          onClick={() => { setShowCreate(true); setError(null) }}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-80 transition-colors"
-        >
-          <Plus size={16} /> Add Tag
-        </button>
-      </div>
+      <SurfaceCard className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <p className="sh-kicker">Tags</p>
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight">Manage lightweight labels</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Review tag names, merge obvious cleanup candidates, and keep quick browse labels readable.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setShowCreate(true); setError(null) }}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+          >
+            <Plus size={16} /> Add tag
+          </button>
+        </div>
+      </SurfaceCard>
 
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+        <SurfaceCard className="border-red-200/90 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
           {error}
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Create form */}
       {showCreate && (
-        <div className="flex items-center gap-2 p-3 bg-card border border-border/60 rounded-xl shadow-sm">
+        <SurfaceCard className="p-4">
           <input
             type="text"
             value={newTagName}
@@ -111,32 +122,46 @@ export default function TagsPage() {
           >
             <X size={18} />
           </button>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Search */}
-      <input
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search tags..."
-        className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <div className="sh-toolbar p-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tags..."
+            className="w-full rounded-2xl border border-border/70 bg-card/70 py-2.5 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+      </div>
 
       {/* List */}
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-12 bg-muted rounded animate-pulse" />
+            <div key={i} className="sh-surface h-14 animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-3">
+          <SurfaceCard className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="sh-kicker">Coverage</p>
+                <p className="mt-2 text-sm font-semibold">{tags?.length ?? 0} visible tag{(tags?.length ?? 0) === 1 ? '' : 's'}</p>
+              </div>
+              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+                Live search
+              </span>
+            </div>
+          </SurfaceCard>
           {tags?.map((tag: TagItem) => (
-            <div
-              key={tag.id}
-              className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl shadow-sm"
-            >
+            <SurfaceCard key={tag.id} className="p-3">
+              <div className="flex items-center gap-3">
               <Tag size={16} className="text-muted-foreground flex-shrink-0" />
               {editingId === tag.id ? (
                 <>
@@ -203,12 +228,13 @@ export default function TagsPage() {
                   )}
                 </>
               )}
-            </div>
+              </div>
+            </SurfaceCard>
           ))}
           {tags?.length === 0 && (
-            <p className="text-muted-foreground text-center py-8">
-              No tags found.
-            </p>
+            <SurfaceCard className="p-10 text-center">
+              <p className="text-sm text-muted-foreground">No tags found.</p>
+            </SurfaceCard>
           )}
         </div>
       )}

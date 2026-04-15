@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   LayoutDashboard,
@@ -21,6 +21,7 @@ import {
   Moon,
   ClipboardList,
   Cloud,
+  Plus,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api-client'
@@ -109,67 +110,83 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const handleTenantChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value || null
     setActiveTenantId(value)
-    // Invalidate all queries so they refetch with the new tenant context
     queryClient.invalidateQueries()
   }
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+    `group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
       isActive
-        ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
-        : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground hover:translate-x-0.5'
+        ? 'bg-white/12 text-sidebar-foreground shadow-sm ring-1 ring-white/10'
+        : 'text-sidebar-foreground/72 hover:bg-white/6 hover:text-sidebar-foreground'
     }`
 
   return (
     <>
       {open && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
           onClick={onClose}
         />
       )}
       <aside
         className={`
-          fixed top-0 left-0 z-40 h-full w-60 bg-card shadow-lg
-          border-r border-border/50
+          fixed top-0 left-0 z-40 flex h-full w-72 flex-col border-r border-white/10 bg-sidebar text-sidebar-foreground shadow-elevated
           transform transition-transform duration-200
           lg:translate-x-0 lg:static lg:z-auto
           ${open ? 'translate-x-0' : '-translate-x-full'}
-          flex flex-col
         `}
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
-          <NavLink to="/knowledge" className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 bg-primary rounded-lg shadow-sm">
-              <BookOpen className="text-primary-foreground" size={16} />
+        <div className="border-b border-white/10 bg-gradient-to-br from-white/8 via-white/4 to-transparent px-5 py-5">
+          <div className="flex items-start justify-between gap-3">
+            <NavLink to="/knowledge" className="flex items-start gap-3" onClick={onClose}>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-black/20">
+                <BookOpen size={18} />
+              </div>
+              <div>
+                <p className="text-lg font-semibold tracking-tight">Knowz</p>
+                <p className="mt-1 text-xs leading-5 text-sidebar-foreground/65">
+                  Self-hosted workspace with platform-aligned framing.
+                </p>
+              </div>
+            </NavLink>
+            <button
+              onClick={onClose}
+              className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/8 hover:text-sidebar-foreground lg:hidden"
+              aria-label="Close sidebar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <Link
+              to="/knowledge/new"
+              onClick={onClose}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sidebar-accent px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5"
+            >
+              <Plus size={15} />
+              New Knowledge
+            </Link>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5 text-xs text-sidebar-foreground/70">
+              Navigate, capture, and administer from a single selfhosted shell.
             </div>
-            <span className="text-lg font-bold tracking-tight">Knowz</span>
-          </NavLink>
-          <button
-            onClick={onClose}
-            className="lg:hidden p-1.5 rounded-lg hover:bg-muted transition-colors"
-            aria-label="Close sidebar"
-          >
-            <X size={18} />
-          </button>
+          </div>
         </div>
 
-        {/* Multi-tenant User Switcher */}
         <TenantSwitcher />
 
-        {/* SuperAdmin Tenant Selector */}
         {isSuperAdmin && tenants && tenants.length > 0 && (
-          <div className="px-3 py-2 border-b">
-            <div className="flex items-center gap-1.5 mb-1">
+          <div className="border-b border-white/10 px-4 py-3">
+            <div className="mb-1 flex items-center gap-1.5">
               <ArrowLeftRight size={12} className="text-purple-500" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
                 Tenant Context
               </span>
             </div>
             <select
               value={activeTenantId ?? ''}
               onChange={handleTenantChange}
-              className="w-full px-2 py-1.5 text-xs border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full rounded-xl border border-white/10 bg-white/6 px-3 py-2 text-xs text-sidebar-foreground focus:outline-none focus:ring-1 focus:ring-sidebar-accent"
             >
               <option value="">My Tenant ({user?.tenantName ?? 'Default'})</option>
               {tenants.map((t) => (
@@ -179,19 +196,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               ))}
             </select>
             {activeTenantName && (
-              <p className="mt-1 text-[10px] text-purple-600 dark:text-purple-400">
+              <p className="mt-1 text-[10px] text-purple-300">
                 Viewing: {activeTenantName}
               </p>
             )}
           </div>
         )}
 
-        <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
           {navSections.map((section, si) => (
-            <div key={si}>
+            <div key={si} className="mb-4">
               {section.label && (
-                <div className="pt-4 pb-1 px-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="px-3 pb-1 pt-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/45">
                     {section.label}
                   </span>
                 </div>
@@ -211,9 +228,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             </div>
           ))}
 
-          {/* Settings - positioned before admin */}
-          <div className="pt-4 pb-1 px-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-3 pb-1 pt-1">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/45">
               Settings
             </span>
           </div>
@@ -226,7 +242,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             {settingsItem.label}
           </NavLink>
 
-          {/* Admin Section */}
           {showAdmin && (() => {
             const superAdminOnlyPaths = new Set(['/admin/tenants', '/admin/sso', '/admin/settings'])
             const visibleAdminItems = isSuperAdmin
@@ -234,8 +249,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               : adminItems.filter(item => !superAdminOnlyPaths.has(item.path))
             return (
               <>
-                <div className="pt-4 pb-1 px-3">
-                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="px-3 pb-1 pt-4">
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/45">
                     <Shield size={12} />
                     Administration
                   </div>
@@ -257,15 +272,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           })()}
         </nav>
 
-        {/* User Info & Logout */}
         {isAuthenticated && user && (
-          <div className="border-t border-border/50 p-3 bg-gradient-to-t from-muted/30 to-transparent">
-            <div className="flex items-center gap-3 px-2 py-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">
+          <div className="border-t border-white/10 bg-gradient-to-t from-black/20 to-transparent p-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 px-3 py-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-sidebar-foreground">
                 {(user.displayName || user.username || '?').charAt(0).toUpperCase()}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-sidebar-foreground">
                   {user.displayName || user.username}
                 </p>
                 <span
@@ -278,14 +292,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               </div>
               <button
                 onClick={toggleTheme}
-                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200 hover:scale-105"
+                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
                 title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               <button
                 onClick={logout}
-                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200 hover:scale-105"
+                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
                 title="Sign out"
               >
                 <LogOut size={16} />

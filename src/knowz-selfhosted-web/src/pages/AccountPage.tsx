@@ -4,21 +4,20 @@ import { api } from '../lib/api-client'
 import { useAuth } from '../lib/auth'
 import { UserCircle, Lock, Save, CheckCircle2, Clock } from 'lucide-react'
 import { DEFAULT_USER_TIMEZONE } from '../hooks/useFormatters'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
-// Common IANA timezone identifiers. Users can still type a custom value
-// in the "Other" mode for anything not in this curated list.
 const COMMON_TIMEZONES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'America/New_York', label: 'Eastern Time (New York)' },
   { value: 'America/Chicago', label: 'Central Time (Chicago)' },
   { value: 'America/Denver', label: 'Mountain Time (Denver)' },
-  { value: 'America/Phoenix', label: 'Mountain Time — no DST (Phoenix)' },
+  { value: 'America/Phoenix', label: 'Mountain Time (Phoenix, no DST)' },
   { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
   { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
   { value: 'Pacific/Honolulu', label: 'Hawaii Time (Honolulu)' },
   { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
   { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
   { value: 'America/Mexico_City', label: 'Central Time (Mexico City)' },
-  { value: 'America/Sao_Paulo', label: 'Brasília Time (São Paulo)' },
+  { value: 'America/Sao_Paulo', label: 'Brasilia Time (Sao Paulo)' },
   { value: 'Europe/London', label: 'UK Time (London)' },
   { value: 'Europe/Dublin', label: 'Ireland Time (Dublin)' },
   { value: 'Europe/Paris', label: 'Central European Time (Paris)' },
@@ -56,9 +55,6 @@ export default function AccountPage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
 
-  // Timezone preference state. Starts from the user's current value or
-  // falls back to the default. If the current value isn't in the curated
-  // list, we switch to "Other" mode and let them free-text it.
   const initialTz = user?.timeZonePreference ?? DEFAULT_USER_TIMEZONE
   const isKnownTz = COMMON_TIMEZONES.some((t) => t.value === initialTz)
   const [timeZone, setTimeZone] = useState(initialTz)
@@ -102,8 +98,6 @@ export default function AccountPage() {
     onSuccess: async () => {
       setPreferencesSuccess(true)
       setPreferencesError(null)
-      // Reload the user from the server so every component's useFormatters
-      // hook picks up the new timezone immediately, without a page refresh.
       await refreshUser()
       setTimeout(() => setPreferencesSuccess(false), 3000)
     },
@@ -151,9 +145,8 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-lg">
-      {/* Profile Section */}
-      <div className="bg-card border border-border/60 rounded-xl shadow-sm p-6 space-y-4">
+    <div className="grid max-w-5xl grid-cols-1 gap-5 lg:grid-cols-2">
+      <SurfaceCard className="p-6 space-y-4">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <UserCircle size={20} />
           Profile
@@ -220,10 +213,9 @@ export default function AccountPage() {
           <Save size={16} />
           {profileMutation.isPending ? 'Saving...' : 'Save Profile'}
         </button>
-      </div>
+      </SurfaceCard>
 
-      {/* Preferences Section */}
-      <div className="bg-card border border-border/60 rounded-xl shadow-sm p-6 space-y-4">
+      <SurfaceCard className="p-6 space-y-4">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <Clock size={20} />
           Preferences
@@ -302,16 +294,15 @@ export default function AccountPage() {
           <Save size={16} />
           {preferencesMutation.isPending ? 'Saving...' : 'Save Preferences'}
         </button>
-      </div>
+      </SurfaceCard>
 
-      {/* Password Section */}
-      <div className="bg-card border border-border/60 rounded-xl shadow-sm p-6 space-y-4">
+      <SurfaceCard className="p-6 space-y-4 lg:col-span-2">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <Lock size={20} />
           Change Password
         </div>
 
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               Current Password
@@ -369,7 +360,7 @@ export default function AccountPage() {
           <Lock size={16} />
           {passwordMutation.isPending ? 'Changing...' : 'Change Password'}
         </button>
-      </div>
+      </SurfaceCard>
     </div>
   )
 }

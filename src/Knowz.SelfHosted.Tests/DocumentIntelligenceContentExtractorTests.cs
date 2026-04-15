@@ -91,7 +91,8 @@ public class DocumentIntelligenceContentExtractorTests
 
         var provider = new AzureAttachmentAIProvider(
             configuration,
-            Substitute.For<ILogger<AzureAttachmentAIProvider>>());
+            Substitute.For<ILogger<AzureAttachmentAIProvider>>(),
+            Substitute.For<IHttpClientFactory>());
         var extractor = CreateExtractor(provider);
 
         Assert.False(extractor.CanExtract("application/pdf"));

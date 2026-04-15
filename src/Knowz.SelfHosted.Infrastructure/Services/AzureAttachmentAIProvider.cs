@@ -23,10 +23,12 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
     private readonly string? _docIntelligenceEndpoint;
     private readonly string? _docIntelligenceApiKey;
     private readonly ILogger<AzureAttachmentAIProvider> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public AzureAttachmentAIProvider(
         IConfiguration configuration,
-        ILogger<AzureAttachmentAIProvider> logger)
+        ILogger<AzureAttachmentAIProvider> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _visionEndpoint = configuration["AzureAIVision:Endpoint"];
         _visionApiKey = configuration["AzureAIVision:ApiKey"];
@@ -36,6 +38,7 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
         _docIntelligenceEndpoint = configuration["AzureDocumentIntelligence:Endpoint"];
         _docIntelligenceApiKey = configuration["AzureDocumentIntelligence:ApiKey"];
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     public string ProviderName =>
@@ -176,8 +179,11 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
     {
         try
         {
-            using var httpClient = new HttpClient();
-            var features = "caption,tags,objects,read";
+            var httpClient = _httpClientFactory.CreateClient();
+            // Caption is not supported in all Azure AI Vision regions (e.g. eastus2).
+            // GPT-4V synthesis below (TrySynthesizeVisionDescriptionAsync) generates a
+            // richer caption anyway when Azure OpenAI is configured.
+            var features = "tags,objects,read";
             var requestUrl = $"{_visionEndpoint!.TrimEnd('/')}/computervision/imageanalysis:analyze?api-version=2024-02-01&features={features}";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);

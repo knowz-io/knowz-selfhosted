@@ -1,10 +1,11 @@
-import { defineConfig, loadEnv } from 'vitest/config'
+import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
   // Load env vars from .env, .env.local, .env.{mode}, .env.{mode}.local
   // This lets `npm run dev:cloud` (mode=cloud) load .env.cloud with VITE_PROXY_TARGET set
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, '.', '')
   const apiTarget = env.VITE_PROXY_TARGET || 'http://localhost:5000'
 
   return {

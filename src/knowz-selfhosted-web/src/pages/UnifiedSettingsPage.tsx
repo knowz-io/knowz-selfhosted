@@ -6,6 +6,7 @@ import AccountPage from './AccountPage'
 import ApiKeysPage from './ApiKeysPage'
 import DataPortabilityPage from './DataPortabilityPage'
 import McpSetupPage from './McpSetupPage'
+import PageHeader from '../components/ui/PageHeader'
 
 const tabs = [
   { key: 'connection', label: 'Connection', icon: Settings },
@@ -34,8 +35,13 @@ export default function UnifiedSettingsPage() {
   const ActiveComponent = tabComponents[activeTab] ?? SettingsPage
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Settings</h1>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Control"
+        title="Settings and access"
+        titleAs="h2"
+        description="Tune connection details, account preferences, portability, and MCP access from one place."
+      />
       <TabContainer tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
       <ActiveComponent />
     </div>

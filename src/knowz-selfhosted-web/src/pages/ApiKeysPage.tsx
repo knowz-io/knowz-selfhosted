@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Key, Copy, Trash2, RefreshCw, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { api } from '../lib/api-client'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function ApiKeysPage() {
   const queryClient = useQueryClient()
@@ -57,13 +58,17 @@ export default function ApiKeysPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <p className="text-sm text-muted-foreground">
-        Manage your personal API key for programmatic access to Knowz.
-      </p>
+      <SurfaceCard className="p-5">
+        <p className="sh-kicker">Programmatic Access</p>
+        <h3 className="mt-2 text-xl font-semibold tracking-tight">Personal API keys</h3>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Generate, rotate, and revoke your own API key for direct access to self-hosted Knowz endpoints.
+        </p>
+      </SurfaceCard>
 
       {/* New key banner - shown once after generation */}
       {newKey && (
-        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+        <SurfaceCard className="border-green-200/90 bg-green-50/80 p-4 dark:border-green-900/60 dark:bg-green-950/20">
           <div className="flex items-start gap-3">
             <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -87,11 +92,11 @@ export default function ApiKeysPage() {
               </div>
             </div>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Current key status */}
-      <div className="border border-border/60 rounded-xl shadow-sm p-5">
+      <SurfaceCard className="p-5">
         <h2 className="text-lg font-semibold mb-4">Current API Key</h2>
 
         {keyStatus?.hasKey ? (
@@ -162,7 +167,7 @@ export default function ApiKeysPage() {
             Failed to revoke API key. Please try again.
           </p>
         )}
-      </div>
+      </SurfaceCard>
 
       {/* Confirm regenerate dialog */}
       {showConfirmGenerate && (
@@ -229,7 +234,7 @@ export default function ApiKeysPage() {
       )}
 
       {/* Usage instructions */}
-      <div className="border border-border/60 rounded-xl shadow-sm p-5">
+      <SurfaceCard className="p-5">
         <h2 className="text-lg font-semibold mb-3">Usage</h2>
         <p className="text-sm text-muted-foreground mb-3">
           Include your API key in the <code className="px-1.5 py-0.5 bg-muted rounded text-xs">X-Api-Key</code> header with each request:
@@ -238,7 +243,7 @@ export default function ApiKeysPage() {
 {`curl -H "X-Api-Key: your-api-key" \\
   ${window.location.origin}/api/v1/knowledge`}
         </pre>
-      </div>
+      </SurfaceCard>
     </div>
   )
 }

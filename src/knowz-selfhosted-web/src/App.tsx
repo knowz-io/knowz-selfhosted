@@ -62,9 +62,9 @@ export default function App() {
                   <Route path="/api-keys" element={<Navigate to="/settings?tab=api-keys" replace />} />
                   <Route path="/data" element={<Navigate to="/settings?tab=data" replace />} />
                   <Route path="/mcp-setup" element={<Navigate to="/settings?tab=mcp" replace />} />
-                  <Route path="/topics" element={<Navigate to="/organize" replace />} />
-                  <Route path="/tags" element={<Navigate to="/organize" replace />} />
-                  <Route path="/entities" element={<Navigate to="/organize" replace />} />
+                  <Route path="/topics" element={<Navigate to="/organize?tab=topics" replace />} />
+                  <Route path="/tags" element={<Navigate to="/organize?tab=tags" replace />} />
+                  <Route path="/entities" element={<Navigate to="/organize?tab=entities" replace />} />
 
                   {/* Admin routes: require SuperAdmin or Admin role */}
                   <Route

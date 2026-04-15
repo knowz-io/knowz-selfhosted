@@ -107,7 +107,9 @@ public static class KnowledgeEndpoints
 
             var result = await svc.CreateKnowledgeAsync(
                 req.Content,
-                req.Title ?? (req.Content.Length > 100 ? req.Content[..100] : req.Content),
+                // Leave as placeholder when caller didn't supply one — EnrichmentBackgroundService
+                // regenerates via GenerateTitleAsync from combined content + attachments.
+                req.Title ?? "Untitled",
                 req.Type ?? "Note",
                 req.VaultId,
                 req.Tags ?? new List<string>(),
@@ -402,10 +404,9 @@ public static class KnowledgeEndpoints
 
             var userId = VaultEndpoints.GetUserIdFromContext(context);
 
-            // Auto-generate title from content if not provided
-            var title = req.Title ?? (req.Content.Length > 100
-                ? req.Content[..100].TrimEnd() + "..."
-                : req.Content);
+            // Use placeholder when caller didn't supply a title — EnrichmentBackgroundService
+            // regenerates via GenerateTitleAsync from combined content + attachments.
+            var title = req.Title ?? "Untitled";
 
             var result = await svc.CreateKnowledgeAsync(
                 req.Content,

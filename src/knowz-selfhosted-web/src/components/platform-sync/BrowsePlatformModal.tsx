@@ -64,7 +64,7 @@ export default function BrowsePlatformModal({ links, onClose }: BrowsePlatformMo
 
   const vaultsQuery = useQuery({
     queryKey: ['platform-sync', 'browse', 'vaults'],
-    queryFn: () => api.listPlatformVaults(),
+    queryFn: async () => (await api.listPlatformVaults()) ?? { vaults: [], totalCount: 0 },
   })
 
   const knowledgeQuery = useQuery({
@@ -76,19 +76,19 @@ export default function BrowsePlatformModal({ links, onClose }: BrowsePlatformMo
       page,
       debouncedSearch.trim(),
     ],
-    queryFn: () =>
-      api.listPlatformKnowledge(
+    queryFn: async () =>
+      (await api.listPlatformKnowledge(
         selectedVault!.id,
         page,
         PAGE_SIZE,
         debouncedSearch.trim() || undefined,
-      ),
+      )) ?? { items: [], page, pageSize: PAGE_SIZE, totalCount: 0 },
     enabled: !!selectedVault,
   })
 
   const previewQuery = useQuery({
     queryKey: ['platform-sync', 'browse', 'preview', previewId],
-    queryFn: () => api.getPlatformKnowledge(previewId!),
+    queryFn: async () => (await api.getPlatformKnowledge(previewId!)) ?? null,
     enabled: !!previewId,
   })
 

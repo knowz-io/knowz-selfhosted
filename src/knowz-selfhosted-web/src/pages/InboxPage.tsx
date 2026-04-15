@@ -20,6 +20,8 @@ import {
   Mail,
   FolderInput,
 } from 'lucide-react'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 const TYPE_OPTIONS = ['All', 'Note', 'Link', 'File'] as const
 
@@ -238,16 +240,50 @@ export default function InboxPage() {
   }
 
   const vaults: Vault[] = vaultsData?.vaults ?? []
+  const visibleItems = data?.items.length ?? 0
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Inbox size={24} />
-        <h1 className="text-2xl font-bold">Inbox</h1>
-      </div>
+      <PageHeader
+        eyebrow="Capture"
+        title="Inbox workflow"
+        titleAs="h2"
+        description="Review staged notes before they become durable knowledge, and convert the strongest captures into the right vault."
+        meta={
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="sh-stat">
+              <p className="sh-kicker">Visible</p>
+              <p className="mt-2 text-sm font-semibold">{visibleItems} items on this page</p>
+              <p className="mt-2 text-xs text-muted-foreground">Filtered by current search and type selections.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Selection</p>
+              <p className="mt-2 text-sm font-semibold">{selectedIds.size} selected</p>
+              <p className="mt-2 text-xs text-muted-foreground">Bulk convert or delete when you are triaging in batches.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Visibility</p>
+              <p className="mt-2 text-sm font-semibold">
+                {isPerUser ? (showAllItems ? 'All tenant items' : 'My items only') : 'Shared inbox'}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">Matches the current inbox scope for this deployment.</p>
+            </div>
+          </div>
+        }
+      />
 
       {/* Quick Capture */}
-      <div className="flex gap-2 items-end">
+      <SurfaceCard className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="sh-kicker">Quick Capture</p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight">Stage something fast</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Drop in rough notes first, then decide later whether they belong in long-term knowledge.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 items-end">
         <textarea
           rows={2}
           value={quickCapture}
@@ -276,10 +312,11 @@ export default function InboxPage() {
           <Plus size={16} />
           Add
         </button>
-      </div>
+        </div>
+      </SurfaceCard>
 
       {/* Search & Filter Bar */}
-      <div className="flex gap-2 items-center flex-wrap">
+      <div className="sh-toolbar flex gap-2 items-center flex-wrap p-3">
         <form onSubmit={handleSearch} className="flex-1 flex gap-2 min-w-0">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -347,13 +384,15 @@ export default function InboxPage() {
 
       {/* Items List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-muted-foreground" />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="sh-surface h-28 animate-pulse" />
+          ))}
         </div>
       ) : data && data.items.length > 0 ? (
-        <div className="border border-border/60 rounded-xl divide-y divide-border/60 shadow-sm">
+        <SurfaceCard className="overflow-hidden">
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-2 bg-muted text-sm font-medium text-muted-foreground">
+          <div className="flex items-center gap-3 border-b border-border/60 bg-muted/60 px-4 py-3 text-sm font-medium text-muted-foreground">
             <input
               type="checkbox"
               checked={selectedIds.size === data.items.length && data.items.length > 0}
@@ -453,18 +492,18 @@ export default function InboxPage() {
               </div>
             </div>
           ))}
-        </div>
+        </SurfaceCard>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
+        <SurfaceCard className="p-12 text-center text-muted-foreground">
           <Inbox size={48} className="mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">No inbox items</p>
           <p className="text-sm mt-1">Use the quick capture above to add your first item.</p>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="sh-toolbar flex items-center justify-between p-3">
           <p className="text-sm text-muted-foreground">
             Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.totalItems)} of{' '}
             {data.totalItems}
