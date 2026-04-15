@@ -665,8 +665,9 @@ public class KnowledgeService
             .Where(k => k.CreatedByUserId.HasValue)
             .Select(k => k.CreatedByUserId!.Value)
             .Distinct()
-            .Join(_db.Users, uid => uid, u => u.Id, (uid, u) => new CreatorRef(u.Id, u.DisplayName ?? u.Username))
+            .Join(_db.Users, uid => uid, u => u.Id, (uid, u) => new { u.Id, Name = u.DisplayName ?? u.Username })
             .OrderBy(c => c.Name)
+            .Select(c => new CreatorRef(c.Id, c.Name))
             .ToListAsync(ct);
     }
 
