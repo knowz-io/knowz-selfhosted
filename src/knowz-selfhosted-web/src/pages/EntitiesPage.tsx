@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
-import { Users, MapPin, Calendar, Plus, Pencil, Trash2, X, Check } from 'lucide-react'
+import { Users, MapPin, Calendar, Plus, Pencil, Trash2, X, Check, Search } from 'lucide-react'
 import type { EntityItem } from '../lib/types'
 import { useFormatters } from '../hooks/useFormatters'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 const entityTabs = [
   { type: 'person', label: 'Persons', icon: Users },
@@ -84,29 +85,40 @@ export default function EntitiesPage() {
   }
 
   const entities: EntityItem[] = data?.entities ?? []
+  const activeLabel = entityTabs.find((tab) => tab.type === activeTab)?.label ?? 'Entities'
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-semibold">Entities</span>
-        <button
-          onClick={() => { setShowCreate(true); setError(null) }}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-80"
-        >
-          <Plus size={16} /> Add {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
-        </button>
-      </div>
+      <SurfaceCard className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <p className="sh-kicker">Entities</p>
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight">Curate extracted references</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Maintain people, locations, and events so search and cross-reference flows stay accurate.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setShowCreate(true); setError(null) }}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+          >
+            <Plus size={16} /> Add {activeLabel.slice(0, -1)}
+          </button>
+        </div>
+      </SurfaceCard>
 
       {/* Tabs */}
-      <div className="flex border-b border-border/60">
+      <div className="sh-toolbar flex flex-wrap gap-2 p-1.5">
         {entityTabs.map(({ type, label, icon: Icon }) => (
           <button
             key={type}
             onClick={() => handleTabChange(type)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
               activeTab === type
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+                ? 'bg-card text-foreground shadow-card ring-1 ring-border/70'
+                : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
             }`}
           >
             <Icon size={16} />
@@ -116,14 +128,14 @@ export default function EntitiesPage() {
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+        <SurfaceCard className="border-red-200/90 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
           {error}
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Create form */}
       {showCreate && (
-        <div className="flex items-center gap-2 p-3 bg-card border border-border/60 rounded-lg">
+        <SurfaceCard className="p-4">
           <input
             type="text"
             value={newName}
@@ -146,34 +158,48 @@ export default function EntitiesPage() {
           >
             <X size={18} />
           </button>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Search */}
-      <input
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={`Search ${activeTab}s...`}
-        className="w-full px-3 py-2 text-sm border border-input rounded-md bg-card focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <div className="sh-toolbar p-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Search ${activeTab}s...`}
+            className="w-full rounded-2xl border border-border/70 bg-card/70 py-2.5 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+      </div>
 
       {/* List */}
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-12 bg-muted rounded animate-pulse" />
+            <div key={i} className="sh-surface h-14 animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-3">
+          <SurfaceCard className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="sh-kicker">Selection</p>
+                <p className="mt-2 text-sm font-semibold">{entities.length} visible {activeLabel.toLowerCase()}</p>
+              </div>
+              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+                {activeLabel}
+              </span>
+            </div>
+          </SurfaceCard>
           {entities.map((entity) => {
             const ActiveIcon = entityTabs.find((t) => t.type === activeTab)?.icon ?? Users
             return (
-              <div
-                key={entity.id}
-                className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-lg"
-              >
+              <SurfaceCard key={entity.id} className="p-3">
+                <div className="flex items-center gap-3">
                 <ActiveIcon size={16} className="text-muted-foreground flex-shrink-0" />
                 {editingId === entity.id ? (
                   <>
@@ -244,13 +270,14 @@ export default function EntitiesPage() {
                     )}
                   </>
                 )}
-              </div>
+                </div>
+              </SurfaceCard>
             )
           })}
           {entities.length === 0 && (
-            <p className="text-muted-foreground text-center py-8">
-              No {activeTab}s found.
-            </p>
+            <SurfaceCard className="p-10 text-center">
+              <p className="text-sm text-muted-foreground">No {activeTab}s found.</p>
+            </SurfaceCard>
           )}
         </div>
       )}

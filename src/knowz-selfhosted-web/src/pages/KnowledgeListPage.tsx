@@ -4,6 +4,8 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
 import { parseAsUtc } from '../lib/format-utils'
 import { useFormatters } from '../hooks/useFormatters'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
 import {
   Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw,
   Search, StickyNote, FileText, Mail, Image, AudioLines, Video, Code2, Link2,
@@ -243,23 +245,42 @@ export default function KnowledgeListPage() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Knowledge</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage your knowledge items</p>
-        </div>
-        <Link
-          to="/knowledge/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-sm shadow-primary/20"
-        >
-          <Plus size={16} /> New
-        </Link>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Library"
+        title="Knowledge inventory"
+        titleAs="h2"
+        description="Manage your self-hosted knowledge items with clearer hierarchy, faster filter scanning, and safer bulk actions."
+        actions={
+          <Link
+            to="/knowledge/new"
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+          >
+            <Plus size={16} /> New
+          </Link>
+        }
+        meta={
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="sh-stat">
+              <p className="sh-kicker">Results</p>
+              <p className="mt-2 text-3xl font-semibold tracking-tight">{data?.totalItems ?? currentItems.length}</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Filters</p>
+              <p className="mt-2 text-sm font-semibold">{activeFilterCount > 0 ? `${activeFilterCount} active` : 'None applied'}</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Selection</p>
+              <p className="mt-2 text-sm font-semibold">
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Ready for review'}
+              </p>
+            </div>
+          </div>
+        }
+      />
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 p-3 bg-card border border-border/40 rounded-xl">
+      <div className="sh-toolbar flex flex-wrap items-center gap-3 p-4">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -267,13 +288,13 @@ export default function KnowledgeListPage() {
             placeholder="Search by title..."
             value={titleInput}
             onChange={(e) => setTitleInput(e.target.value)}
-            className="pl-9 pr-3 py-1.5 border border-input rounded-lg bg-background text-sm w-56 focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
+            className="w-56 rounded-2xl border border-input bg-background/80 pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
         </div>
         <select
           value={type}
           onChange={(e) => updateParam('type', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
+          className="rounded-2xl border border-input bg-background/80 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
         >
           <option value="">All types</option>
           {KNOWLEDGE_TYPES.map((t) => (
@@ -283,7 +304,7 @@ export default function KnowledgeListPage() {
         <select
           value={vaultId}
           onChange={(e) => updateParam('vaultId', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
+          className="rounded-2xl border border-input bg-background/80 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
         >
           <option value="">All vaults</option>
           {vaultsQuery.data?.vaults.map((v) => (
@@ -293,7 +314,7 @@ export default function KnowledgeListPage() {
         <select
           value={createdByUserId}
           onChange={(e) => updateParam('createdByUserId', e.target.value)}
-          className="px-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
+          className="rounded-2xl border border-input bg-background/80 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
         >
           <option value="">All creators</option>
           {creatorsQuery.data?.map((c) => (
@@ -304,7 +325,7 @@ export default function KnowledgeListPage() {
         {activeFilterCount > 0 && (
           <button
             onClick={clearFilters}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-muted/50 transition-all duration-200"
+            className="inline-flex items-center gap-1.5 rounded-2xl border border-input px-3 py-2 text-sm text-muted-foreground transition-all duration-200 hover:bg-muted/50 hover:text-foreground"
           >
             <Filter size={14} />
             <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-primary text-primary-foreground rounded-full">
@@ -317,14 +338,16 @@ export default function KnowledgeListPage() {
 
       {/* Error */}
       {error && (
-        <p className="text-red-600 dark:text-red-400">
-          {error instanceof Error ? error.message : 'Failed to load'}
-        </p>
+        <SurfaceCard className="p-5">
+          <p className="text-red-600 dark:text-red-400">
+            {error instanceof Error ? error.message : 'Failed to load'}
+          </p>
+        </SurfaceCard>
       )}
 
       {/* Table */}
       {isLoading ? (
-        <div className="overflow-x-auto">
+        <SurfaceCard className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b border-border/60">
@@ -354,10 +377,10 @@ export default function KnowledgeListPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </SurfaceCard>
       ) : (
         <>
-          <div className="bg-card border border-border/40 rounded-xl">
+          <SurfaceCard className="overflow-hidden">
             <table className="w-full text-sm text-left table-fixed">
               <thead>
                 <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
@@ -482,11 +505,11 @@ export default function KnowledgeListPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </SurfaceCard>
 
           {/* Pagination */}
           {data && (data.totalPages > 1 || pageSize !== 20) && (
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col gap-3 rounded-[22px] border border-border/60 bg-card/80 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <p className="text-sm text-muted-foreground">
                   Showing {Math.min((page - 1) * pageSize + 1, data.totalItems)}&ndash;{Math.min(page * pageSize, data.totalItems)} of {data.totalItems} items
@@ -494,7 +517,7 @@ export default function KnowledgeListPage() {
                 <select
                   value={pageSize}
                   onChange={(e) => updateParam('pageSize', e.target.value)}
-                  className="px-2 py-1 border border-input rounded text-xs bg-card"
+                  className="rounded-xl border border-input bg-background/80 px-2 py-1 text-xs"
                 >
                   {PAGE_SIZES.map((s) => (
                     <option key={s} value={s}>{s} / page</option>
@@ -505,7 +528,7 @@ export default function KnowledgeListPage() {
                 <button
                   disabled={page <= 1}
                   onClick={() => updateParam('page', String(page - 1))}
-                  className="p-1.5 border border-input rounded disabled:opacity-30 text-sm transition-colors"
+                  className="rounded-xl border border-input p-1.5 text-sm transition-colors disabled:opacity-30"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -513,7 +536,7 @@ export default function KnowledgeListPage() {
                   <button
                     key={n}
                     onClick={() => updateParam('page', String(n))}
-                    className={`px-2.5 py-1 text-sm rounded border transition-colors ${
+                    className={`rounded-xl border px-2.5 py-1 text-sm transition-colors ${
                       n === page
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'border-input hover:bg-muted'
@@ -525,7 +548,7 @@ export default function KnowledgeListPage() {
                 <button
                   disabled={page >= totalPages}
                   onClick={() => updateParam('page', String(page + 1))}
-                  className="p-1.5 border border-input rounded disabled:opacity-30 text-sm transition-colors"
+                  className="rounded-xl border border-input p-1.5 text-sm transition-colors disabled:opacity-30"
                 >
                   <ChevronRight size={16} />
                 </button>

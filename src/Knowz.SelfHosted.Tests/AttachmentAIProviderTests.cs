@@ -182,6 +182,8 @@ public class AzureAttachmentAIProviderTests
 {
     private readonly ILogger<AzureAttachmentAIProvider> _logger =
         Substitute.For<ILogger<AzureAttachmentAIProvider>>();
+    private readonly IHttpClientFactory _httpClientFactory =
+        Substitute.For<IHttpClientFactory>();
 
     [Fact]
     public void Should_HaveProviderName_WithAzureAIVision()
@@ -194,7 +196,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
         Assert.Equal("AzureAIVision", provider.ProviderName);
     }
 
@@ -210,7 +212,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
         Assert.Equal("AzureOpenAI", provider.ProviderName);
     }
 
@@ -226,7 +228,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
         var result = await provider.AnalyzeImageAsync(new byte[] { 1 }, "image/png");
 
         Assert.False(result.Success);
@@ -245,7 +247,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
         var result = await provider.ExtractDocumentAsync(new byte[] { 1 }, "application/pdf");
 
         Assert.False(result.Success);

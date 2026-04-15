@@ -12,6 +12,7 @@ import {
   FileArchive,
 } from 'lucide-react'
 import { api } from '../lib/api-client'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 type ExportMode = 'light' | 'full'
 type Strategy = 'skip' | 'overwrite' | 'merge'
@@ -160,20 +161,26 @@ export default function DataPortabilityPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <p className="text-sm text-muted-foreground">
-        Export your data for backup or migrate between Knowz instances.
-      </p>
+      <SurfaceCard className="p-5">
+        <p className="sh-kicker">Data Portability</p>
+        <h3 className="mt-2 text-xl font-semibold tracking-tight">Export and restore workspace data</h3>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Move data between self-hosted instances, keep backups current, and validate imports before applying them.
+        </p>
+      </SurfaceCard>
 
       {/* Schema info */}
       {schema && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-300">
-          <Info size={16} className="shrink-0" />
-          <span>{schema.compatibility}</span>
-        </div>
+        <SurfaceCard className="border-blue-200/90 bg-blue-50/80 px-3 py-2 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-300">
+          <div className="flex items-center gap-2">
+            <Info size={16} className="shrink-0" />
+            <span>{schema.compatibility}</span>
+          </div>
+        </SurfaceCard>
       )}
 
       {/* Export section */}
-      <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm">
+      <SurfaceCard className="p-5">
         <h2 className="text-lg font-semibold mb-2">Export</h2>
         <p className="text-sm text-muted-foreground mb-4">
           Download all your knowledge, vaults, topics, tags, and entities.
@@ -231,10 +238,10 @@ export default function DataPortabilityPage() {
             <XCircle size={14} /> Export failed. Please try again.
           </p>
         )}
-      </div>
+      </SurfaceCard>
 
       {/* Import section */}
-      <div className="bg-card border border-border/60 rounded-xl p-5 shadow-sm">
+      <SurfaceCard className="p-5">
         <h2 className="text-lg font-semibold mb-2">Import</h2>
         <p className="text-sm text-muted-foreground mb-4">
           Import data from a Knowz export file. Validate first to check for conflicts.
@@ -445,7 +452,7 @@ export default function DataPortabilityPage() {
             </p>
           )}
         </div>
-      </div>
+      </SurfaceCard>
     </div>
   )
 }

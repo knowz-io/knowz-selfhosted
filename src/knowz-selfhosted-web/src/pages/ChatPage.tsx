@@ -281,17 +281,17 @@ export default function ChatPage() {
   )
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] -m-4">
+    <div className="relative flex min-h-[calc(100vh-12rem)] overflow-hidden rounded-[32px] border border-border/60 bg-card/50 shadow-elevated backdrop-blur-xl">
       {/* Conversation Sidebar */}
       <div
         className={`${
           sidebarOpen ? 'w-64' : 'w-0'
-        } transition-all duration-200 overflow-hidden border-r bg-card flex flex-col`}
+        } flex flex-col overflow-hidden border-r border-white/10 bg-sidebar text-sidebar-foreground transition-all duration-200`}
       >
-        <div className="p-3 border-b border-border/40 space-y-2">
+        <div className="space-y-2 border-b border-white/10 p-4">
           <button
             onClick={handleNewChat}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-sm shadow-primary/20"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-sidebar-accent px-3 py-3 text-sm font-semibold text-slate-950 shadow-sm shadow-black/20 transition-all duration-200 hover:-translate-y-0.5"
           >
             <Plus size={16} />
             New Chat
@@ -299,10 +299,10 @@ export default function ChatPage() {
           {conversations.length > 0 && (
             <button
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-              className={`w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 ${
+              className={`flex w-full items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-medium transition-colors duration-150 ${
                 selectMode
-                  ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
-                  : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                  ? 'bg-white/12 text-sidebar-foreground ring-1 ring-white/10'
+                  : 'text-sidebar-foreground/72 hover:bg-white/6 hover:text-sidebar-foreground'
               }`}
             >
               <CheckSquare size={12} />
@@ -312,14 +312,14 @@ export default function ChatPage() {
         </div>
 
         {selectMode && conversations.length > 0 && (
-          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+          <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
             <input
               type="checkbox"
               checked={selectedConvIds.size === conversations.length && conversations.length > 0}
               onChange={toggleSelectAllConvs}
               className="rounded border-input"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-sidebar-foreground/68">
               {selectedConvIds.size > 0
                 ? `${selectedConvIds.size} selected`
                 : 'Select all'}
@@ -327,9 +327,9 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {conversations.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-8">
+            <p className="py-8 text-center text-xs text-sidebar-foreground/60">
               No conversations yet
             </p>
           )}
@@ -338,10 +338,10 @@ export default function ChatPage() {
               key={conv.id}
               className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer text-sm transition-all duration-200 ${
                 activeConversation?.id === conv.id && !selectMode
-                  ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10'
+                  ? 'bg-white/12 text-sidebar-foreground shadow-sm ring-1 ring-white/10'
                   : selectedConvIds.has(conv.id)
-                    ? 'bg-primary/5 dark:bg-primary/10 text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                    ? 'bg-white/8 text-sidebar-foreground'
+                    : 'text-sidebar-foreground/72 hover:bg-white/6 hover:text-sidebar-foreground'
               }`}
               onClick={() => (selectMode ? toggleSelectConv(conv.id) : selectConversation(conv.id))}
             >
@@ -358,7 +358,7 @@ export default function ChatPage() {
               )}
               <div className="flex-1 min-w-0">
                 <p className="truncate">{conv.title}</p>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-sidebar-foreground/52">
                   {formatDate(conv.updatedAt)}
                 </p>
               </div>
@@ -382,7 +382,7 @@ export default function ChatPage() {
       {/* Toggle sidebar button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 bg-muted rounded-r-md hover:bg-accent transition-colors"
+        className="absolute left-0 top-1/2 z-10 rounded-r-2xl border border-border/60 bg-card/90 p-2 text-muted-foreground shadow-sm transition-colors hover:bg-card"
         style={{ left: sidebarOpen ? '16rem' : '0' }}
       >
         {sidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
@@ -391,11 +391,11 @@ export default function ChatPage() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar: vault selector + research mode */}
-        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/40 bg-card/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3 border-b border-border/50 bg-background/70 px-5 py-4 backdrop-blur-sm">
           <select
             value={selectedVaultId}
             onChange={(e) => setSelectedVaultId(e.target.value)}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all duration-200"
+            className="rounded-2xl border border-input bg-card/90 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
           >
             <option value="">All Vaults</option>
             {vaultsData?.vaults.map((v) => (
@@ -408,10 +408,10 @@ export default function ChatPage() {
           <label className="flex items-center gap-1.5 text-sm cursor-pointer">
             <button
               onClick={() => setResearchMode(!researchMode)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors duration-150 ${
+              className={`flex items-center gap-1 rounded-2xl px-3 py-2 text-xs font-medium transition-colors duration-150 ${
                 researchMode
                   ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                  : 'bg-muted text-muted-foreground hover:bg-accent'
+                  : 'bg-card text-muted-foreground hover:bg-accent'
               }`}
             >
               <FlaskConical size={12} />
@@ -421,10 +421,10 @@ export default function ChatPage() {
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.06),transparent_30%)] px-5 py-5">
           {!activeConversation || activeConversation.messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in">
-              <div className="p-4 bg-muted/50 rounded-2xl mb-5">
+              <div className="mb-5 rounded-[28px] border border-border/60 bg-card/80 p-4 shadow-sm">
                 <MessagesSquare
                   size={40}
                   className="text-muted-foreground/40"
@@ -510,7 +510,7 @@ export default function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="border-t border-border/40 bg-card/80 backdrop-blur-sm px-4 py-3">
+        <div className="border-t border-border/50 bg-background/72 px-5 py-4 backdrop-blur-sm">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
             <textarea
               ref={textareaRef}
@@ -519,7 +519,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Ask a question... (Shift+Enter for newline)"
               rows={1}
-              className="flex-1 px-4 py-2.5 border border-input rounded-xl bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-primary/30 max-h-32 transition-all duration-200"
+              className="max-h-32 flex-1 resize-none rounded-2xl border border-input bg-card/90 px-4 py-3 text-sm shadow-sm transition-all duration-200 focus:border-primary/30 focus:outline-none focus:ring-2 focus:ring-ring/30"
               style={{
                 height: 'auto',
                 minHeight: '2.5rem',

@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api-client'
 import { ArrowLeft, BookOpen, Pencil, Trash2, X, GitBranch, RefreshCw, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react'
 import { useFormatters } from '../hooks/useFormatters'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function VaultDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,10 +76,18 @@ export default function VaultDetailPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-14 bg-muted rounded animate-pulse" />
-        ))}
+        <PageHeader
+          eyebrow="Library"
+          title="Vault details"
+          titleAs="h2"
+          description="Inspect vault contents, metadata, and connected sync behavior."
+        />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="sh-surface h-28 animate-pulse" />
+          ))}
+        </div>
+        <div className="sh-surface h-64 animate-pulse" />
       </div>
     )
   }
@@ -88,15 +98,15 @@ export default function VaultDetailPage() {
         <Link to="/vaults" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={16} /> Back to Vaults
         </Link>
-        <p className="text-red-600 dark:text-red-400">
+        <SurfaceCard className="border-red-200/90 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
           {error instanceof Error ? error.message : 'Failed to load vault contents'}
-        </p>
+        </SurfaceCard>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Link
         to="/vaults"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -104,40 +114,51 @@ export default function VaultDetailPage() {
         <ArrowLeft size={16} /> Back to Vaults
       </Link>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{vault?.name ?? 'Vault Contents'}</h1>
-          {vault?.description && (
-            <p className="text-sm text-muted-foreground mt-1">{vault.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {vault?.vaultType && (
-            <span className="px-2 py-0.5 text-xs bg-muted rounded">
-              {vault.vaultType}
-            </span>
-          )}
-          <span className="text-sm text-muted-foreground">
-            {contents?.totalItems ?? 0} items
-          </span>
-          <button
-            onClick={openEditModal}
-            className="p-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title="Edit vault"
-          >
-            <Pencil size={16} />
-          </button>
-          {!vault?.isDefault && (
+      <PageHeader
+        eyebrow="Library"
+        title={vault?.name ?? 'Vault contents'}
+        titleAs="h2"
+        description={vault?.description || 'Inspect the knowledge items grouped into this vault and manage sync or metadata for the collection.'}
+        actions={
+          <>
             <button
-              onClick={() => setShowDelete(true)}
-              className="p-2 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
-              title="Delete vault"
+              onClick={openEditModal}
+              className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-card"
             >
-              <Trash2 size={16} />
+              <Pencil size={16} />
+              Edit vault
             </button>
-          )}
-        </div>
-      </div>
+            {!vault?.isDefault && (
+              <button
+                onClick={() => setShowDelete(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-red-300/80 bg-red-50/80 px-4 py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-950/30"
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
+            )}
+          </>
+        }
+        meta={
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="sh-stat">
+              <p className="sh-kicker">Items</p>
+              <p className="mt-2 text-sm font-semibold">{contents?.totalItems ?? 0} knowledge items</p>
+              <p className="mt-2 text-xs text-muted-foreground">Currently visible within this vault.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Type</p>
+              <p className="mt-2 text-sm font-semibold">{vault?.vaultType || 'General vault'}</p>
+              <p className="mt-2 text-xs text-muted-foreground">The current collection shape for this vault.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Created</p>
+              <p className="mt-2 text-sm font-semibold">{vault?.createdAt ? fmt.date(vault.createdAt) : 'Unknown date'}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Useful when reviewing older workspace structure.</p>
+            </div>
+          </div>
+        }
+      />
 
       {/* Edit Modal */}
       {showEdit && (
@@ -231,12 +252,22 @@ export default function VaultDetailPage() {
       {/* Git Sync Section */}
       <GitSyncPanel vaultId={id!} />
 
-      <div className="space-y-2">
+      <SurfaceCard className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="sh-kicker">Contents</p>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight">Knowledge in this vault</h3>
+          </div>
+          <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+            {contents?.totalItems ?? 0} item{(contents?.totalItems ?? 0) === 1 ? '' : 's'}
+          </span>
+        </div>
+        <div className="space-y-2">
         {contents?.items.map((item) => (
           <Link
             key={item.id}
             to={`/knowledge/${item.id}`}
-            className="flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl hover:shadow-md transition-all"
+            className="flex items-center gap-3 rounded-[22px] border border-border/60 bg-background/70 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:bg-card"
           >
             <BookOpen size={16} className="text-muted-foreground flex-shrink-0" />
             <div className="min-w-0 flex-1">
@@ -254,11 +285,12 @@ export default function VaultDetailPage() {
           </Link>
         ))}
         {contents?.items.length === 0 && (
-          <p className="text-muted-foreground text-center py-8">
+          <div className="rounded-[22px] border border-dashed border-border/70 bg-background/50 px-5 py-10 text-center text-sm text-muted-foreground">
             This vault is empty.
-          </p>
+          </div>
         )}
-      </div>
+        </div>
+      </SurfaceCard>
     </div>
   )
 }
@@ -383,18 +415,18 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
 
   if (statusLoading) {
     return (
-      <div className="border border-border/60 rounded-xl p-4 shadow-sm">
+      <SurfaceCard className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <GitBranch size={16} className="text-muted-foreground" />
           <h2 className="text-sm font-semibold">Git Sync</h2>
         </div>
         <div className="h-16 bg-muted rounded-lg animate-pulse" />
-      </div>
+      </SurfaceCard>
     )
   }
 
   return (
-    <div className="border border-border/60 rounded-xl p-4 space-y-3 shadow-sm">
+    <SurfaceCard className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <GitBranch size={16} className="text-muted-foreground" />
@@ -759,6 +791,6 @@ function GitSyncPanel({ vaultId }: { vaultId: string }) {
           </div>
         </div>
       )}
-    </div>
+    </SurfaceCard>
   )
 }

@@ -9,6 +9,22 @@ interface SidebarCardProps {
   children: React.ReactNode
 }
 
+function getStorage(): Storage | null {
+  try {
+    const storage = globalThis.localStorage
+    if (
+      storage &&
+      typeof storage.getItem === 'function' &&
+      typeof storage.setItem === 'function'
+    ) {
+      return storage
+    }
+  } catch {
+    // Ignore storage access errors in tests or restricted environments.
+  }
+  return null
+}
+
 export default function SidebarCard({
   title,
   icon,
@@ -18,14 +34,16 @@ export default function SidebarCard({
 }: SidebarCardProps) {
   const storageKey = `sidebar-card-${title}`
   const [open, setOpen] = useState(() => {
-    const stored = localStorage.getItem(storageKey)
-    return stored !== null ? stored === 'true' : defaultOpen
+    const stored = getStorage()?.getItem(storageKey)
+    if (stored === 'true') return true
+    if (stored === 'false') return false
+    return defaultOpen
   })
 
   const toggle = () => {
     const next = !open
     setOpen(next)
-    localStorage.setItem(storageKey, String(next))
+    getStorage()?.setItem(storageKey, String(next))
   }
 
   return (

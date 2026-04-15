@@ -29,6 +29,13 @@ vi.mock('../lib/auth', () => ({
   }),
 }))
 
+vi.mock('../lib/theme', () => ({
+  useTheme: () => ({
+    theme: 'dark',
+    toggle: vi.fn(),
+  }),
+}))
+
 describe('Sidebar', () => {
   it('Should_RenderFilesNavLink_WhenSidebarDisplayed', () => {
     renderWithProviders(<Sidebar open={true} onClose={() => {}} />)
@@ -39,5 +46,11 @@ describe('Sidebar', () => {
     renderWithProviders(<Sidebar open={true} onClose={() => {}} />)
     const filesLink = screen.getByText('Files').closest('a')
     expect(filesLink).toHaveAttribute('href', '/files')
+  })
+
+  it('Should_RenderPrimaryCreateAction_ForNewKnowledge', () => {
+    renderWithProviders(<Sidebar open={true} onClose={() => {}} />)
+    const createLink = screen.getByRole('link', { name: /new knowledge/i })
+    expect(createLink).toHaveAttribute('href', '/knowledge/new')
   })
 })

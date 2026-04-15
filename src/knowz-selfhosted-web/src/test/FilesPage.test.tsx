@@ -37,6 +37,9 @@ describe('FilesPage', () => {
           contentType: 'application/pdf',
           sizeBytes: 1048576,
           blobMigrationPending: false,
+          knowledgeId: 'knowledge-1',
+          knowledgeTitle: 'Quarterly report',
+          textExtractionStatus: 2,
           createdAt: '2026-01-15T10:00:00Z',
           updatedAt: '2026-01-15T10:00:00Z',
         },
@@ -104,6 +107,17 @@ describe('FilesPage', () => {
   it('Should_HaveUploadButton_WhenRendered', async () => {
     renderWithProviders(<FilesPage />)
     expect(screen.getByText('Upload')).toBeInTheDocument()
+  })
+
+  it('Should_RenderLibrarySummary_WhenFilesLoaded', async () => {
+    renderWithProviders(<FilesPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('2 total files')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('1 linked to knowledge')).toBeInTheDocument()
+    expect(screen.getByText('1 ready for AI')).toBeInTheDocument()
   })
 
   it('Should_ShowDragDropArea_WhenRendered', async () => {

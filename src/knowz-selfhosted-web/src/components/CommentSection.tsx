@@ -116,7 +116,7 @@ function CommentAttachmentChip({ file }: { file: FileMetadataDto }) {
 function CommentAttachments({ commentId, attachmentCount }: { commentId: string; attachmentCount: number }) {
   const { data: attachments, isLoading } = useQuery({
     queryKey: ['comment-attachments', commentId],
-    queryFn: () => api.getCommentAttachments(commentId),
+    queryFn: async () => (await api.getCommentAttachments(commentId)) ?? [],
     enabled: attachmentCount > 0,
   })
 

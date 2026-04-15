@@ -142,9 +142,9 @@ public class InboxService
         if (item == null)
             return null;
 
-        // Create knowledge item via KnowledgeService
-        // Auto-generate title from first 80 chars of body
-        var title = item.Body.Length > 80 ? item.Body[..80] + "..." : item.Body;
+        // Create knowledge item via KnowledgeService. Leave as placeholder so the
+        // enrichment pipeline generates a real AI title from the body content.
+        var title = "Untitled";
         var knowledgeResult = await _knowledgeService.CreateKnowledgeAsync(
             content: item.Body,
             title: title,

@@ -7,6 +7,7 @@ import {
   FileText,
   Upload,
   Search,
+  X,
   Trash2,
   Download,
   ChevronLeft,
@@ -23,6 +24,8 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { formatFileSize, parseAsUtc, formatDate } from '../lib/format-utils'
+import PageHeader from '../components/ui/PageHeader'
+import SurfaceCard from '../components/ui/SurfaceCard'
 
 function relativeTime(dateStr: string): string {
   // parseAsUtc handles naive selfhosted timestamps that lack a Z suffix.
@@ -317,23 +320,66 @@ export default function FilesPage() {
   }
 
   const CONTENT_TYPE_OPTIONS = ['All', 'application/pdf', 'image/', 'text/', 'video/', 'audio/']
+  const files = data?.items ?? []
+  const linkedCount = files.filter((file) => Boolean(file.knowledgeId)).length
+  const aiReadyCount = files.filter((file) =>
+    Boolean(file.extractedText || file.transcriptionText || file.visionDescription || (file.textExtractionStatus ?? 0) === 2),
+  ).length
+  const hasActiveFilters = Boolean(search || searchInput || contentTypeFilter)
+  const clearFilters = () => {
+    setSearch('')
+    setSearchInput('')
+    setContentTypeFilter('')
+    setPage(1)
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <FileText size={24} />
-        <h1 className="text-2xl font-bold">Files</h1>
-      </div>
+      <PageHeader
+        eyebrow="Assets"
+        title="Files"
+        titleAs="h2"
+        description="Manage uploaded files, inspect AI extraction state, and keep attachment-heavy workflows tidy."
+        actions={
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+          >
+            <Upload size={16} />
+            Upload
+          </button>
+        }
+        meta={
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="sh-stat">
+              <p className="sh-kicker">Library</p>
+              <p className="mt-2 text-sm font-semibold">{`${data?.totalItems ?? 0} total files`}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Uploaded across the self-hosted workspace.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">Knowledge</p>
+              <p className="mt-2 text-sm font-semibold">{`${linkedCount} linked to knowledge`}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Files already anchored to a knowledge item.</p>
+            </div>
+            <div className="sh-stat">
+              <p className="sh-kicker">AI State</p>
+              <p className="mt-2 text-sm font-semibold">{`${aiReadyCount} ready for AI`}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Showing extraction or structured AI detail.</p>
+            </div>
+          </div>
+        }
+      />
 
       {/* Drag and Drop Upload Area */}
-      <div
+      <SurfaceCard
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+        className={`border-2 border-dashed p-8 text-center transition-colors ${
           isDragging
             ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-            : 'border-input hover:shadow-md'
+            : 'border-input hover:bg-card'
         }`}
       >
         <Upload size={32} className="mx-auto mb-2 text-muted-foreground" />
@@ -365,10 +411,10 @@ export default function FilesPage() {
             {uploadMutation.error instanceof Error ? uploadMutation.error.message : 'Upload failed'}
           </p>
         )}
-      </div>
+      </SurfaceCard>
 
       {/* Search & Filter Bar */}
-      <div className="flex gap-2 items-center">
+      <div className="sh-toolbar flex flex-wrap gap-2 items-center p-3">
         <form onSubmit={handleSearch} className="flex-1 flex gap-2">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -382,7 +428,7 @@ export default function FilesPage() {
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-muted text-foreground rounded-md hover:bg-muted/80 transition-colors"
+            className="rounded-2xl bg-muted px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
           >
             Search
           </button>
@@ -393,7 +439,7 @@ export default function FilesPage() {
             setContentTypeFilter(e.target.value)
             setPage(1)
           }}
-          className="px-3 py-2 border border-input rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="rounded-2xl border border-input bg-card px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {CONTENT_TYPE_OPTIONS.map((t) => (
             <option key={t} value={t === 'All' ? '' : t}>
@@ -401,25 +447,29 @@ export default function FilesPage() {
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          <Upload size={16} />
-          Upload
-        </button>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-card"
+          >
+            <X size={14} />
+            Clear
+          </button>
+        )}
       </div>
 
       {/* File List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-muted-foreground" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="sh-surface h-32 animate-pulse" />
+          ))}
         </div>
       ) : data && data.items.length > 0 ? (
-        <div className="border border-border/60 rounded-xl divide-y divide-border/60 shadow-sm">
+        <SurfaceCard className="overflow-hidden">
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-2 bg-muted text-sm font-medium text-muted-foreground">
+          <div className="flex items-center gap-3 border-b border-border/60 bg-muted/60 px-4 py-3 text-sm font-medium text-muted-foreground">
             <span className="w-6 shrink-0" />
             <span className="flex-1 min-w-0">Name</span>
             <span className="w-24 text-center shrink-0">Type</span>
@@ -434,7 +484,7 @@ export default function FilesPage() {
             <div key={file.id}>
               <div
                 onClick={() => toggleExpand(file.id)}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-muted cursor-pointer select-none transition-colors"
+                className="flex cursor-pointer select-none items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60"
               >
                 <span className="w-6 text-muted-foreground">
                   {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -502,18 +552,18 @@ export default function FilesPage() {
               {expandedFileId === file.id && <FileDetailPanel file={file} />}
             </div>
           ))}
-        </div>
+        </SurfaceCard>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
+        <SurfaceCard className="p-12 text-center text-muted-foreground">
           <FileText size={48} className="mx-auto mb-4 opacity-50" />
           <p className="text-lg font-medium">No files</p>
           <p className="text-sm mt-1">Upload your first file using the area above.</p>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="sh-toolbar flex items-center justify-between p-3">
           <p className="text-sm text-muted-foreground">
             Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.totalItems)} of{' '}
             {data.totalItems}

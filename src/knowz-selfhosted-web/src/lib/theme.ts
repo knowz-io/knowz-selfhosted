@@ -2,8 +2,24 @@ import { useState, useEffect } from 'react'
 
 type Theme = 'light' | 'dark'
 
+function getStorage(): Storage | null {
+  try {
+    const storage = globalThis.localStorage
+    if (
+      storage &&
+      typeof storage.getItem === 'function' &&
+      typeof storage.setItem === 'function'
+    ) {
+      return storage
+    }
+  } catch {
+    // Ignore storage access errors and fall back to defaults.
+  }
+  return null
+}
+
 function getStoredTheme(): Theme {
-  const stored = localStorage.getItem('theme')
+  const stored = getStorage()?.getItem('theme')
   if (stored === 'dark' || stored === 'light') return stored
   return 'dark'
 }
@@ -21,7 +37,7 @@ export function useTheme() {
 
   useEffect(() => {
     applyTheme(theme)
-    localStorage.setItem('theme', theme)
+    getStorage()?.setItem('theme', theme)
   }, [theme])
 
   const toggle = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))

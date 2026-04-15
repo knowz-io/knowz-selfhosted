@@ -356,13 +356,27 @@ public class EnrichmentBackgroundService : BackgroundService
         if (string.IsNullOrWhiteSpace(title))
             return true;
 
-        if (PlaceholderTitles.Contains(title.Trim()))
+        var trimmedTitle = title.Trim();
+
+        if (PlaceholderTitles.Contains(trimmedTitle))
             return true;
 
-        // Title equals first 80 chars of content (InboxService pattern)
-        if (content != null && content.Length >= 80 &&
-            title.Trim() == content[..80].Trim())
-            return true;
+        // Any content-derived title: strip trailing ellipsis, then check whether
+        // the title is a prefix of the content. Catches legacy items created under
+        // the `content[..80]+"..."` and `content[..100]` heuristics, plus any
+        // title that the user left equal to (a prefix of) their content body.
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            var titleCore = trimmedTitle.TrimEnd('.', '\u2026').Trim();
+            var contentCore = content.Trim();
+            if (titleCore.Length > 0 && titleCore.Length < contentCore.Length &&
+                contentCore.StartsWith(titleCore, StringComparison.Ordinal))
+                return true;
+
+            // Exact match (short content where the title IS the whole body).
+            if (trimmedTitle == contentCore)
+                return true;
+        }
 
         return false;
     }
