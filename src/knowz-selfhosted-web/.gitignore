@@ -7,6 +7,11 @@ dist/
 # Build artifacts
 *.log
 
+# Local environment overrides (contain secrets)
+.env.cloud
+.env.local
+.env.*.local
+
 # Playwright
 playwright-report/
 test-results/

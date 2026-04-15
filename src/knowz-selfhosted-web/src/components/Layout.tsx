@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Menu, LogOut, ChevronDown, User } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { useAuth } from '../lib/auth'
@@ -45,7 +46,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               <Menu size={22} />
             </button>
-            <span className="ml-3 text-lg font-bold tracking-tight">Knowz</span>
+            <Link to="/knowledge" className="ml-3 text-lg font-bold tracking-tight">Knowz</Link>
           </div>
 
           {/* Mobile user menu */}

@@ -357,8 +357,8 @@ export default function KnowledgeListPage() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto bg-card border border-border/40 rounded-xl">
-            <table className="w-full text-sm text-left">
+          <div className="bg-card border border-border/40 rounded-xl">
+            <table className="w-full text-sm text-left table-fixed">
               <thead>
                 <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
                   <th className="py-2.5 px-3 w-10">

@@ -18,48 +18,72 @@ public class PromptSeedingService
     }
 
     /// <summary>
-    /// Seeds the 6 platform-level default prompts if none exist yet. Idempotent.
+    /// Seeds the 6 platform-level default prompts on first run, and updates any
+    /// system-seeded rows whose canonical text has changed (e.g. prompt upgrades).
+    /// Tenant/user customizations (IsSystemSeeded=false) are never touched.
     /// </summary>
     public async Task SeedDefaultPromptsAsync(CancellationToken ct = default)
     {
-        var alreadySeeded = await _db.PromptTemplates
-            .AnyAsync(pt => pt.Scope == PromptScope.Platform, ct);
-
-        if (alreadySeeded)
-        {
-            _logger.LogDebug("Platform prompts already seeded — skipping");
-            return;
-        }
-
-        _logger.LogInformation("Seeding default platform prompts...");
-
         var defaults = new Dictionary<string, string>
         {
             [PromptKeys.SystemPrompt] = DefaultPrompts.SystemPrompt,
             [PromptKeys.TitlePrompt] = DefaultPrompts.TitlePrompt,
-            [PromptKeys.SummarizePrompt] = DefaultPrompts.SummarizePrompt,
+            [PromptKeys.SummarizePrompt] = DefaultPrompts.DetailedSummarizePrompt,
             [PromptKeys.TagsPrompt] = DefaultPrompts.TagsPrompt,
             [PromptKeys.DocumentEditorPrompt] = DefaultPrompts.DocumentEditorPrompt,
             [PromptKeys.NoContextResponse] = DefaultPrompts.NoContextResponse,
         };
 
-        foreach (var (key, text) in defaults)
+        var existing = await _db.PromptTemplates
+            .Where(pt => pt.Scope == PromptScope.Platform)
+            .ToListAsync(ct);
+
+        if (existing.Count == 0)
         {
-            _db.PromptTemplates.Add(new PromptTemplate
+            _logger.LogInformation("Seeding default platform prompts...");
+
+            foreach (var (key, text) in defaults)
             {
-                PromptKey = key,
-                Scope = PromptScope.Platform,
-                TenantId = null,
-                UserId = null,
-                TemplateText = text,
-                MergeStrategy = PromptMergeStrategy.Override,
-                Description = $"Default {key} prompt",
-                IsSystemSeeded = true,
-                LastModifiedBy = "system-seed",
-            });
+                _db.PromptTemplates.Add(new PromptTemplate
+                {
+                    PromptKey = key,
+                    Scope = PromptScope.Platform,
+                    TenantId = null,
+                    UserId = null,
+                    TemplateText = text,
+                    MergeStrategy = PromptMergeStrategy.Override,
+                    Description = $"Default {key} prompt",
+                    IsSystemSeeded = true,
+                    LastModifiedBy = "system-seed",
+                });
+            }
+
+            await _db.SaveChangesAsync(ct);
+            _logger.LogInformation("Seeded {Count} default platform prompts", defaults.Count);
+            return;
         }
 
-        await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("Seeded {Count} default platform prompts", defaults.Count);
+        // Update any system-seeded prompts whose canonical default text has changed.
+        var updated = 0;
+        foreach (var prompt in existing.Where(pt => pt.IsSystemSeeded))
+        {
+            if (defaults.TryGetValue(prompt.PromptKey, out var canonical) && prompt.TemplateText != canonical)
+            {
+                prompt.TemplateText = canonical;
+                prompt.LastModifiedBy = "system-seed";
+                updated++;
+                _logger.LogInformation("Updated system-seeded prompt '{Key}' to latest default", prompt.PromptKey);
+            }
+        }
+
+        if (updated > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+            _logger.LogInformation("Updated {Count} system-seeded platform prompt(s)", updated);
+        }
+        else
+        {
+            _logger.LogDebug("Platform prompts up to date — no changes needed");
+        }
     }
 }

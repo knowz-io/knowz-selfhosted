@@ -48,10 +48,25 @@ resource "azurerm_role_assignment" "storage_blob_data_contributor" {
   principal_type       = "ServicePrincipal"
 }
 
-# Key Vault: Secrets User
+# Key Vault: Secrets User (managed identity — read secrets at runtime)
 resource "azurerm_role_assignment" "keyvault_secrets_user" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_user_assigned_identity.main.principal_id
   principal_type       = "ServicePrincipal"
+}
+
+# Key Vault: Secrets Officer (deployer — create secrets at deploy time)
+# RBAC-enabled vaults require explicit data-plane role assignment even for
+# subscription Owners. Grant the deploying identity Secrets Officer so
+# Terraform can create the secrets below. Wait for RBAC propagation (~45s).
+resource "azurerm_role_assignment" "kv_deployer_secrets_officer" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "time_sleep" "wait_kv_rbac" {
+  depends_on      = [azurerm_role_assignment.kv_deployer_secrets_officer]
+  create_duration = "45s"
 }

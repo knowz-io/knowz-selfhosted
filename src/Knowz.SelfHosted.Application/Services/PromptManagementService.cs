@@ -222,7 +222,7 @@ public class PromptManagementService
     {
         PromptKeys.SystemPrompt => DefaultPrompts.SystemPrompt,
         PromptKeys.TitlePrompt => DefaultPrompts.TitlePrompt,
-        PromptKeys.SummarizePrompt => DefaultPrompts.SummarizePrompt,
+        PromptKeys.SummarizePrompt => DefaultPrompts.DetailedSummarizePrompt,
         PromptKeys.TagsPrompt => DefaultPrompts.TagsPrompt,
         PromptKeys.DocumentEditorPrompt => DefaultPrompts.DocumentEditorPrompt,
         PromptKeys.NoContextResponse => DefaultPrompts.NoContextResponse,

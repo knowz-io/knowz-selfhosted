@@ -25,6 +25,28 @@ resource "azurerm_key_vault" "main" {
 }
 
 # =============================================================================
+# DEPLOYER RBAC (Key Vault Secrets Officer)
+# =============================================================================
+# RBAC-enabled Key Vaults require explicit data-plane role assignment even for
+# subscription Owners. Grant the deploying identity Key Vault Secrets Officer
+# so Terraform can create the secrets below. Wait for RBAC propagation (~45s).
+
+resource "azurerm_role_assignment" "kv_deployer_secrets_officer" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  scope                = azurerm_key_vault.main[0].id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "time_sleep" "wait_kv_rbac" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  depends_on      = [azurerm_role_assignment.kv_deployer_secrets_officer]
+  create_duration = "45s"
+}
+
+# =============================================================================
 # KEY VAULT SECRETS (IConfiguration hierarchy naming: -- maps to :)
 # =============================================================================
 
@@ -34,6 +56,8 @@ resource "azurerm_key_vault_secret" "sql_connection" {
   name         = "ConnectionStrings--McpDb"
   value        = local.sql_connection_string
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "search_endpoint" {
@@ -42,6 +66,8 @@ resource "azurerm_key_vault_secret" "search_endpoint" {
   name         = "AzureAISearch--Endpoint"
   value        = "https://${azurerm_search_service.main.name}.search.windows.net"
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "search_key" {
@@ -50,6 +76,8 @@ resource "azurerm_key_vault_secret" "search_key" {
   name         = "AzureAISearch--ApiKey"
   value        = azurerm_search_service.main.primary_key
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "openai_endpoint" {
@@ -58,6 +86,8 @@ resource "azurerm_key_vault_secret" "openai_endpoint" {
   name         = "AzureOpenAI--Endpoint"
   value        = local.effective_openai_endpoint
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "openai_key" {
@@ -66,6 +96,28 @@ resource "azurerm_key_vault_secret" "openai_key" {
   name         = "AzureOpenAI--ApiKey"
   value        = local.effective_openai_key
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "openai_deployment_name" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  name         = "AzureOpenAI--DeploymentName"
+  value        = var.chat_deployment_name
+  key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "openai_embedding_deployment_name" {
+  count = var.deploy_key_vault ? 1 : 0
+
+  name         = "AzureOpenAI--EmbeddingDeploymentName"
+  value        = var.embedding_deployment_name
+  key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "doc_intel_endpoint" {
@@ -74,6 +126,8 @@ resource "azurerm_key_vault_secret" "doc_intel_endpoint" {
   name         = "AzureDocumentIntelligence--Endpoint"
   value        = local.effective_doc_intel_endpoint
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "doc_intel_key" {
@@ -82,6 +136,8 @@ resource "azurerm_key_vault_secret" "doc_intel_key" {
   name         = "AzureDocumentIntelligence--ApiKey"
   value        = local.effective_doc_intel_key
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "vision_endpoint" {
@@ -90,6 +146,8 @@ resource "azurerm_key_vault_secret" "vision_endpoint" {
   name         = "AzureAIVision--Endpoint"
   value        = local.effective_vision_endpoint
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "vision_key" {
@@ -98,6 +156,8 @@ resource "azurerm_key_vault_secret" "vision_key" {
   name         = "AzureAIVision--ApiKey"
   value        = local.effective_vision_key
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "storage_connection" {
@@ -106,6 +166,8 @@ resource "azurerm_key_vault_secret" "storage_connection" {
   name         = "Storage--Azure--ConnectionString"
   value        = local.storage_connection_string
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "app_insights" {
@@ -114,6 +176,8 @@ resource "azurerm_key_vault_secret" "app_insights" {
   name         = "ApplicationInsights--ConnectionString"
   value        = local.effective_app_insights_connection_string
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 # --- Container Apps secrets (conditional on both Key Vault and Container Apps) ---
@@ -124,6 +188,8 @@ resource "azurerm_key_vault_secret" "selfhosted_api_key" {
   name         = "SelfHosted--ApiKey"
   value        = local.api_key
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "selfhosted_jwt_secret" {
@@ -132,6 +198,8 @@ resource "azurerm_key_vault_secret" "selfhosted_jwt_secret" {
   name         = "SelfHosted--JwtSecret"
   value        = local.jwt_secret
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }
 
 resource "azurerm_key_vault_secret" "selfhosted_admin_password" {
@@ -140,4 +208,6 @@ resource "azurerm_key_vault_secret" "selfhosted_admin_password" {
   name         = "SelfHosted--SuperAdminPassword"
   value        = var.admin_password
   key_vault_id = azurerm_key_vault.main[0].id
+
+  depends_on = [time_sleep.wait_kv_rbac]
 }

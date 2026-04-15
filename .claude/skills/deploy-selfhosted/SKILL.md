@@ -58,7 +58,11 @@ After install, tell the user to run `! az login` (the `!` prefix executes in the
 
 ```bash
 az account show --query '{name:name, id:id, tenantId:tenantId}' -o json 2>/dev/null
+# Also capture deployer object ID for Key Vault RBAC pre-wiring
+DEPLOYER_OID=$(az ad signed-in-user show --query id -o tsv 2>/dev/null)
 ```
+
+> **Note:** The deployer object ID (`$DEPLOYER_OID`) is injected into the Bicep/Terraform deployment and used to pre-grant `Key Vault Secrets Officer` on the new KV. This is required because subscription Owner role does NOT grant data-plane access in RBAC-enabled Key Vaults — without this step, the deployment fails with 403 on every KV secret.
 
 If not logged in, tell the user to run `! az login` and wait.
 
