@@ -50,7 +50,7 @@ Enable AI-powered chat, summarization, and embedding generation with your own Az
 |----------|-----------|-------------|---------|
 | `AZURE_OPENAI_ENDPOINT` | `AzureOpenAI__Endpoint` | Azure OpenAI resource endpoint URL | `https://your-openai.openai.azure.com/` |
 | `AZURE_OPENAI_API_KEY` | `AzureOpenAI__ApiKey` | Azure OpenAI API key | `your-api-key` |
-| -- | `AzureOpenAI__DeploymentName` | Chat/completion model deployment name | `gpt-4o` |
+| -- | `AzureOpenAI__DeploymentName` | Chat/completion model deployment name | `gpt-5.2-chat` |
 | -- | `AzureOpenAI__EmbeddingDeploymentName` | Embedding model deployment name | `text-embedding-3-small` |
 
 ### Tier 2: Azure AI Search (Optional)

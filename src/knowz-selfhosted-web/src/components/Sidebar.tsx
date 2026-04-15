@@ -139,12 +139,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         `}
       >
         <div className="flex items-center justify-between h-14 px-4 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
-          <div className="flex items-center gap-2.5">
+          <NavLink to="/knowledge" className="flex items-center gap-2.5">
             <div className="flex items-center justify-center w-8 h-8 bg-primary rounded-lg shadow-sm">
               <BookOpen className="text-primary-foreground" size={16} />
             </div>
             <span className="text-lg font-bold tracking-tight">Knowz</span>
-          </div>
+          </NavLink>
           <button
             onClick={onClose}
             className="lg:hidden p-1.5 rounded-lg hover:bg-muted transition-colors"

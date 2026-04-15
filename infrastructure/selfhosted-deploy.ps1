@@ -194,6 +194,17 @@ if (-not $conflicting -and -not $deletedVaults -and -not $conflictingDI -and -no
     Write-Host "  No conflicting soft-deleted resources." -ForegroundColor Green
 }
 
+# Retrieve deployer object ID for Key Vault Secrets Officer role assignment.
+# Without this, Bicep secret creation fails with 403 on RBAC-enabled Key Vaults.
+$deployerObjectId = az ad signed-in-user show --query id -o tsv 2>$null
+if (-not $deployerObjectId) {
+    # Fallback for service principal deployments (e.g., CI/CD)
+    $deployerObjectId = az account show --query user.name -o tsv 2>$null
+    Write-Host "  Signed-in user OID not available (likely SP deployment). deployerObjectId will be empty." -ForegroundColor DarkYellow
+} else {
+    Write-Host "  Deployer object ID: $deployerObjectId" -ForegroundColor DarkGray
+}
+
 # Step 2: Deploy Bicep
 Write-Host "[2/7] Deploying infrastructure (Bicep)..." -ForegroundColor Yellow
 $bicepFile = Join-Path $scriptDir "selfhosted-test.bicep"
@@ -241,6 +252,7 @@ $deployBody = @{
             existingVisionResourceGroup = @{ value = $ExistingVisionResourceGroup }
             existingDocIntelName = @{ value = $ExistingDocIntelName }
             existingDocIntelResourceGroup = @{ value = $ExistingDocIntelResourceGroup }
+            deployerObjectId = @{ value = $deployerObjectId }
         }
     }
 } | ConvertTo-Json -Depth 100 -Compress

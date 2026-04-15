@@ -18,6 +18,9 @@
 // PARAMETERS
 // ============================================================================
 
+@description('Object ID of the deploying user/SP (grants Key Vault Secrets Officer for secret creation). Populated by deploy script from `az ad signed-in-user show`.')
+param deployerObjectId string = ''
+
 @description('Resource name prefix (used for all resource naming)')
 param prefix string = 'sh-test'
 
@@ -451,7 +454,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (deployKeyVault) {
   }
 }
 
-// Key Vault Secrets User role for Managed Identity
+// Key Vault Secrets User role for Managed Identity (read secrets at runtime)
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
 resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployKeyVault) {
@@ -461,6 +464,22 @@ resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' 
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
     principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Key Vault Secrets Officer role for the deploying user/SP (create secrets at deploy time)
+// RBAC-enabled vaults require explicit data-plane role assignment even for subscription
+// Owners. Without this, the deployment fails with 403 on every secretXxx resource.
+// Populated by the deploy script from `az ad signed-in-user show --query id -o tsv`.
+var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+
+resource kvSecretsOfficerDeployerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployKeyVault && !empty(deployerObjectId)) {
+  name: guid(keyVault.id, deployerObjectId, keyVaultSecretsOfficerRoleId)
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsOfficerRoleId)
+    principalId: deployerObjectId
+    principalType: 'User'
   }
 }
 
@@ -474,6 +493,7 @@ resource secretSqlConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if
   properties: {
     value: sqlConnectionString
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretSearchEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -482,6 +502,7 @@ resource secretSearchEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = i
   properties: {
     value: 'https://${searchService.name}.search.windows.net'
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretSearchKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -490,6 +511,7 @@ resource secretSearchKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   properties: {
     value: searchService.listAdminKeys().primaryKey
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretOpenAiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -498,6 +520,7 @@ resource secretOpenAiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = i
   properties: {
     value: effectiveOpenAiEndpoint
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -506,6 +529,25 @@ resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   properties: {
     value: deployOpenAI ? cognitiveServices.listKeys().key1 : (existingOpenAiName != '' && empty(existingOpenAiResourceGroup) ? existingOpenAi.listKeys().key1 : externalOpenAiKey)
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
+}
+
+resource secretOpenAiDeploymentName 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureOpenAI--DeploymentName'
+  properties: {
+    value: chatDeploymentName
+  }
+  dependsOn: [kvSecretsOfficerDeployerRole]
+}
+
+resource secretOpenAiEmbeddingDeploymentName 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
+  parent: keyVault
+  name: 'AzureOpenAI--EmbeddingDeploymentName'
+  properties: {
+    value: embeddingDeploymentName
+  }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource kvSecretDocIntelEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -514,6 +556,7 @@ resource kvSecretDocIntelEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01'
   properties: {
     value: effectiveDocIntelEndpoint
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource kvSecretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -522,6 +565,7 @@ resource kvSecretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   properties: {
     value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : (existingDocIntelName != '' && empty(existingDocIntelResourceGroup) ? existingDocIntel.listKeys().key1 : externalDocIntelKey)
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource kvSecretVisionEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -530,6 +574,7 @@ resource kvSecretVisionEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   properties: {
     value: effectiveVisionEndpoint
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource kvSecretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -538,6 +583,7 @@ resource kvSecretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = i
   properties: {
     value: deployVision ? visionAccount.listKeys().key1 : (existingVisionName != '' && empty(existingVisionResourceGroup) ? existingVision.listKeys().key1 : externalVisionKey)
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretStorageConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault) {
@@ -546,6 +592,7 @@ resource secretStorageConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' 
   properties: {
     value: storageConnectionString
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretAppInsights 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployKeyVault && deployMonitoring) {
@@ -554,6 +601,7 @@ resource secretAppInsights 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (
   properties: {
     value: effectiveAppInsightsConnectionString
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 // ============================================================================
@@ -700,6 +748,7 @@ resource secretApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deplo
   properties: {
     value: apiKey
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretJwtSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployContainerApps && deployKeyVault) {
@@ -708,6 +757,7 @@ resource secretJwtSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (de
   properties: {
     value: jwtSecret
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 resource secretAdminPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (deployContainerApps && deployKeyVault) {
@@ -716,6 +766,7 @@ resource secretAdminPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if
   properties: {
     value: adminPassword
   }
+  dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
 // ---- API Container App ----

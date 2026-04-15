@@ -148,7 +148,7 @@
             "type": "Microsoft.Common.TextBox",
             "label": "Chat Model Deployment Name",
             "toolTip": "The deployment name for the chat completion model on your existing or external endpoint.",
-            "defaultValue": "gpt-4o",
+            "defaultValue": "gpt-5.2-chat",
             "visible": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]",
             "constraints": {
               "required": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]"

@@ -17,7 +17,7 @@ export default function McpSetupPage() {
       mcpServers: {
         knowz: {
           command: 'npx',
-          args: ['-y', '@anthropic/mcp-remote', `${apiUrl}/sse`],
+          args: ['-y', 'mcp-remote', `${apiUrl}/sse`],
           env: { API_KEY: 'your-api-key-here' },
         },
       },
@@ -124,12 +124,12 @@ export default function McpSetupPage() {
 
         <div className="relative">
           <pre className="px-4 py-3 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
-{`claude mcp add knowz -- npx -y @anthropic/mcp-remote ${apiUrl}/sse`}
+{`claude mcp add knowz -- npx -y mcp-remote ${apiUrl}/sse`}
           </pre>
           <button
             onClick={() =>
               handleCopy(
-                `claude mcp add knowz -- npx -y @anthropic/mcp-remote ${apiUrl}/sse`,
+                `claude mcp add knowz -- npx -y mcp-remote ${apiUrl}/sse`,
                 'cli',
               )
             }

@@ -1,45 +1,106 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 // =====================================================================
-// ASPIRE_MODE: "azure" (default) or "local"
+// INFRASTRUCTURE MODE
 // =====================================================================
-// azure: Projects read from appsettings.Local.json (SQL, OpenAI, Search, Storage).
-//        No containers — everything runs against live Azure resources.
-// local: Spins up SQL Server container. OpenAI/Search still require Azure config
-//        in appsettings. Storage uses LocalFileSystem.
-var mode = builder.Configuration["ASPIRE_MODE"] ?? "azure";
-var isLocal = mode.Equals("local", StringComparison.OrdinalIgnoreCase);
+//
+// Set via INFRA_MODE environment variable. Three modes:
+//
+// ┌──────────┬────────────────────────────────────────────────────────────────────────┐
+// │  MODE    │  DESCRIPTION                                                          │
+// ├──────────┼────────────────────────────────────────────────────────────────────────┤
+// │  local   │  DEFAULT. SQL Server container + local file storage. AI services      │
+// │ (default)│  via user-secrets (KnowzPlatform proxy or direct Azure). Best for     │
+// │          │  isolated dev — no cloud connections needed except AI.                │
+// │          │                                                                        │
+// │          │  Containers: SQL Server, (storage: local FS)                          │
+// │          │  Cloud:      Azure OpenAI / Search (if configured)                    │
+// ├──────────┼────────────────────────────────────────────────────────────────────────┤
+// │  cloud   │  Zero containers. Points at rg-knowz-sh Azure resources. API and      │
+// │          │  web run locally; all infra (SQL, Storage, AI, monitoring) from dev   │
+// │          │  Azure. Ideal for UX iteration with real data — no Docker needed.     │
+// │          │                                                                        │
+// │          │  Containers: NONE                                                      │
+// │          │  Cloud:      SQL, Storage, AI, AppInsights (all from rg-knowz-sh)     │
+// │          │  Setup:      Run scripts/setup-sh-dev.ps1 first (once per machine)    │
+// ├──────────┼────────────────────────────────────────────────────────────────────────┤
+// │  hybrid  │  Starts from "local" defaults. Override per-service:                  │
+// │          │    LOCAL_SQL=false      Use dev cloud SQL                              │
+// │          │    LOCAL_STORAGE=false  Use dev cloud Azure Blob Storage              │
+// └──────────┴────────────────────────────────────────────────────────────────────────┘
+//
+// USAGE:
+//   dotnet run --project selfhosted/src/Knowz.SelfHosted.AppHost                    # local (default)
+//   INFRA_MODE=cloud dotnet run --project selfhosted/src/Knowz.SelfHosted.AppHost   # pure dev cloud
+//   INFRA_MODE=hybrid LOCAL_SQL=false dotnet run ...                                # local storage, cloud SQL
+//
+// UI ONLY (no Aspire, web client proxies to deployed Container App):
+//   cd selfhosted/src/knowz-selfhosted-web
+//   npm run dev:cloud           # uses .env.cloud (see .env.cloud.example)
+//
+// =====================================================================
 
-IResourceBuilder<IResourceWithConnectionString>? sqlDb = null;
+const string ModeLocal = "local";
+const string ModeCloud = "cloud";
+const string ModeHybrid = "hybrid";
 
-if (isLocal)
+var infraMode = (builder.Configuration["INFRA_MODE"] ?? ModeLocal).ToLowerInvariant();
+if (infraMode is not (ModeLocal or ModeCloud or ModeHybrid))
 {
-    var sql = builder.AddSqlServer("sql")
-        .WithLifetime(ContainerLifetime.Persistent);
+    Console.Error.WriteLine($"[AppHost] ERROR: Unknown INFRA_MODE '{infraMode}'. Must be one of: local, cloud, hybrid");
+    Console.Error.WriteLine($"[AppHost] Falling back to '{ModeLocal}'.");
+    infraMode = ModeLocal;
+}
 
-    sqlDb = sql.AddDatabase("McpDb");
+// --- Derive per-service flags ---
+bool localSql, localStorage;
+
+switch (infraMode)
+{
+    case ModeCloud:
+        localSql = false;
+        localStorage = false;
+        break;
+
+    case ModeHybrid:
+        localSql = ConfigFlag("LOCAL_SQL", defaultValue: true);
+        localStorage = ConfigFlag("LOCAL_STORAGE", defaultValue: true);
+        break;
+
+    case ModeLocal:
+    default:
+        localSql = true;
+        localStorage = true;
+        break;
 }
 
 // =====================================================================
-// AI SERVICES CONFIGURATION
+// CLOUD CONFIG (from user-secrets on AppHost project)
 // =====================================================================
-// The selfhosted API uses a three-tier fallback:
-//   Tier 1: KnowzPlatform proxy (KnowzPlatform:Enabled + BaseUrl + ApiKey)
-//   Tier 2: Direct Azure OpenAI + Azure AI Search (endpoints + keys)
-//   Tier 3: NoOp (AI features disabled)
-//
-// Configure in ONE of these ways (in priority order):
-//   1. Set values below (AppHost injects as env vars — highest priority)
-//   2. Create appsettings.Local.json in the API project (see .example file)
-//   3. Leave empty for NoOp mode
-// =====================================================================
+// Run scripts/setup-sh-dev.ps1 to populate these from the rg-knowz-sh Key Vault.
+// Alternatively set manually:
+//   cd selfhosted/src/Knowz.SelfHosted.AppHost
+//   dotnet user-secrets set "ConnectionStrings:McpDb" "Server=tcp:..."
+//   dotnet user-secrets set "AzureOpenAI:ApiKey" "..."
+//   ... (see scripts/setup-sh-dev.ps1 for full list)
 
-// --- Tier 1: Knowz Platform Proxy ---
+// --- Core infra ---
+var dbConnection = builder.Configuration["ConnectionStrings:McpDb"];
+var storageConnStr = builder.Configuration["Storage:Azure:ConnectionString"];
+var storageContainer = builder.Configuration["Storage:Azure:ContainerName"];
+
+// --- Auth ---
+var jwtSecret = builder.Configuration["SelfHosted:JwtSecret"];
+var adminPassword = builder.Configuration["SelfHosted:SuperAdminPassword"];
+var selfHostedApiKey = builder.Configuration["SelfHosted:ApiKey"];
+var mcpServiceKey = builder.Configuration["Mcp:ServiceKey"];
+
+// --- AI Tier 1: Knowz Platform Proxy ---
 var platformEnabled = builder.Configuration["KnowzPlatform:Enabled"];
 var platformBaseUrl = builder.Configuration["KnowzPlatform:BaseUrl"];
 var platformApiKey = builder.Configuration["KnowzPlatform:ApiKey"];
 
-// --- Tier 2: Direct Azure OpenAI + Azure AI Search ---
+// --- AI Tier 2: Direct Azure ---
 var openAiEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
 var openAiApiKey = builder.Configuration["AzureOpenAI:ApiKey"];
 var openAiDeployment = builder.Configuration["AzureOpenAI:DeploymentName"];
@@ -52,54 +113,91 @@ var searchEndpoint = builder.Configuration["AzureAISearch:Endpoint"];
 var searchApiKey = builder.Configuration["AzureAISearch:ApiKey"];
 var searchIndexName = builder.Configuration["AzureAISearch:IndexName"];
 
-// --- Core Settings (DB, auth, storage) ---
-var dbConnection = builder.Configuration["ConnectionStrings:McpDb"];
-var jwtSecret = builder.Configuration["Jwt:Secret"];
-var adminUsername = builder.Configuration["Admin:Username"];
-var adminPassword = builder.Configuration["Admin:Password"];
-var mcpServiceKey = builder.Configuration["Mcp:ServiceKey"];
-var storageProvider = builder.Configuration["Storage:Provider"];
-var azureStorageConn = builder.Configuration["AzureStorage:ConnectionString"];
-var azureStorageContainer = builder.Configuration["AzureStorage:ContainerName"];
+// --- Monitoring ---
+var appInsightsConnStr = builder.Configuration["ApplicationInsights:ConnectionString"];
 
-// ===== SELF-HOSTED API =====
+// --- Startup banner ---
+Console.WriteLine();
+Console.WriteLine("╔══════════════════════════════════════════════════════╗");
+Console.WriteLine("║       Knowz Self-Hosted Infrastructure Mode          ║");
+Console.WriteLine("╠══════════════════════════════════════════════════════╣");
+Console.WriteLine($"║  Mode       : {infraMode,-39}║");
+Console.WriteLine($"║  SQL Server : {Label(localSql),-39}║");
+Console.WriteLine($"║  Storage    : {Label(localStorage, "LocalFileSystem", "Azure Blob (rg-knowz-sh)"),-39}║");
+var aiLabel = !string.IsNullOrWhiteSpace(platformEnabled) && platformEnabled.Equals("true", StringComparison.OrdinalIgnoreCase)
+    ? $"Platform proxy ({platformBaseUrl ?? "url not set"})"
+    : !string.IsNullOrWhiteSpace(openAiEndpoint) ? "Direct Azure OpenAI" : "NoOp (not configured)";
+Console.WriteLine($"║  AI         : {aiLabel,-39}║");
+Console.WriteLine($"║  Monitoring : {(!string.IsNullOrWhiteSpace(appInsightsConnStr) ? "App Insights (rg-knowz-sh)" : "None (local only)"),-39}║");
+Console.WriteLine("╚══════════════════════════════════════════════════════╝");
+Console.WriteLine();
+
+if (infraMode == ModeCloud && string.IsNullOrWhiteSpace(dbConnection))
+{
+    Console.Error.WriteLine("[AppHost] WARN: INFRA_MODE=cloud but ConnectionStrings:McpDb is not set.");
+    Console.Error.WriteLine("[AppHost]       Run scripts/setup-sh-dev.ps1 to configure user-secrets.");
+    Console.Error.WriteLine("[AppHost]       Falling back — API will use its own appsettings.Local.json if present.");
+    Console.Error.WriteLine();
+}
+
+// =====================================================================
+// INFRASTRUCTURE RESOURCES
+// =====================================================================
+
+IResourceBuilder<IResourceWithConnectionString>? sqlDb = null;
+
+if (localSql)
+{
+    var sql = builder.AddSqlServer("sql")
+        .WithLifetime(ContainerLifetime.Persistent);
+    sqlDb = sql.AddDatabase("McpDb");
+}
+
+// =====================================================================
+// SELF-HOSTED API
+// =====================================================================
+
 var api = builder.AddProject<Projects.Knowz_SelfHosted_API>("selfhosted-api")
     .WithHttpEndpoint(port: 5000, name: "http")
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithEnvironment("Database__AutoMigrate", "true");
 
-if (isLocal)
+// --- SQL wiring ---
+if (localSql)
 {
-    api.WithReference(sqlDb!)
-        .WaitFor(sqlDb!)
-        .WithEnvironment("Storage__Provider", "LocalFileSystem")
-        .WithEnvironment("Storage__Local__RootPath", "/tmp/knowz-files");
+    api.WithReference(sqlDb!).WaitFor(sqlDb!);
+}
+else if (!string.IsNullOrWhiteSpace(dbConnection))
+{
+    api.WithEnvironment("ConnectionStrings__McpDb", dbConnection);
+}
+
+// --- Storage wiring ---
+if (localStorage)
+{
+    api.WithEnvironment("Storage__Provider", "LocalFileSystem")
+       .WithEnvironment("Storage__Local__RootPath", "/tmp/knowz-files");
 }
 else
 {
-    // Azure mode: inject DB connection and storage from AppHost config
-    if (!string.IsNullOrWhiteSpace(dbConnection))
-        api.WithEnvironment("ConnectionStrings__McpDb", dbConnection);
-    if (!string.IsNullOrWhiteSpace(storageProvider))
-        api.WithEnvironment("Storage__Provider", storageProvider);
-    if (!string.IsNullOrWhiteSpace(azureStorageConn))
-        api.WithEnvironment("Storage__Azure__ConnectionString", azureStorageConn);
-    if (!string.IsNullOrWhiteSpace(azureStorageContainer))
-        api.WithEnvironment("Storage__Azure__ContainerName", azureStorageContainer);
+    api.WithEnvironment("Storage__Provider", "Azure");
+    if (!string.IsNullOrWhiteSpace(storageConnStr))
+        api.WithEnvironment("Storage__Azure__ConnectionString", storageConnStr);
+    if (!string.IsNullOrWhiteSpace(storageContainer))
+        api.WithEnvironment("Storage__Azure__ContainerName", storageContainer);
 }
 
-// Core auth settings (both modes)
+// --- Auth ---
 if (!string.IsNullOrWhiteSpace(jwtSecret))
     api.WithEnvironment("SelfHosted__JwtSecret", jwtSecret);
-if (!string.IsNullOrWhiteSpace(adminUsername))
-    api.WithEnvironment("SelfHosted__SuperAdminUsername", adminUsername);
 if (!string.IsNullOrWhiteSpace(adminPassword))
     api.WithEnvironment("SelfHosted__SuperAdminPassword", adminPassword);
+if (!string.IsNullOrWhiteSpace(selfHostedApiKey))
+    api.WithEnvironment("SelfHosted__ApiKey", selfHostedApiKey);
 if (!string.IsNullOrWhiteSpace(mcpServiceKey))
     api.WithEnvironment("MCP__ServiceKey", mcpServiceKey);
 
-// Inject AI config from AppHost configuration (if present).
-// These env vars override the API's own appsettings, so AppHost config wins.
+// --- AI Tier 1: Knowz Platform Proxy ---
 if (!string.IsNullOrWhiteSpace(platformEnabled))
 {
     api.WithEnvironment("KnowzPlatform__Enabled", platformEnabled);
@@ -109,6 +207,7 @@ if (!string.IsNullOrWhiteSpace(platformEnabled))
         api.WithEnvironment("KnowzPlatform__ApiKey", platformApiKey);
 }
 
+// --- AI Tier 2: Direct Azure ---
 if (!string.IsNullOrWhiteSpace(openAiEndpoint))
     api.WithEnvironment("AzureOpenAI__Endpoint", openAiEndpoint);
 if (!string.IsNullOrWhiteSpace(openAiApiKey))
@@ -125,7 +224,6 @@ if (!string.IsNullOrWhiteSpace(docIntelEndpoint))
     api.WithEnvironment("AzureDocumentIntelligence__Endpoint", docIntelEndpoint);
 if (!string.IsNullOrWhiteSpace(docIntelApiKey))
     api.WithEnvironment("AzureDocumentIntelligence__ApiKey", docIntelApiKey);
-
 if (!string.IsNullOrWhiteSpace(searchEndpoint))
     api.WithEnvironment("AzureAISearch__Endpoint", searchEndpoint);
 if (!string.IsNullOrWhiteSpace(searchApiKey))
@@ -133,7 +231,14 @@ if (!string.IsNullOrWhiteSpace(searchApiKey))
 if (!string.IsNullOrWhiteSpace(searchIndexName))
     api.WithEnvironment("AzureAISearch__IndexName", searchIndexName);
 
-// ===== MCP SERVER =====
+// --- Monitoring ---
+if (!string.IsNullOrWhiteSpace(appInsightsConnStr))
+    api.WithEnvironment("ApplicationInsights__ConnectionString", appInsightsConnStr);
+
+// =====================================================================
+// MCP SERVER
+// =====================================================================
+
 var mcp = builder.AddProject<Projects.Knowz_MCP>("mcp")
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithEnvironment("Knowz__BaseUrl", api.GetEndpoint("http"))
@@ -142,9 +247,31 @@ var mcp = builder.AddProject<Projects.Knowz_MCP>("mcp")
 if (!string.IsNullOrWhiteSpace(mcpServiceKey))
     mcp.WithEnvironment("MCP__ServiceKey", mcpServiceKey);
 
-// ===== SELF-HOSTED WEB CLIENT (React + Vite) =====
+// =====================================================================
+// SELF-HOSTED WEB CLIENT (React + Vite)
+// =====================================================================
+// The Vite dev server proxies /api -> local API (port 5000).
+// For UI-only mode (no local API), run from the web client directory:
+//   npm run dev:cloud    (proxies to rg-knowz-sh deployed Container App)
+
 builder.AddNpmApp("selfhosted-web", "../knowz-selfhosted-web", "dev")
     .WithHttpEndpoint(targetPort: 5173, name: "http", isProxied: false)
     .WithReference(api);
 
 builder.Build().Run();
+
+// =====================================================================
+// HELPERS
+// =====================================================================
+
+bool ConfigFlag(string key, bool defaultValue)
+{
+    var value = builder.Configuration[key];
+    if (value is null) return defaultValue;
+    return value.Equals("true", StringComparison.OrdinalIgnoreCase);
+}
+
+string Label(bool isLocal, string localName = "container", string cloudName = "cloud (appsettings)")
+{
+    return isLocal ? $"LOCAL ({localName})" : $"CLOUD ({cloudName})";
+}

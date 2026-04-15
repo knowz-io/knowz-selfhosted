@@ -11,24 +11,57 @@ Dedicated .NET Aspire orchestrator for the self-hosted scenario. Starts everythi
 | `selfhosted-web` | Knowz Self-Hosted Web Client (React + Vite) | 5173 |
 | Aspire Dashboard | Traces, logs, metrics | 17200 |
 
+## Dev Modes
+
+Three ways to run, matching `INFRA_MODE` on the main Knowz platform:
+
+| Mode | SQL | Storage | How to run |
+|------|-----|---------|------------|
+| **local** (default) | SQL Server container | Local FS | `--launch-profile local` |
+| **cloud** | Azure (rg-knowz-sh) | Azure Blob | `--launch-profile cloud` |
+| **UI only** | — | — | `npm run dev:cloud` (no Aspire) |
+
+### One-time setup for cloud/UI-only modes
+
+```bash
+# From selfhosted/ directory — pulls all secrets from rg-knowz-sh Key Vault
+./scripts/setup-sh-dev.ps1
+```
+
+### Start in cloud mode (no Docker, real data)
+
+```bash
+cd src/knowz-selfhosted-web && npm install && cd ../..
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile cloud
+```
+
+### Start in local mode (SQL container)
+
+```bash
+cd src/knowz-selfhosted-web && npm install && cd ../..
+dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
+```
+
+### UI only — web client proxies to deployed Container App
+
+No Aspire, no local API, no Docker. Web client at http://localhost:5173 talks directly to rg-knowz-sh.
+
+```bash
+cd src/knowz-selfhosted-web
+npm run dev:cloud
+```
+
+Deployed endpoints (rg-knowz-sh):
+- API: `https://knowz-sh-api.jollymeadow-44a9327c.eastus2.azurecontainerapps.io`
+- Web: `https://knowz-sh-web.jollymeadow-44a9327c.eastus2.azurecontainerapps.io`
+- MCP: `https://knowz-sh-mcp.jollymeadow-44a9327c.eastus2.azurecontainerapps.io`
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [.NET Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling): `dotnet workload install aspire`
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for SQL Server container)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — only needed for `local` mode
 - [Node.js 22+](https://nodejs.org/) (for the web client)
-
-## Quick Start (no AI credentials needed)
-
-```bash
-# 1. Install web client dependencies (one-time)
-cd src/knowz-selfhosted-web && npm install && cd ../..
-
-# 2. Start everything
-dotnet run --project src/Knowz.SelfHosted.AppHost --launch-profile local
-```
-
-This starts the full stack immediately. Auth, admin, CRUD, import/export, and the web UI all work without any AI credentials. Search and AI features (Q&A, embeddings, summarization) return "not configured" responses until you add credentials.
 
 ## AI Services Configuration
 
@@ -61,7 +94,7 @@ cd src/Knowz.SelfHosted.AppHost
 # Azure OpenAI (completions, embeddings, summarization)
 dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-openai.openai.azure.com/"
 dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
-dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
+dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-5.2-chat"
 dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
 
 # Azure AI Search (hybrid vector + keyword search)

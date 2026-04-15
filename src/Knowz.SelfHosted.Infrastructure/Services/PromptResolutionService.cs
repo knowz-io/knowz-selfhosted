@@ -159,7 +159,7 @@ public class PromptResolutionService
     public static ResolvedPromptSet GetDefaultPromptSet() => new(
         SystemPrompt: DefaultPrompts.SystemPrompt,
         TitlePrompt: DefaultPrompts.TitlePrompt,
-        SummarizePrompt: DefaultPrompts.SummarizePrompt,
+        SummarizePrompt: DefaultPrompts.DetailedSummarizePrompt,
         TagsPrompt: DefaultPrompts.TagsPrompt,
         DocumentEditorPrompt: DefaultPrompts.DocumentEditorPrompt,
         NoContextResponse: DefaultPrompts.NoContextResponse);
@@ -168,7 +168,7 @@ public class PromptResolutionService
     {
         PromptKeys.SystemPrompt => DefaultPrompts.SystemPrompt,
         PromptKeys.TitlePrompt => DefaultPrompts.TitlePrompt,
-        PromptKeys.SummarizePrompt => DefaultPrompts.SummarizePrompt,
+        PromptKeys.SummarizePrompt => DefaultPrompts.DetailedSummarizePrompt,
         PromptKeys.TagsPrompt => DefaultPrompts.TagsPrompt,
         PromptKeys.DocumentEditorPrompt => DefaultPrompts.DocumentEditorPrompt,
         PromptKeys.NoContextResponse => DefaultPrompts.NoContextResponse,
