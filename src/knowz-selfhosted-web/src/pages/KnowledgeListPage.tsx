@@ -56,6 +56,7 @@ export default function KnowledgeListPage() {
   const title = searchParams.get('title') || ''
   const vaultId = searchParams.get('vaultId') || ''
   const createdByUserId = searchParams.get('createdByUserId') || ''
+  const tag = searchParams.get('tag') || ''
   const sort = searchParams.get('sort') || 'created'
   const sortDir = searchParams.get('sortDir') || 'desc'
 
@@ -75,10 +76,10 @@ export default function KnowledgeListPage() {
   const [showMoveToVault, setShowMoveToVault] = useState(false)
   const [batchError, setBatchError] = useState('')
 
-  const activeFilterCount = [type, vaultId, createdByUserId, title].filter(Boolean).length
+  const activeFilterCount = [type, vaultId, createdByUserId, title, tag].filter(Boolean).length
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['knowledge', page, pageSize, type, title, vaultId, createdByUserId, sort, sortDir],
+    queryKey: ['knowledge', page, pageSize, type, title, vaultId, createdByUserId, tag, sort, sortDir],
     queryFn: () =>
       api.listKnowledge({
         page: String(page),
@@ -87,6 +88,7 @@ export default function KnowledgeListPage() {
         title: title || undefined,
         vaultId: vaultId || undefined,
         createdByUserId: createdByUserId || undefined,
+        tag: tag || undefined,
         sort,
         sortDir,
       }),
@@ -189,6 +191,16 @@ export default function KnowledgeListPage() {
       params.delete('type')
       params.delete('vaultId')
       params.delete('createdByUserId')
+      params.delete('tag')
+      params.set('page', '1')
+      return params
+    })
+  }
+
+  const clearTagFilter = () => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.delete('tag')
       params.set('page', '1')
       return params
     })
@@ -335,6 +347,21 @@ export default function KnowledgeListPage() {
           </button>
         )}
       </div>
+
+      {tag && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Filtered by tag:</span>
+          <button
+            type="button"
+            onClick={clearTagFilter}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            title="Remove tag filter"
+          >
+            #{tag}
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Error */}
       {error && (

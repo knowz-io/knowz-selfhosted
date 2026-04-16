@@ -12,6 +12,7 @@ public class Knowledge : ISelfHostedEntity
     public string Content { get; set; } = string.Empty;
     public string? Summary { get; set; }
     public string? BriefSummary { get; set; }
+    public string? SummaryRefinementGuidance { get; set; }
     public KnowledgeType Type { get; set; } = KnowledgeType.Note;
     public string? Source { get; set; }
     public string? FilePath { get; set; }

@@ -140,22 +140,24 @@ export default function Layout({ children }: LayoutProps) {
         <header className="relative z-10 border-b border-border/60 bg-background/82 backdrop-blur-xl">
           <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-2xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-sm transition-colors hover:bg-muted lg:hidden"
-                aria-label="Open menu"
-              >
-                <Menu size={20} />
-              </button>
-              <Link
-                to="/knowledge"
-                className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-card lg:hidden"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                  K
-                </span>
-                Knowz
-              </Link>
+              <div className="flex items-center gap-3 lg:hidden">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="rounded-2xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-sm transition-colors hover:bg-muted"
+                  aria-label="Open menu"
+                >
+                  <Menu size={20} />
+                </button>
+                <Link
+                  to="/knowledge"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-card"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    K
+                  </span>
+                  Knowz
+                </Link>
+              </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="sh-kicker">{pageMeta.section}</p>

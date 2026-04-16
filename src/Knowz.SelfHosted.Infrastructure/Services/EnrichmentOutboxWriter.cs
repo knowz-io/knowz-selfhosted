@@ -23,15 +23,38 @@ public class EnrichmentOutboxWriter : IEnrichmentOutboxWriter
         _logger = logger;
     }
 
-    public async Task EnqueueAsync(Guid knowledgeId, Guid tenantId, CancellationToken ct = default)
-    {
-        var existing = await _db.EnrichmentOutbox
-            .AnyAsync(e => e.KnowledgeId == knowledgeId &&
-                          (e.Status == EnrichmentStatus.Pending || e.Status == EnrichmentStatus.Processing), ct);
+    public Task EnqueueAsync(Guid knowledgeId, Guid tenantId, CancellationToken ct = default)
+        => EnqueueAsync(knowledgeId, tenantId, forceReset: false, ct);
 
-        if (existing)
+    public async Task EnqueueAsync(Guid knowledgeId, Guid tenantId, bool forceReset, CancellationToken ct = default)
+    {
+        var existingRows = await _db.EnrichmentOutbox
+            .Where(e => e.KnowledgeId == knowledgeId &&
+                        (e.Status == EnrichmentStatus.Pending || e.Status == EnrichmentStatus.Processing))
+            .ToListAsync(ct);
+
+        if (existingRows.Count > 0)
         {
-            _logger.LogDebug("Enrichment already queued for knowledge {KnowledgeId}, skipping DB insert", knowledgeId);
+            if (forceReset)
+            {
+                foreach (var row in existingRows)
+                {
+                    var oldStatus = row.Status;
+                    row.Status = EnrichmentStatus.Pending;
+                    row.RetryCount = 0;
+                    row.ErrorMessage = null;
+                    row.NextRetryAt = null;
+                    row.ProcessedAt = null;
+                    _logger.LogInformation(
+                        "Reprocess: reset outbox row for knowledge {KnowledgeId} from {OldStatus} to Pending",
+                        knowledgeId, oldStatus);
+                }
+                await _db.SaveChangesAsync(ct);
+            }
+            else
+            {
+                _logger.LogDebug("Enrichment already queued for knowledge {KnowledgeId}, skipping DB insert", knowledgeId);
+            }
         }
         else
         {

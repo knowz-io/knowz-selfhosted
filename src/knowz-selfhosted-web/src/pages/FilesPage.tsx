@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { Fragment, useState, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
@@ -146,7 +146,7 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
           </span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${hasAiDetails ? 'md:grid-cols-[1fr_2fr]' : ''}`}>
           {/* Left: Associations */}
           <div>
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -188,7 +188,7 @@ function FileDetailPanel({ file }: { file: FileMetadataDto }) {
 
           {/* Right: AI Details */}
           {hasAiDetails && (
-            <div>
+            <div className="min-w-0">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                 AI Details
               </h4>
@@ -467,92 +467,195 @@ export default function FilesPage() {
           ))}
         </div>
       ) : data && data.items.length > 0 ? (
-        <SurfaceCard className="overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center gap-3 border-b border-border/60 bg-muted/60 px-4 py-3 text-sm font-medium text-muted-foreground">
-            <span className="w-6 shrink-0" />
-            <span className="flex-1 min-w-0">Name</span>
-            <span className="w-24 text-center shrink-0">Type</span>
-            <span className="w-20 text-right shrink-0">Size</span>
-            <span className="w-36 truncate shrink-0">Knowledge</span>
-            <span className="w-28 truncate shrink-0">Vault</span>
-            <span className="w-24 text-right shrink-0">Uploaded</span>
-            <span className="w-20 text-right shrink-0">Actions</span>
-          </div>
+        <>
+          {/* Desktop/tablet: table layout */}
+          <SurfaceCard className="hidden overflow-hidden md:block">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-8" />
+                <col className="w-[30%]" />
+                <col className="w-20" />
+                <col className="w-20" />
+                <col className="w-36" />
+                <col className="w-28" />
+                <col className="w-24" />
+                <col className="w-20" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/60 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-3"></th>
+                  <th className="px-3 py-3">Name</th>
+                  <th className="px-3 py-3 text-center">Type</th>
+                  <th className="px-3 py-3 text-right">Size</th>
+                  <th className="px-3 py-3">Knowledge</th>
+                  <th className="px-3 py-3">Vault</th>
+                  <th className="px-3 py-3 text-right">Uploaded</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((file) => (
+                  <Fragment key={file.id}>
+                    <tr
+                      onClick={() => toggleExpand(file.id)}
+                      className="cursor-pointer select-none border-b border-border/30 transition-colors hover:bg-muted/60"
+                    >
+                      <td className="px-3 py-3 text-muted-foreground">
+                        {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </td>
+                      <td className="min-w-0 px-3 py-3">
+                        <p className="truncate text-sm text-foreground" title={file.fileName}>{file.fileName}</p>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span
+                          className={`inline-flex max-w-full truncate rounded px-2 py-0.5 text-xs font-medium ${contentTypeBadgeClass(file.contentType)}`}
+                          title={file.contentType || 'Unknown'}
+                        >
+                          {contentTypeLabel(file.contentType)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right text-sm text-muted-foreground">
+                        {formatFileSize(file.sizeBytes)}
+                      </td>
+                      <td className="px-3 py-3 text-sm">
+                        {file.knowledgeId ? (
+                          <Link
+                            to={`/knowledge/${file.knowledgeId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block truncate text-blue-600 hover:underline dark:text-blue-400"
+                            title={file.knowledgeTitle || 'Untitled'}
+                          >
+                            {file.knowledgeTitle || 'Untitled'}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">--</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-sm">
+                        {file.vaultId ? (
+                          <Link
+                            to={`/vaults/${file.vaultId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block truncate text-green-600 hover:underline dark:text-green-400"
+                            title={file.vaultName || 'Unnamed'}
+                          >
+                            {file.vaultName || 'Unnamed'}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">--</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right text-xs text-muted-foreground">
+                        {relativeTime(file.createdAt)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownload(file.id, file.fileName) }}
+                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-blue-600"
+                            title="Download"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id) }}
+                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-red-600"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedFileId === file.id && (
+                      <tr>
+                        <td colSpan={8} className="p-0">
+                          <FileDetailPanel file={file} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </SurfaceCard>
 
-          {data.items.map((file) => (
-            <div key={file.id}>
-              <div
-                onClick={() => toggleExpand(file.id)}
-                className="flex cursor-pointer select-none items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60"
-              >
-                <span className="w-6 text-muted-foreground">
-                  {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground truncate">{file.fileName}</p>
-                </div>
-                <span className="w-24 text-center shrink-0 overflow-hidden">
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded text-xs font-medium max-w-full truncate ${contentTypeBadgeClass(file.contentType)}`}
-                    title={file.contentType || 'Unknown'}
-                  >
-                    {contentTypeLabel(file.contentType)}
-                  </span>
-                </span>
-                <span className="w-20 text-right text-sm text-muted-foreground shrink-0">
-                  {formatFileSize(file.sizeBytes)}
-                </span>
-                <span className="w-36 truncate text-sm shrink-0">
-                  {file.knowledgeId ? (
-                    <Link
-                      to={`/knowledge/${file.knowledgeId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-blue-600 dark:text-blue-400 hover:underline"
+          {/* Mobile: card layout */}
+          <div className="space-y-3 md:hidden">
+            {data.items.map((file) => (
+              <SurfaceCard key={file.id} className="overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(file.id)}
+                  className="w-full p-4 text-left transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={file.fileName}>
+                      {file.fileName}
+                    </p>
+                    <span className="shrink-0 text-muted-foreground">
+                      {expandedFileId === file.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span
+                      className={`inline-flex rounded px-2 py-0.5 font-medium ${contentTypeBadgeClass(file.contentType)}`}
+                      title={file.contentType || 'Unknown'}
                     >
-                      {file.knowledgeTitle || 'Untitled'}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">--</span>
+                      {contentTypeLabel(file.contentType)}
+                    </span>
+                    <span className="text-muted-foreground">{formatFileSize(file.sizeBytes)}</span>
+                    <span className="text-muted-foreground">&middot;</span>
+                    <span className="text-muted-foreground">{relativeTime(file.createdAt)}</span>
+                  </div>
+                  {(file.knowledgeId || file.vaultId) && (
+                    <div className="mt-2 space-y-1 text-xs">
+                      {file.knowledgeId && (
+                        <p className="truncate">
+                          <span className="text-muted-foreground">Knowledge: </span>
+                          <Link
+                            to={`/knowledge/${file.knowledgeId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-blue-600 hover:underline dark:text-blue-400"
+                          >
+                            {file.knowledgeTitle || 'Untitled'}
+                          </Link>
+                        </p>
+                      )}
+                      {file.vaultId && (
+                        <p className="truncate">
+                          <span className="text-muted-foreground">Vault: </span>
+                          <Link
+                            to={`/vaults/${file.vaultId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-green-600 hover:underline dark:text-green-400"
+                          >
+                            {file.vaultName || 'Unnamed'}
+                          </Link>
+                        </p>
+                      )}
+                    </div>
                   )}
-                </span>
-                <span className="w-28 truncate text-sm shrink-0">
-                  {file.vaultId ? (
-                    <Link
-                      to={`/vaults/${file.vaultId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-green-600 dark:text-green-400 hover:underline"
-                    >
-                      {file.vaultName || 'Unnamed'}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">--</span>
-                  )}
-                </span>
-                <span className="w-24 text-right text-xs text-muted-foreground shrink-0">
-                  {relativeTime(file.createdAt)}
-                </span>
-                <div className="w-20 flex items-center justify-end gap-1 shrink-0">
+                </button>
+                <div className="flex items-center justify-end gap-1 border-t border-border/60 bg-muted/30 px-3 py-2">
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(file.id, file.fileName) }}
-                    className="p-1.5 text-muted-foreground hover:text-blue-600 rounded hover:bg-muted"
-                    title="Download"
+                    onClick={() => handleDownload(file.id, file.fileName)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-blue-600"
                   >
-                    <Download size={14} />
+                    <Download size={14} /> Download
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id) }}
-                    className="p-1.5 text-muted-foreground hover:text-red-600 rounded hover:bg-muted"
-                    title="Delete"
+                    onClick={() => deleteMutation.mutate(file.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-red-600"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14} /> Delete
                   </button>
                 </div>
-              </div>
-              {expandedFileId === file.id && <FileDetailPanel file={file} />}
-            </div>
-          ))}
-        </SurfaceCard>
+                {expandedFileId === file.id && <FileDetailPanel file={file} />}
+              </SurfaceCard>
+            ))}
+          </div>
+        </>
       ) : (
         <SurfaceCard className="p-12 text-center text-muted-foreground">
           <FileText size={48} className="mx-auto mb-4 opacity-50" />

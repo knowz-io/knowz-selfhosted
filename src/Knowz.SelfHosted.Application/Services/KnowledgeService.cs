@@ -75,6 +75,40 @@ public class KnowledgeService
         _db.KnowledgeItems.Add(item);
 
         Guid? vaultId = ParseGuid(vaultIdStr);
+        if (!vaultId.HasValue)
+        {
+            // Fallback 1: tenant's IsDefault vault
+            var defaultVaultId = await _db.Vaults
+                .Where(v => v.TenantId == tenantId && !v.IsDeleted && v.IsDefault)
+                .Select(v => v.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (defaultVaultId != Guid.Empty)
+            {
+                vaultId = defaultVaultId;
+                _logger.LogInformation(
+                    "CreateKnowledge: no VaultId provided, falling back to default vault {VaultId} for tenant {TenantId}",
+                    vaultId, tenantId);
+            }
+            else
+            {
+                // Fallback 2: sole non-deleted vault for the tenant
+                var tenantVaultIds = await _db.Vaults
+                    .Where(v => v.TenantId == tenantId && !v.IsDeleted)
+                    .Select(v => v.Id)
+                    .Take(2)
+                    .ToListAsync(ct);
+
+                if (tenantVaultIds.Count == 1)
+                {
+                    vaultId = tenantVaultIds[0];
+                    _logger.LogInformation(
+                        "CreateKnowledge: no VaultId provided, falling back to default vault {VaultId} for tenant {TenantId}",
+                        vaultId, tenantId);
+                }
+            }
+        }
+
         if (vaultId.HasValue)
         {
             _db.KnowledgeVaults.Add(new KnowledgeVault
@@ -201,7 +235,7 @@ public class KnowledgeService
     public async Task<UpdateKnowledgeResult?> UpdateKnowledgeAsync(
         Guid id, string? title, string? content, string? source,
         List<string>? tagNames, string? vaultIdStr, CancellationToken ct,
-        Guid? updatedByUserId = null)
+        Guid? updatedByUserId = null, string? summaryRefinementGuidance = null)
     {
         var item = await _knowledgeRepo.FirstOrDefaultAsync(new KnowledgeByIdWithRelationsSpec(id), ct);
 
@@ -215,6 +249,7 @@ public class KnowledgeService
         if (title != null) item.Title = title;
         if (content != null) item.Content = content;
         if (source != null) item.Source = source;
+        if (summaryRefinementGuidance != null) item.SummaryRefinementGuidance = summaryRefinementGuidance;
 
         if (tagNames != null)
         {
@@ -407,7 +442,11 @@ public class KnowledgeService
         if (item == null)
             return null;
 
-        await ReindexAndEnrichAsync(item, ct);
+        await ReindexAndEnrichAsync(item, ct, forceReset: true);
+
+        _logger.LogInformation(
+            "Reprocess completed enqueue for knowledge {KnowledgeId}, isIndexed={IsIndexed}, forceReset=true",
+            item.Id, item.IsIndexed);
 
         return new ReprocessResult(item.Id, item.Title, item.IsIndexed);
     }
@@ -683,7 +722,7 @@ public class KnowledgeService
             || !_db.KnowledgeVaults.Any(kv => kv.KnowledgeId == k.Id));
     }
 
-    private async Task ReindexAndEnrichAsync(Knowledge item, CancellationToken ct)
+    private async Task ReindexAndEnrichAsync(Knowledge item, CancellationToken ct, bool forceReset = false)
     {
         try
         {
@@ -823,8 +862,8 @@ public class KnowledgeService
         {
             if (_enrichmentWriter != null)
             {
-                await _enrichmentWriter.EnqueueAsync(item.Id, item.TenantId, ct);
-                _logger.LogDebug("Enqueued knowledge {Id} for re-enrichment", item.Id);
+                await _enrichmentWriter.EnqueueAsync(item.Id, item.TenantId, forceReset, ct);
+                _logger.LogDebug("Enqueued knowledge {Id} for re-enrichment (forceReset={ForceReset})", item.Id, forceReset);
             }
         }
         catch (Exception ex)
@@ -881,6 +920,7 @@ public class KnowledgeService
     private static KnowledgeItemResponse MapToResponse(Knowledge item) => new(
         item.Id, item.Title, item.Content, item.Summary,
         item.BriefSummary,
+        item.SummaryRefinementGuidance,
         item.Type.ToString(), item.Source, item.FilePath,
         item.Topic != null ? new TopicRef(item.Topic.Id, item.Topic.Name) : null,
         item.Tags.Select(t => t.Name),

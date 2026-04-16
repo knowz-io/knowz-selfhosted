@@ -71,18 +71,20 @@ describe('FilesPage', () => {
 
   it('Should_DisplayFileList_WhenFilesExist', async () => {
     renderWithProviders(<FilesPage />)
+    // Responsive layout renders both desktop table and mobile card in jsdom
+    // (media queries are not evaluated), so we use getAllByText.
     await waitFor(() => {
-      expect(screen.getByText('report.pdf')).toBeInTheDocument()
+      expect(screen.getAllByText('report.pdf').length).toBeGreaterThan(0)
     })
-    expect(screen.getByText('photo.jpg')).toBeInTheDocument()
+    expect(screen.getAllByText('photo.jpg').length).toBeGreaterThan(0)
   })
 
   it('Should_DisplayFileSize_FormattedCorrectly', async () => {
     renderWithProviders(<FilesPage />)
     await waitFor(() => {
-      expect(screen.getByText('1.0 MB')).toBeInTheDocument()
+      expect(screen.getAllByText('1.0 MB').length).toBeGreaterThan(0)
     })
-    expect(screen.getByText('2.0 MB')).toBeInTheDocument()
+    expect(screen.getAllByText('2.0 MB').length).toBeGreaterThan(0)
   })
 
   it('Should_DisplayEmptyState_WhenNoFiles', async () => {
@@ -131,10 +133,10 @@ describe('FilesPage', () => {
     const user = userEvent.setup()
 
     await waitFor(() => {
-      expect(screen.getByText('report.pdf')).toBeInTheDocument()
+      expect(screen.getAllByText('report.pdf').length).toBeGreaterThan(0)
     })
 
-    // Find delete buttons (there should be one per file)
+    // Find delete buttons (there should be one per file per rendered layout)
     const deleteButtons = screen.getAllByTitle('Delete')
     await user.click(deleteButtons[0])
 

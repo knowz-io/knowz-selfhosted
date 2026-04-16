@@ -193,6 +193,13 @@ public class EnrichmentBackgroundService : BackgroundService
                     }
                 }
 
+                // 2c. Prepend refinement guidance if present
+                if (!string.IsNullOrWhiteSpace(knowledge.SummaryRefinementGuidance))
+                {
+                    contentForEnrichment = $"[REFINEMENT GUIDANCE: {knowledge.SummaryRefinementGuidance}]\n\n{contentForEnrichment}";
+                    _logger.LogDebug("Applied summary refinement guidance for knowledge {Id}", knowledge.Id);
+                }
+
                 // 3. Summarize (with attachment context, createdAt, authorName)
                 // Scale summary depth with content length — always summarize, no word-count short-circuits
                 var wordCount = contentForEnrichment.Split(Array.Empty<char>(), StringSplitOptions.RemoveEmptyEntries).Length;
