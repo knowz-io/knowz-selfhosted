@@ -34,7 +34,19 @@ export default function KnowledgeDetailPage() {
   const [editTab, setEditTab] = useState<'write' | 'preview'>('write')
   const [showAttachPicker, setShowAttachPicker] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('summary')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // SH_RightPanelMemory: persist collapsed state across knowledge items.
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    return window.localStorage.getItem('selfhosted-knowledge-detail-rightpanel-collapsed') !== 'true'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    // Storage key stores collapsed state (inverse of sidebarOpen)
+    window.localStorage.setItem(
+      'selfhosted-knowledge-detail-rightpanel-collapsed',
+      String(!sidebarOpen),
+    )
+  }, [sidebarOpen])
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null)
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<number | null>(null)
   const [viewingAttachment, setViewingAttachment] = useState<FileMetadataDto | null>(null)

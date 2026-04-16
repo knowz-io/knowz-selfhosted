@@ -64,9 +64,11 @@ describe('FilesPage', () => {
     vi.clearAllMocks()
   })
 
-  it('Should_RenderPageTitle_WhenMounted', async () => {
+  it('Should_RenderUploadAction_WhenMounted', async () => {
+    // The page title is now rendered by the Layout header, not the page itself.
+    // The page must still render the primary Upload action.
     renderWithProviders(<FilesPage />)
-    expect(screen.getByText('Files')).toBeInTheDocument()
+    expect(screen.getByText('Upload')).toBeInTheDocument()
   })
 
   it('Should_DisplayFileList_WhenFilesExist', async () => {
@@ -111,15 +113,17 @@ describe('FilesPage', () => {
     expect(screen.getByText('Upload')).toBeInTheDocument()
   })
 
-  it('Should_RenderLibrarySummary_WhenFilesLoaded', async () => {
+  it('Should_RenderFileList_WhenFilesLoaded', async () => {
+    // SH_CompactHeroes: the verbose hero + stat cards were removed in favor of a
+    // compact action row + direct table. We now assert that the file table
+    // renders the expected item names instead of the removed stat summaries.
     renderWithProviders(<FilesPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('2 total files')).toBeInTheDocument()
+      expect(screen.getAllByText('report.pdf').length).toBeGreaterThan(0)
     })
 
-    expect(screen.getByText('1 linked to knowledge')).toBeInTheDocument()
-    expect(screen.getByText('1 ready for AI')).toBeInTheDocument()
+    expect(screen.getAllByText('photo.jpg').length).toBeGreaterThan(0)
   })
 
   it('Should_ShowDragDropArea_WhenRendered', async () => {

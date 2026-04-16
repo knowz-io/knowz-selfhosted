@@ -20,7 +20,6 @@ import {
   Mail,
   FolderInput,
 } from 'lucide-react'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 const TYPE_OPTIONS = ['All', 'Note', 'Link', 'File'] as const
@@ -240,49 +239,11 @@ export default function InboxPage() {
   }
 
   const vaults: Vault[] = vaultsData?.vaults ?? []
-  const visibleItems = data?.items.length ?? 0
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Capture"
-        title="Inbox workflow"
-        titleAs="h2"
-        description="Review staged notes before they become durable knowledge, and convert the strongest captures into the right vault."
-        meta={
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="sh-stat">
-              <p className="sh-kicker">Visible</p>
-              <p className="mt-2 text-sm font-semibold">{visibleItems} items on this page</p>
-              <p className="mt-2 text-xs text-muted-foreground">Filtered by current search and type selections.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Selection</p>
-              <p className="mt-2 text-sm font-semibold">{selectedIds.size} selected</p>
-              <p className="mt-2 text-xs text-muted-foreground">Bulk convert or delete when you are triaging in batches.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Visibility</p>
-              <p className="mt-2 text-sm font-semibold">
-                {isPerUser ? (showAllItems ? 'All tenant items' : 'My items only') : 'Shared inbox'}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">Matches the current inbox scope for this deployment.</p>
-            </div>
-          </div>
-        }
-      />
-
+    <div className="space-y-4">
       {/* Quick Capture */}
-      <SurfaceCard className="p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="sh-kicker">Quick Capture</p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight">Stage something fast</h3>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Drop in rough notes first, then decide later whether they belong in long-term knowledge.
-            </p>
-          </div>
-        </div>
+      <SurfaceCard className="p-4">
         <div className="flex gap-2 items-end">
         <textarea
           rows={2}

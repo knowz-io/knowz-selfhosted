@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
 import { Archive, RefreshCw, Plus, X } from 'lucide-react'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function VaultListPage() {
@@ -48,13 +47,7 @@ export default function VaultListPage() {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          eyebrow="Library"
-          title="Vault architecture"
-          titleAs="h2"
-          description="Keep collections intentional and easy to navigate."
-        />
+      <div className="space-y-4">
         <SurfaceCard className="p-8 text-center">
           <p className="mb-4 text-red-600 dark:text-red-400">
             {error instanceof Error ? error.message : 'Failed to load vaults'}
@@ -73,41 +66,15 @@ export default function VaultListPage() {
   const vaults = data?.vaults ?? []
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Library"
-        title="Vault architecture"
-        titleAs="h2"
-        description="Keep collections intentional and easy to navigate. Vaults become the backbone of search, chat, and curation."
-        actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-          >
-            <Plus size={16} /> Create Vault
-          </button>
-        }
-        meta={
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="sh-stat">
-              <p className="sh-kicker">Vaults</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">{vaults.length}</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Default</p>
-              <p className="mt-2 text-sm font-semibold">
-                {vaults.some((vault) => vault.isDefault) ? 'Configured' : 'Not set'}
-              </p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Collections</p>
-              <p className="mt-2 text-sm font-semibold">
-                {vaults.reduce((sum, vault) => sum + (vault.knowledgeCount ?? 0), 0)} items total
-              </p>
-            </div>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          <Plus size={16} /> Create Vault
+        </button>
+      </div>
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">

@@ -98,18 +98,6 @@ export default function TopicsPage() {
         </div>
       ) : (
         <>
-          <SurfaceCard className="p-5">
-            <p className="sh-kicker">Topics</p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight">Browse thematic clusters</h3>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Review the larger subject areas that tie related knowledge together across the workspace.
-            </p>
-            {data && (
-              <p className="mt-4 text-sm font-semibold">
-                {data.totalCount} topic{data.totalCount !== 1 ? 's' : ''}
-              </p>
-            )}
-          </SurfaceCard>
           <div className="space-y-2">
             {data?.topics.map((topic) => (
               <button
