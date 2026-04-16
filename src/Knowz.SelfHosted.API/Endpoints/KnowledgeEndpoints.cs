@@ -175,7 +175,8 @@ public static class KnowledgeEndpoints
             }
 
             var result = await svc.UpdateKnowledgeAsync(
-                id, req.Title, req.Content, req.Source, req.Tags, req.VaultId, ct);
+                id, req.Title, req.Content, req.Source, req.Tags, req.VaultId, ct,
+                summaryRefinementGuidance: req.SummaryRefinementGuidance);
             return result is null
                 ? Results.NotFound(new { error = "Knowledge item not found" })
                 : Results.Ok(result);

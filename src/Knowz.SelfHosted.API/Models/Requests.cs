@@ -14,7 +14,8 @@ public record UpdateKnowledgeRequest(
     string? Content = null,
     string? Source = null,
     List<string>? Tags = null,
-    string? VaultId = null);
+    string? VaultId = null,
+    string? SummaryRefinementGuidance = null);
 
 public record CreateVaultRequest(
     string Name,

@@ -53,7 +53,7 @@ export default function TenantSwitcher() {
       <button
         onClick={() => setOpen(!open)}
         disabled={switching}
-        className="w-full flex items-center justify-between px-2 py-1.5 text-xs border border-input rounded-md bg-card hover:bg-muted transition-colors text-left"
+        className="w-full flex items-center justify-between px-2 py-1.5 text-xs border border-input rounded-md bg-muted text-foreground shadow-sm hover:bg-accent transition-colors text-left"
       >
         <div className="min-w-0 flex-1">
           <p className="font-medium truncate">{currentTenant?.tenantName ?? user.tenantName ?? 'Unknown'}</p>
@@ -65,7 +65,7 @@ export default function TenantSwitcher() {
       </button>
 
       {open && !switching && (
-        <div className="mt-1 border border-input rounded-md bg-card shadow-sm overflow-hidden">
+        <div className="mt-1 border border-border rounded-md bg-background text-foreground shadow-md overflow-hidden">
           {otherTenants.map((tenant) => (
             <button
               key={tenant.tenantId}

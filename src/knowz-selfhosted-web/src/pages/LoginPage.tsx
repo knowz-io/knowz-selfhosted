@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { Loader2, AlertCircle, BookOpen, Database, ShieldCheck, Sparkles } from 'lucide-react'
+import { Loader2, AlertCircle, BookOpen } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { api, ApiError } from '../lib/api-client'
 import { UserRole } from '../lib/types'
@@ -121,91 +121,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background px-4 py-10 sm:px-6">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 sm:px-6">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.12),transparent_28%)]" />
-      <div className="relative mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="hidden rounded-[36px] border border-border/60 bg-sidebar p-8 text-sidebar-foreground shadow-elevated lg:flex lg:flex-col lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-4 py-2">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-                <BookOpen size={20} />
-              </span>
-              <div>
-                <p className="text-sm font-semibold">Knowz Self-Hosted</p>
-                <p className="text-xs text-sidebar-foreground/65">Independent deployment, aligned experience.</p>
-              </div>
-            </div>
-
-            <div className="mt-10 max-w-xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sidebar-accent">
-                Workspace Access
-              </p>
-              <h1 className="mt-4 text-5xl font-semibold tracking-tight leading-[1.05]">
-                The self-hosted client can feel first-class too.
-              </h1>
-              <p className="mt-5 text-base leading-7 text-sidebar-foreground/72">
-                This shell keeps the deployment independence of self-hosted Knowz while bringing the calmer hierarchy,
-                stronger surfaces, and more deliberate product framing of the main platform.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="rounded-[26px] border border-white/10 bg-white/6 p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-sidebar-accent">
-                  <ShieldCheck size={18} />
-                </div>
-                <div>
-                  <p className="font-semibold">Tenant-aware access</p>
-                  <p className="text-sm text-sidebar-foreground/65">Move between roles and organizations without losing orientation.</p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-[26px] border border-white/10 bg-white/6 p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-sidebar-accent">
-                  <Database size={18} />
-                </div>
-                <div>
-                  <p className="font-semibold">Knowledge-first entry</p>
-                  <p className="text-sm text-sidebar-foreground/65">Search, chat, and vault workflows start from the same visual rhythm.</p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-[26px] border border-white/10 bg-white/6 p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-sidebar-accent">
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <p className="font-semibold">Platform-aligned polish</p>
-                  <p className="text-sm text-sidebar-foreground/65">Richer elevation, spacing, and framing without touching the hosted platform code.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
+      <div className="relative w-full max-w-md">
         <section className="flex items-center justify-center">
-          <div className="w-full max-w-xl rounded-[32px] border border-border/60 bg-card/94 p-6 shadow-elevated backdrop-blur-xl sm:p-8">
-            <div className="mb-8 text-center lg:hidden">
+          <div className="w-full rounded-[32px] border border-border/60 bg-card/94 p-6 shadow-elevated backdrop-blur-xl sm:p-8">
+            <div className="mb-8 text-center">
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[24px] bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <BookOpen size={30} />
               </div>
               <h1 className="text-3xl font-semibold tracking-tight">Knowz</h1>
-              <p className="mt-2 text-sm text-muted-foreground">Self-hosted workspace access</p>
-            </div>
-
-            <div className="mb-6 hidden lg:block">
-              <p className="sh-kicker">{step === 'tenantSelection' ? 'Tenant Selection' : 'Sign In'}</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-                {step === 'tenantSelection' ? 'Choose a tenant' : 'Access your workspace'}
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {step === 'tenantSelection'
-                  ? 'Your account can work across multiple tenants. Pick the one you want to enter.'
-                  : 'Use credentials or a configured SSO provider to continue into the self-hosted workspace.'}
+              <p className="mt-2 text-sm text-muted-foreground">
+                {step === 'tenantSelection' ? 'Choose a tenant to continue' : 'Sign in to continue'}
               </p>
             </div>
 

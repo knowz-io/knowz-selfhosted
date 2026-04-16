@@ -116,8 +116,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
       isActive
-        ? 'bg-white/12 text-sidebar-foreground shadow-sm ring-1 ring-white/10'
-        : 'text-sidebar-foreground/72 hover:bg-white/6 hover:text-sidebar-foreground'
+        ? 'bg-sidebar-muted/60 dark:bg-white/12 text-sidebar-foreground shadow-sm ring-1 ring-border/30 dark:ring-white/10'
+        : 'text-sidebar-foreground/72 hover:bg-sidebar-muted/40 dark:hover:bg-white/6 hover:text-sidebar-foreground'
     }`
 
   return (
@@ -130,53 +130,45 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
       <aside
         className={`
-          fixed top-0 left-0 z-40 flex h-full w-72 flex-col border-r border-white/10 bg-sidebar text-sidebar-foreground shadow-elevated
+          fixed top-0 left-0 z-40 flex h-screen w-72 flex-col border-r border-border/40 dark:border-white/10 bg-sidebar text-sidebar-foreground shadow-elevated
           transform transition-transform duration-200
-          lg:translate-x-0 lg:static lg:z-auto
+          lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:z-30
           ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="border-b border-white/10 bg-gradient-to-br from-white/8 via-white/4 to-transparent px-5 py-5">
+        <div className="border-b border-border/40 dark:border-white/10 bg-gradient-to-br from-white/8 via-white/4 to-transparent px-5 py-5">
           <div className="flex items-start justify-between gap-3">
-            <NavLink to="/knowledge" className="flex items-start gap-3" onClick={onClose}>
+            <NavLink to="/knowledge" className="flex items-center gap-3" onClick={onClose}>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-black/20">
                 <BookOpen size={18} />
               </div>
-              <div>
-                <p className="text-lg font-semibold tracking-tight">Knowz</p>
-                <p className="mt-1 text-xs leading-5 text-sidebar-foreground/65">
-                  Self-hosted workspace with platform-aligned framing.
-                </p>
-              </div>
+              <p className="text-lg font-semibold tracking-tight">Knowz</p>
             </NavLink>
             <button
               onClick={onClose}
-              className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/8 hover:text-sidebar-foreground lg:hidden"
+              className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-muted/60 dark:hover:bg-white/8 hover:text-sidebar-foreground lg:hidden"
               aria-label="Close sidebar"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4">
             <Link
               to="/knowledge/new"
               onClick={onClose}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sidebar-accent px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-sidebar-accent px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-black/20 transition-transform hover:-translate-y-0.5"
             >
               <Plus size={15} />
               New Knowledge
             </Link>
-            <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5 text-xs text-sidebar-foreground/70">
-              Navigate, capture, and administer from a single selfhosted shell.
-            </div>
           </div>
         </div>
 
         <TenantSwitcher />
 
         {isSuperAdmin && tenants && tenants.length > 0 && (
-          <div className="border-b border-white/10 px-4 py-3">
+          <div className="border-b border-border/40 dark:border-white/10 px-4 py-3">
             <div className="mb-1 flex items-center gap-1.5">
               <ArrowLeftRight size={12} className="text-purple-500" />
               <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">
@@ -186,7 +178,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <select
               value={activeTenantId ?? ''}
               onChange={handleTenantChange}
-              className="w-full rounded-xl border border-white/10 bg-white/6 px-3 py-2 text-xs text-sidebar-foreground focus:outline-none focus:ring-1 focus:ring-sidebar-accent"
+              className="w-full rounded-xl border border-border/30 dark:border-white/10 bg-sidebar-muted/50 dark:bg-white/6 px-3 py-2 text-xs text-sidebar-foreground focus:outline-none focus:ring-1 focus:ring-sidebar-accent"
             >
               <option value="">My Tenant ({user?.tenantName ?? 'Default'})</option>
               {tenants.map((t) => (
@@ -273,9 +265,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         {isAuthenticated && user && (
-          <div className="border-t border-white/10 bg-gradient-to-t from-black/20 to-transparent p-4">
-            <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 px-3 py-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-sidebar-foreground">
+          <div className="border-t border-border/40 dark:border-white/10 bg-gradient-to-t from-black/20 to-transparent p-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-border/30 dark:border-white/8 bg-sidebar-muted/40 dark:bg-white/5 px-3 py-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sidebar-muted/60 dark:bg-white/10 text-sm font-bold text-sidebar-foreground">
                 {(user.displayName || user.username || '?').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -292,14 +284,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               </div>
               <button
                 onClick={toggleTheme}
-                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
+                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-muted/60 dark:hover:bg-white/10 hover:text-sidebar-foreground"
                 title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               <button
                 onClick={logout}
-                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
+                className="rounded-2xl p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-muted/60 dark:hover:bg-white/10 hover:text-sidebar-foreground"
                 title="Sign out"
               >
                 <LogOut size={16} />

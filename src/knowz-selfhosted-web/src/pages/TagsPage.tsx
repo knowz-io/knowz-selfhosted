@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { Tag, Plus, Pencil, Trash2, X, Check, Search } from 'lucide-react'
@@ -192,7 +193,12 @@ export default function TagsPage() {
                 </>
               ) : (
                 <>
-                  <span className="flex-1 font-medium text-sm">{tag.name}</span>
+                  <Link
+                    to={`/knowledge?tag=${encodeURIComponent(tag.name)}`}
+                    className="flex-1 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted hover:underline"
+                  >
+                    {tag.name}
+                  </Link>
                   <span className="text-xs text-muted-foreground">
                     {tag.knowledgeCount} item{tag.knowledgeCount !== 1 ? 's' : ''}
                   </span>
