@@ -160,15 +160,7 @@ export default function DataPortabilityPage() {
   const vr = validationResult as Record<string, unknown> | null
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <SurfaceCard className="p-5">
-        <p className="sh-kicker">Data Portability</p>
-        <h3 className="mt-2 text-xl font-semibold tracking-tight">Export and restore workspace data</h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Move data between self-hosted instances, keep backups current, and validate imports before applying them.
-        </p>
-      </SurfaceCard>
-
+    <div className="space-y-4 max-w-2xl">
       {/* Schema info */}
       {schema && (
         <SurfaceCard className="border-blue-200/90 bg-blue-50/80 px-3 py-2 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-300">

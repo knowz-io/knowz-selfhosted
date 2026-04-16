@@ -57,15 +57,7 @@ export default function ApiKeysPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <SurfaceCard className="p-5">
-        <p className="sh-kicker">Programmatic Access</p>
-        <h3 className="mt-2 text-xl font-semibold tracking-tight">Personal API keys</h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Generate, rotate, and revoke your own API key for direct access to self-hosted Knowz endpoints.
-        </p>
-      </SurfaceCard>
-
+    <div className="space-y-4 max-w-2xl">
       {/* New key banner - shown once after generation */}
       {newKey && (
         <SurfaceCard className="border-green-200/90 bg-green-50/80 p-4 dark:border-green-900/60 dark:bg-green-950/20">

@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { Search, SlidersHorizontal, X, MessageCircleQuestion } from 'lucide-react'
 import AskPage from './AskPage'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 const KNOWLEDGE_TYPES = ['Note', 'Document', 'Email', 'Image', 'Audio', 'Video', 'Code', 'Link', 'MeetingMinutes']
@@ -90,36 +89,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Discover"
-        title={mode === 'ask' ? 'Ask your knowledge base' : 'Search across everything'}
-        titleAs="h2"
-        description={
-          mode === 'ask'
-            ? 'Switch between retrieval and question answering without leaving the self-hosted workspace.'
-            : 'Search, filter, and inspect results with the same shell rhythm used across the rest of the app.'
-        }
-        meta={
-          <div className="flex flex-wrap gap-3">
-            <div className="sh-stat min-w-[11rem]">
-              <p className="sh-kicker">Mode</p>
-              <p className="mt-2 text-sm font-semibold">{mode === 'ask' ? 'Question answering' : 'Direct search'}</p>
-            </div>
-            <div className="sh-stat min-w-[11rem]">
-              <p className="sh-kicker">Filters</p>
-              <p className="mt-2 text-sm font-semibold">
-                {hasActiveFilters ? `${[vaultId, typeFilter, startDate, endDate, tagsFilter].filter(Boolean).length} active` : 'No active filters'}
-              </p>
-            </div>
-            <div className="sh-stat min-w-[11rem]">
-              <p className="sh-kicker">Query</p>
-              <p className="mt-2 text-sm font-semibold">{queryParam || 'Ready for input'}</p>
-            </div>
-          </div>
-        }
-      />
-
+    <div className="space-y-4">
       <div className="sh-toolbar flex flex-wrap items-center justify-between gap-3 p-2">
         <div className="flex rounded-[18px] bg-muted/60 p-1">
           <button

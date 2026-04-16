@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api-client'
 import { BookOpen, Archive, Calendar, RefreshCw, ArrowRight } from 'lucide-react'
 import { useFormatters } from '../hooks/useFormatters'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function DashboardPage() {
@@ -17,13 +16,7 @@ export default function DashboardPage() {
   const error = stats.error || vaults.error
   if (error) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          eyebrow="Overview"
-          title="Workspace pulse"
-          titleAs="h2"
-          description="See what is growing, what is organized, and what still needs attention."
-        />
+      <div className="space-y-4">
         <SurfaceCard className="p-8 text-center">
           <p className="mb-4 text-red-600 dark:text-red-400">
             {error instanceof Error ? error.message : 'Failed to load dashboard'}
@@ -43,13 +36,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          eyebrow="Overview"
-          title="Workspace pulse"
-          titleAs="h2"
-          description="See what is growing, what is organized, and what still needs attention."
-        />
+      <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="sh-stat h-28 animate-pulse" />
@@ -67,58 +54,49 @@ export default function DashboardPage() {
   const v = vaults.data?.vaults ?? []
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Overview"
-        title="Workspace pulse"
-        titleAs="h2"
-        description="See what is growing, what is organized, and what still needs attention across your self-hosted knowledge base."
-        actions={
-          <>
-            <Link
-              to="/knowledge"
-              className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-card"
-            >
-              Browse knowledge
-            </Link>
-            <Link
-              to="/vaults"
-              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-            >
-              Manage vaults
-            </Link>
-          </>
-        }
-        meta={
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="sh-stat">
-              <p className="sh-kicker">Knowledge</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">{s?.totalKnowledgeItems ?? 0}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Indexed and ready to explore.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Vaults</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">{v.length}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Collections shaping the workspace.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Date Range</p>
-              <p className="mt-2 text-sm font-semibold leading-6">
-                {s?.dateRange
-                  ? `${fmt.date(s.dateRange.earliest)} to ${fmt.date(s.dateRange.latest)}`
-                  : 'No dated activity yet'}
-              </p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Coverage</p>
-              <p className="mt-2 text-sm font-semibold leading-6">
-                {s?.byType?.length ?? 0} active knowledge type{(s?.byType?.length ?? 0) === 1 ? '' : 's'}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">A quick read on content diversity.</p>
-            </div>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          to="/knowledge"
+          className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-card"
+        >
+          Browse knowledge
+        </Link>
+        <Link
+          to="/vaults"
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          Manage vaults
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="sh-stat">
+          <p className="sh-kicker">Knowledge</p>
+          <p className="mt-2 text-3xl font-semibold tracking-tight">{s?.totalKnowledgeItems ?? 0}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Indexed and ready to explore.</p>
+        </div>
+        <div className="sh-stat">
+          <p className="sh-kicker">Vaults</p>
+          <p className="mt-2 text-3xl font-semibold tracking-tight">{v.length}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Collections shaping the workspace.</p>
+        </div>
+        <div className="sh-stat">
+          <p className="sh-kicker">Date Range</p>
+          <p className="mt-2 text-sm font-semibold leading-6">
+            {s?.dateRange
+              ? `${fmt.date(s.dateRange.earliest)} to ${fmt.date(s.dateRange.latest)}`
+              : 'No dated activity yet'}
+          </p>
+        </div>
+        <div className="sh-stat">
+          <p className="sh-kicker">Coverage</p>
+          <p className="mt-2 text-sm font-semibold leading-6">
+            {s?.byType?.length ?? 0} active knowledge type{(s?.byType?.length ?? 0) === 1 ? '' : 's'}
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">A quick read on content diversity.</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <SurfaceCard className="p-6">

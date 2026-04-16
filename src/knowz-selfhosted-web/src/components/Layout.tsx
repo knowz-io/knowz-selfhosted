@@ -180,7 +180,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {isAuthenticated && user && (
-              <div className="relative shrink-0" ref={menuRef}>
+              <div className="relative z-[60] shrink-0" ref={menuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-3 py-2 shadow-sm transition-colors hover:bg-card"
@@ -200,7 +200,7 @@ export default function Layout({ children }: LayoutProps) {
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-64 rounded-3xl border border-border/70 bg-card/95 py-1 shadow-elevated backdrop-blur-xl animate-scale-in">
+                  <div className="absolute right-0 top-full z-[60] mt-2 w-64 rounded-3xl border border-border/70 bg-card/95 py-1 shadow-elevated backdrop-blur-xl animate-scale-in">
                     <div className="border-b border-border/60 px-4 py-3">
                       <p className="truncate text-sm font-medium">
                         {user.displayName || user.username}

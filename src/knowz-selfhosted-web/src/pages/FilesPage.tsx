@@ -24,7 +24,6 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { formatFileSize, parseAsUtc, formatDate } from '../lib/format-utils'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 function relativeTime(dateStr: string): string {
@@ -320,11 +319,6 @@ export default function FilesPage() {
   }
 
   const CONTENT_TYPE_OPTIONS = ['All', 'application/pdf', 'image/', 'text/', 'video/', 'audio/']
-  const files = data?.items ?? []
-  const linkedCount = files.filter((file) => Boolean(file.knowledgeId)).length
-  const aiReadyCount = files.filter((file) =>
-    Boolean(file.extractedText || file.transcriptionText || file.visionDescription || (file.textExtractionStatus ?? 0) === 2),
-  ).length
   const hasActiveFilters = Boolean(search || searchInput || contentTypeFilter)
   const clearFilters = () => {
     setSearch('')
@@ -334,42 +328,17 @@ export default function FilesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Assets"
-        title="Files"
-        titleAs="h2"
-        description="Manage uploaded files, inspect AI extraction state, and keep attachment-heavy workflows tidy."
-        actions={
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-          >
-            <Upload size={16} />
-            Upload
-          </button>
-        }
-        meta={
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="sh-stat">
-              <p className="sh-kicker">Library</p>
-              <p className="mt-2 text-sm font-semibold">{`${data?.totalItems ?? 0} total files`}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Uploaded across the self-hosted workspace.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Knowledge</p>
-              <p className="mt-2 text-sm font-semibold">{`${linkedCount} linked to knowledge`}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Files already anchored to a knowledge item.</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">AI State</p>
-              <p className="mt-2 text-sm font-semibold">{`${aiReadyCount} ready for AI`}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Showing extraction or structured AI detail.</p>
-            </div>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleUploadClick}
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          <Upload size={16} />
+          Upload
+        </button>
+      </div>
 
       {/* Drag and Drop Upload Area */}
       <SurfaceCard

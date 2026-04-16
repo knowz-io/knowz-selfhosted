@@ -89,25 +89,14 @@ export default function EntitiesPage() {
 
   return (
     <div className="space-y-4">
-      <SurfaceCard className="p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <p className="sh-kicker">Entities</p>
-            <div>
-              <h3 className="text-xl font-semibold tracking-tight">Curate extracted references</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Maintain people, locations, and events so search and cross-reference flows stay accurate.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => { setShowCreate(true); setError(null) }}
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-          >
-            <Plus size={16} /> Add {activeLabel.slice(0, -1)}
-          </button>
-        </div>
-      </SurfaceCard>
+      <div className="flex items-center justify-end">
+        <button
+          onClick={() => { setShowCreate(true); setError(null) }}
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          <Plus size={16} /> Add {activeLabel.slice(0, -1)}
+        </button>
+      </div>
 
       {/* Tabs */}
       <div className="sh-toolbar flex flex-wrap gap-2 p-1.5">
@@ -184,17 +173,6 @@ export default function EntitiesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <SurfaceCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="sh-kicker">Selection</p>
-                <p className="mt-2 text-sm font-semibold">{entities.length} visible {activeLabel.toLowerCase()}</p>
-              </div>
-              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
-                {activeLabel}
-              </span>
-            </div>
-          </SurfaceCard>
           {entities.map((entity) => {
             const ActiveIcon = entityTabs.find((t) => t.type === activeTab)?.icon ?? Users
             return (

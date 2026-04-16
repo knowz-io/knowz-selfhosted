@@ -4,7 +4,6 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '../lib/api-client'
 import { parseAsUtc } from '../lib/format-utils'
 import { useFormatters } from '../hooks/useFormatters'
-import PageHeader from '../components/ui/PageHeader'
 import SurfaceCard from '../components/ui/SurfaceCard'
 import {
   Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw,
@@ -257,42 +256,15 @@ export default function KnowledgeListPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Library"
-        title="Knowledge inventory"
-        titleAs="h2"
-        description="Manage your self-hosted knowledge items with clearer hierarchy, faster filter scanning, and safer bulk actions."
-        actions={
-          <Link
-            to="/knowledge/new"
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-          >
-            <Plus size={16} /> New
-          </Link>
-        }
-        meta={
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="sh-stat">
-              <p className="sh-kicker">Results</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">{data?.totalItems ?? currentItems.length}</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Filters</p>
-              <p className="mt-2 text-sm font-semibold">{activeFilterCount > 0 ? `${activeFilterCount} active` : 'None applied'}</p>
-            </div>
-            <div className="sh-stat">
-              <p className="sh-kicker">Selection</p>
-              <p className="mt-2 text-sm font-semibold">
-                {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Ready for review'}
-              </p>
-            </div>
-          </div>
-        }
-      />
-
+    <div className="space-y-4">
       {/* Filter bar */}
       <div className="sh-toolbar flex flex-wrap items-center gap-3 p-4">
+        <Link
+          to="/knowledge/new"
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          <Plus size={16} /> New
+        </Link>
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input

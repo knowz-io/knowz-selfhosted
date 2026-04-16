@@ -72,25 +72,14 @@ export default function TagsPage() {
 
   return (
     <div className="space-y-4">
-      <SurfaceCard className="p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-2">
-            <p className="sh-kicker">Tags</p>
-            <div>
-              <h3 className="text-xl font-semibold tracking-tight">Manage lightweight labels</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Review tag names, merge obvious cleanup candidates, and keep quick browse labels readable.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => { setShowCreate(true); setError(null) }}
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
-          >
-            <Plus size={16} /> Add tag
-          </button>
-        </div>
-      </SurfaceCard>
+      <div className="flex items-center justify-end">
+        <button
+          onClick={() => { setShowCreate(true); setError(null) }}
+          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
+        >
+          <Plus size={16} /> Add tag
+        </button>
+      </div>
 
       {error && (
         <SurfaceCard className="border-red-200/90 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
@@ -149,17 +138,6 @@ export default function TagsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <SurfaceCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="sh-kicker">Coverage</p>
-                <p className="mt-2 text-sm font-semibold">{tags?.length ?? 0} visible tag{(tags?.length ?? 0) === 1 ? '' : 's'}</p>
-              </div>
-              <span className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
-                Live search
-              </span>
-            </div>
-          </SurfaceCard>
           {tags?.map((tag: TagItem) => (
             <SurfaceCard key={tag.id} className="p-3">
               <div className="flex items-center gap-3">
