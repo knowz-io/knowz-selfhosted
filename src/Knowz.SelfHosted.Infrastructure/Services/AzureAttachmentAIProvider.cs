@@ -20,9 +20,12 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
     private static readonly string[] CognitiveServicesScope = { "https://cognitiveservices.azure.com/.default" };
 
     private readonly string? _visionEndpoint;
+    private readonly string? _visionApiKey;
     private readonly string? _openAiEndpoint;
+    private readonly string? _openAiApiKey;
     private readonly string? _openAiDeploymentName;
     private readonly string? _docIntelligenceEndpoint;
+    private readonly string? _docIntelligenceApiKey;
     private readonly ILogger<AzureAttachmentAIProvider> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TokenCredential _tokenCredential;
@@ -39,9 +42,12 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
         TokenCredential tokenCredential)
     {
         _visionEndpoint = configuration["AzureAIVision:Endpoint"];
+        _visionApiKey = configuration["AzureAIVision:ApiKey"];
         _openAiEndpoint = configuration["AzureOpenAI:Endpoint"];
+        _openAiApiKey = configuration["AzureOpenAI:ApiKey"];
         _openAiDeploymentName = configuration["AzureOpenAI:DeploymentName"];
         _docIntelligenceEndpoint = configuration["AzureDocumentIntelligence:Endpoint"];
+        _docIntelligenceApiKey = configuration["AzureDocumentIntelligence:ApiKey"];
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _tokenCredential = tokenCredential;
@@ -145,9 +151,14 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
 
         try
         {
-            var client = new DocumentIntelligenceClient(
-                new Uri(_docIntelligenceEndpoint!),
-                _tokenCredential);
+            // API-key-first; MI fallback for enterprise-mode deploys.
+            var client = !string.IsNullOrWhiteSpace(_docIntelligenceApiKey)
+                ? new DocumentIntelligenceClient(
+                    new Uri(_docIntelligenceEndpoint!),
+                    new AzureKeyCredential(_docIntelligenceApiKey))
+                : new DocumentIntelligenceClient(
+                    new Uri(_docIntelligenceEndpoint!),
+                    _tokenCredential);
 
             var bytesSource = BinaryData.FromBytes(documentBytes);
             var operation = await client.AnalyzeDocumentAsync(
@@ -223,8 +234,17 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
             var requestUrl = $"{_visionEndpoint!.TrimEnd('/')}/computervision/imageanalysis:analyze?api-version=2024-02-01&features={features}";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
-            var bearer = await GetCognitiveBearerTokenAsync(ct).ConfigureAwait(false);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            // API-key-first auth (external-mode deploys). Falls back to MI token
+            // when no key is configured (enterprise MI-only deploys).
+            if (!string.IsNullOrWhiteSpace(_visionApiKey))
+            {
+                request.Headers.Add("Ocp-Apim-Subscription-Key", _visionApiKey);
+            }
+            else
+            {
+                var bearer = await GetCognitiveBearerTokenAsync(ct).ConfigureAwait(false);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            }
             request.Content = new ByteArrayContent(imageBytes);
             request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
 
@@ -347,9 +367,10 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
 
     private ChatClient CreateChatClient()
     {
-        var client = new AzureOpenAIClient(
-            new Uri(_openAiEndpoint!),
-            _tokenCredential);
+        // API-key-first; MI fallback for enterprise-mode deploys.
+        var client = !string.IsNullOrWhiteSpace(_openAiApiKey)
+            ? new AzureOpenAIClient(new Uri(_openAiEndpoint!), new AzureKeyCredential(_openAiApiKey))
+            : new AzureOpenAIClient(new Uri(_openAiEndpoint!), _tokenCredential);
 
         return client.GetChatClient(_openAiDeploymentName);
     }
