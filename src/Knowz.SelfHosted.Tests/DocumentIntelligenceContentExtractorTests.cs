@@ -1,3 +1,4 @@
+using Azure.Core;
 using Knowz.Core.Entities;
 using Knowz.Core.Enums;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
@@ -92,7 +93,8 @@ public class DocumentIntelligenceContentExtractorTests
         var provider = new AzureAttachmentAIProvider(
             configuration,
             Substitute.For<ILogger<AzureAttachmentAIProvider>>(),
-            Substitute.For<IHttpClientFactory>());
+            Substitute.For<IHttpClientFactory>(),
+            Substitute.For<TokenCredential>());
         var extractor = CreateExtractor(provider);
 
         Assert.False(extractor.CanExtract("application/pdf"));

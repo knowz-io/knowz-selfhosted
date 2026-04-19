@@ -34,15 +34,20 @@ public class SelfHostedOptions
     // --- SuperAdmin defaults (seeded on first run) ---
 
     /// <summary>
-    /// Default SuperAdmin username. Created on first startup if no SuperAdmin user exists.
+    /// SuperAdmin username seeded on first startup if no SuperAdmin user exists.
+    /// REQUIRED — no default. Set via SelfHosted:SuperAdminUsername (appsettings,
+    /// env var, or Key Vault secret SelfHosted--SuperAdmin--Username).
     /// </summary>
-    public string SuperAdminUsername { get; set; } = "admin";
+    public string SuperAdminUsername { get; set; } = "";
 
     /// <summary>
-    /// Default SuperAdmin password. Created on first startup if no SuperAdmin user exists.
-    /// MUST be changed in production.
+    /// SuperAdmin password seeded on first startup if no SuperAdmin user exists.
+    /// REQUIRED — no default. Must pass <c>AuthService.IsWeakPassword</c> (>=12 chars,
+    /// mixed upper/lower/digit/non-alnum, not on the weak-password denylist).
+    /// Set via SelfHosted:SuperAdminPassword (appsettings, env var, or Key Vault
+    /// secret SelfHosted--SuperAdmin--Password).
     /// </summary>
-    public string SuperAdminPassword { get; set; } = "changeme";
+    public string SuperAdminPassword { get; set; } = "";
 
     // --- JWT Configuration ---
 

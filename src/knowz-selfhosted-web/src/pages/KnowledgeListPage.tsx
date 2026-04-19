@@ -5,6 +5,8 @@ import { api } from '../lib/api-client'
 import { parseAsUtc } from '../lib/format-utils'
 import { useFormatters } from '../hooks/useFormatters'
 import SurfaceCard from '../components/ui/SurfaceCard'
+import { ViewModeToggle } from '../components/ViewModeToggle'
+import { useViewMode } from '../contexts/ViewModeContext'
 import {
   Plus, ChevronLeft, ChevronRight, Trash2, FolderInput, X, Loader2, RefreshCw,
   Search, StickyNote, FileText, Mail, Image, AudioLines, Video, Code2, Link2,
@@ -48,6 +50,7 @@ export default function KnowledgeListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const fmt = useFormatters()
+  const { viewMode } = useViewMode('knowledge')
 
   const page = Number(searchParams.get('page') || '1')
   const pageSize = Number(searchParams.get('pageSize') || '20')
@@ -255,10 +258,30 @@ export default function KnowledgeListPage() {
     for (let i = start; i <= end; i++) pageNumbers.push(i)
   }
 
+  function renderEmpty() {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16">
+        <PackageOpen size={40} className="text-muted-foreground/40" />
+        <p className="text-muted-foreground text-sm">
+          {activeFilterCount > 0 ? 'No items match the current filters.' : 'No knowledge items yet.'}
+        </p>
+        {activeFilterCount > 0 ? (
+          <button onClick={clearFilters} className="text-sm text-muted-foreground hover:text-foreground underline transition-colors">
+            Clear all filters
+          </button>
+        ) : (
+          <Link to="/knowledge/new" className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors">
+            <Plus size={14} /> Create your first item
+          </Link>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Filter bar */}
-      <div className="sh-toolbar flex flex-wrap items-center gap-3 p-4">
+      <div className="sh-toolbar flex flex-wrap items-center gap-3 p-4 relative">
         <Link
           to="/knowledge/new"
           className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:brightness-110"
@@ -318,6 +341,9 @@ export default function KnowledgeListPage() {
             Clear
           </button>
         )}
+        <div className="ml-auto">
+          <ViewModeToggle pageKey="knowledge" />
+        </div>
       </div>
 
       {tag && (
@@ -344,7 +370,7 @@ export default function KnowledgeListPage() {
         </SurfaceCard>
       )}
 
-      {/* Table */}
+      {/* Knowledge list — view-mode branched */}
       {isLoading ? (
         <SurfaceCard className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -379,132 +405,325 @@ export default function KnowledgeListPage() {
         </SurfaceCard>
       ) : (
         <>
-          <SurfaceCard className="overflow-hidden">
-            <table className="w-full text-sm text-left table-fixed">
-              <thead>
-                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
-                  <th className="py-2.5 px-3 w-10">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      disabled={currentItems.length === 0}
-                      className="rounded border-input"
-                    />
-                  </th>
-                  <th
-                    className="py-2.5 px-3 font-semibold cursor-pointer select-none"
-                    onClick={() => toggleSort('title')}
-                  >
-                    Title{sortIndicator('title')}
-                  </th>
-                  <th className="py-2.5 px-3 font-semibold w-24">Type</th>
-                  <th className="py-2.5 px-3 font-semibold w-28">Vault</th>
-                  <th className="py-2.5 px-3 font-semibold w-20">Status</th>
-                  <th className="py-2.5 px-3 font-semibold w-28">Creator</th>
-                  <th
-                    className="py-2.5 px-3 font-semibold cursor-pointer select-none w-24"
-                    onClick={() => toggleSort('created')}
-                  >
-                    Created{sortIndicator('created')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentItems.map((item) => {
+          {/* Grid view */}
+          {viewMode === 'grid' && (
+            <div data-testid="knowledge-list-view-grid">
+              {currentItems.length === 0 ? (
+                renderEmpty()
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {currentItems.map((item) => {
+                    const TypeIcon = TYPE_ICONS[item.type] || StickyNote
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => navigate(`/knowledge/${item.id}`)}
+                        className={`sh-surface rounded-xl p-4 cursor-pointer hover:bg-muted/50 transition-colors border border-border/60 space-y-2 ${selectedIds.has(item.id) ? 'ring-2 ring-primary' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelect(item.id)}
+                              className="rounded border-input"
+                            />
+                          </div>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-muted rounded">
+                            <TypeIcon size={11} />
+                            {item.type}
+                          </span>
+                        </div>
+                        <p className="font-medium text-sm line-clamp-2">{item.title}</p>
+                        {item.summary && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">{item.summary}</p>
+                        )}
+                        <div className="flex items-center justify-between pt-1">
+                          {item.vaultName ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Archive size={10} />
+                              {item.vaultName}
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+                          <span className="text-xs text-muted-foreground">{relativeTime(item.createdAt)}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Compact view */}
+          {viewMode === 'compact' && (
+            <div data-testid="knowledge-list-view-compact">
+              {currentItems.length === 0 ? (
+                renderEmpty()
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2">
+                  {currentItems.map((item) => {
+                    const TypeIcon = TYPE_ICONS[item.type] || StickyNote
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => navigate(`/knowledge/${item.id}`)}
+                        className={`sh-surface rounded-lg px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors border border-border/60 flex items-center gap-2 ${selectedIds.has(item.id) ? 'ring-2 ring-primary' : ''}`}
+                      >
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => toggleSelect(item.id)}
+                            className="rounded border-input"
+                          />
+                        </div>
+                        <TypeIcon size={12} className="text-muted-foreground flex-shrink-0" />
+                        <span className="text-xs font-medium truncate flex-1">{item.title}</span>
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0">{relativeTime(item.createdAt)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* List view */}
+          {viewMode === 'list' && (
+            <div data-testid="knowledge-list-view-list">
+              <SurfaceCard className="overflow-hidden">
+                <table className="w-full text-sm text-left table-fixed">
+                  <thead>
+                    <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
+                      <th className="py-2.5 px-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={toggleSelectAll}
+                          disabled={currentItems.length === 0}
+                          className="rounded border-input"
+                        />
+                      </th>
+                      <th className="py-2.5 px-3 font-semibold cursor-pointer select-none" onClick={() => toggleSort('title')}>
+                        Title{sortIndicator('title')}
+                      </th>
+                      <th className="py-2.5 px-3 font-semibold w-24">Type</th>
+                      <th className="py-2.5 px-3 font-semibold w-28">Vault</th>
+                      <th className="py-2.5 px-3 font-semibold w-20">Status</th>
+                      <th className="py-2.5 px-3 font-semibold w-28">Creator</th>
+                      <th className="py-2.5 px-3 font-semibold cursor-pointer select-none w-24" onClick={() => toggleSort('created')}>
+                        Created{sortIndicator('created')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentItems.map((item) => {
+                      const TypeIcon = TYPE_ICONS[item.type] || StickyNote
+                      return (
+                        <tr
+                          key={item.id}
+                          className={`border-b border-border/30 hover:bg-muted/50 cursor-pointer transition-colors duration-150 ${selectedIds.has(item.id) ? 'bg-primary/5 dark:bg-primary/10' : ''}`}
+                        >
+                          <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelect(item.id)}
+                              className="rounded border-input"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                            <p className="font-medium truncate max-w-md">{item.title}</p>
+                            {item.summary && (
+                              <p className="text-xs text-muted-foreground truncate max-w-md mt-0.5">{item.summary}</p>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs bg-muted rounded">
+                              <TypeIcon size={12} />
+                              {item.type}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                            {item.vaultName ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded">
+                                <Archive size={11} />
+                                {item.vaultName}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">&mdash;</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                            <span className="inline-flex items-center gap-1.5 text-xs">
+                              <span className={`inline-block w-2 h-2 rounded-full ${item.isIndexed ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+                              {item.isIndexed ? 'Indexed' : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-muted-foreground" onClick={() => navigate(`/knowledge/${item.id}`)}>
+                            {item.createdByUserName || <span className="text-muted-foreground">&mdash;</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-muted-foreground" onClick={() => navigate(`/knowledge/${item.id}`)} title={fmt.dateTime(item.createdAt)}>
+                            {relativeTime(item.createdAt)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {currentItems.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-16 text-center">
+                          <EmptyState activeFilterCount={activeFilterCount} clearFilters={clearFilters} />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </SurfaceCard>
+            </div>
+          )}
+
+          {/* Gallery view */}
+          {viewMode === 'gallery' && (
+            <div data-testid="knowledge-list-view-gallery">
+              {currentItems.length === 0 ? (
+                renderEmpty()
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {currentItems.map((item) => {
+                    const TypeIcon = TYPE_ICONS[item.type] || StickyNote
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => navigate(`/knowledge/${item.id}`)}
+                        className={`sh-surface rounded-xl overflow-hidden cursor-pointer hover:shadow-md transition-shadow border border-border/60 ${selectedIds.has(item.id) ? 'ring-2 ring-primary' : ''}`}
+                      >
+                        <div className="h-32 bg-muted flex items-center justify-center relative">
+                          <TypeIcon size={40} className="text-muted-foreground/30" />
+                          <div className="absolute top-2 left-2" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelect(item.id)}
+                              className="rounded border-input"
+                            />
+                          </div>
+                          <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-background/80 backdrop-blur-sm rounded border border-border/60">
+                            <TypeIcon size={10} />
+                            {item.type}
+                          </span>
+                        </div>
+                        <div className="p-4 space-y-1">
+                          <p className="font-semibold text-sm line-clamp-1">{item.title}</p>
+                          {item.summary && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">{item.summary}</p>
+                          )}
+                          <div className="flex items-center justify-between pt-2">
+                            {item.vaultName ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                <Archive size={10} />
+                                {item.vaultName}
+                              </span>
+                            ) : (
+                              <span />
+                            )}
+                            <span className="text-xs text-muted-foreground">{relativeTime(item.createdAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Code view */}
+          {viewMode === 'code' && (
+            <div data-testid="knowledge-list-view-code">
+              <SurfaceCard className="overflow-hidden font-mono">
+                <div className="border-b border-border/60 bg-muted/30 px-4 py-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    disabled={currentItems.length === 0}
+                    className="rounded border-input"
+                  />
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Name</span>
+                  <span className="ml-auto text-xs text-muted-foreground uppercase tracking-wider">Modified</span>
+                </div>
+                {currentItems.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <EmptyState activeFilterCount={activeFilterCount} clearFilters={clearFilters} />
+                  </div>
+                ) : currentItems.map((item) => {
                   const TypeIcon = TYPE_ICONS[item.type] || StickyNote
                   return (
-                    <tr
+                    <div
                       key={item.id}
-                      className={`border-b border-border/30 hover:bg-muted/50 cursor-pointer transition-colors duration-150 ${
-                        selectedIds.has(item.id) ? 'bg-primary/5 dark:bg-primary/10' : ''
-                      }`}
+                      className={`flex items-center gap-3 px-4 py-2 border-b border-border/30 hover:bg-muted/50 cursor-pointer transition-colors ${selectedIds.has(item.id) ? 'bg-primary/5' : ''}`}
                     >
-                      <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                      <div onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedIds.has(item.id)}
                           onChange={() => toggleSelect(item.id)}
                           className="rounded border-input"
                         />
-                      </td>
-                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                        <p className="font-medium truncate max-w-md">{item.title}</p>
-                        {item.summary && (
-                          <p className="text-xs text-muted-foreground truncate max-w-md mt-0.5">
-                            {item.summary}
-                          </p>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs bg-muted rounded">
-                          <TypeIcon size={12} />
-                          {item.type}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                        {item.vaultName ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded">
-                            <Archive size={11} />
-                            {item.vaultName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                        <span className="inline-flex items-center gap-1.5 text-xs">
-                          <span className={`inline-block w-2 h-2 rounded-full ${
-                            item.isIndexed ? 'bg-green-500' : 'bg-muted-foreground/40'
-                          }`} />
-                          {item.isIndexed ? 'Indexed' : 'Pending'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs text-muted-foreground" onClick={() => navigate(`/knowledge/${item.id}`)}>
-                        {item.createdByUserName || <span className="text-muted-foreground">&mdash;</span>}
-                      </td>
-                      <td
-                        className="py-2.5 px-3 text-xs text-muted-foreground"
+                      </div>
+                      <TypeIcon size={14} className="text-muted-foreground flex-shrink-0" />
+                      <span
+                        className="text-sm flex-1 truncate"
+                        onClick={() => navigate(`/knowledge/${item.id}`)}
+                      >
+                        {item.title}
+                      </span>
+                      {item.vaultName && (
+                        <span className="text-xs text-muted-foreground hidden sm:inline">{item.vaultName}</span>
+                      )}
+                      <span
+                        className="text-xs text-muted-foreground flex-shrink-0"
                         onClick={() => navigate(`/knowledge/${item.id}`)}
                         title={fmt.dateTime(item.createdAt)}
                       >
                         {relativeTime(item.createdAt)}
-                      </td>
-                    </tr>
+                      </span>
+                    </div>
                   )
                 })}
-                {currentItems.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-16 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <PackageOpen size={40} className="text-muted-foreground/40" />
-                        <p className="text-muted-foreground text-sm">
-                          {activeFilterCount > 0
-                            ? 'No items match the current filters.'
-                            : 'No knowledge items yet.'}
-                        </p>
-                        {activeFilterCount > 0 ? (
-                          <button
-                            onClick={clearFilters}
-                            className="text-sm text-muted-foreground hover:text-foreground underline transition-colors"
-                          >
-                            Clear all filters
-                          </button>
-                        ) : (
-                          <Link
-                            to="/knowledge/new"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors"
-                          >
-                            <Plus size={14} /> Create your first item
-                          </Link>
-                        )}
-                      </div>
-                    </td>
+              </SurfaceCard>
+            </div>
+          )}
+
+          {/* Default table fallback for safety (should never show — viewMode always matches one branch) */}
+          {viewMode !== 'grid' && viewMode !== 'compact' && viewMode !== 'list' && viewMode !== 'gallery' && viewMode !== 'code' && (
+            <SurfaceCard className="overflow-hidden">
+              <table className="w-full text-sm text-left table-fixed">
+                <thead>
+                  <tr className="border-b border-border/60 text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
+                    <th className="py-2.5 px-3 w-10">
+                      <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} disabled={currentItems.length === 0} className="rounded border-input" />
+                    </th>
+                    <th className="py-2.5 px-3 font-semibold cursor-pointer select-none" onClick={() => toggleSort('title')}>Title{sortIndicator('title')}</th>
+                    <th className="py-2.5 px-3 font-semibold w-24">Type</th>
+                    <th className="py-2.5 px-3 font-semibold w-28">Vault</th>
+                    <th className="py-2.5 px-3 font-semibold w-20">Status</th>
+                    <th className="py-2.5 px-3 font-semibold w-28">Creator</th>
+                    <th className="py-2.5 px-3 font-semibold cursor-pointer select-none w-24" onClick={() => toggleSort('created')}>Created{sortIndicator('created')}</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </SurfaceCard>
+                </thead>
+                <tbody>
+                  {currentItems.length === 0 && (
+                    <tr><td colSpan={7} className="py-16 text-center"><EmptyState activeFilterCount={activeFilterCount} clearFilters={clearFilters} /></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </SurfaceCard>
+          )}
+
 
           {/* Pagination */}
           {data && (data.totalPages > 1 || pageSize !== 20) && (
@@ -685,6 +904,26 @@ export default function KnowledgeListPage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ activeFilterCount, clearFilters }: { activeFilterCount: number; clearFilters: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <PackageOpen size={40} className="text-muted-foreground/40" />
+      <p className="text-muted-foreground text-sm">
+        {activeFilterCount > 0 ? 'No items match the current filters.' : 'No knowledge items yet.'}
+      </p>
+      {activeFilterCount > 0 ? (
+        <button onClick={clearFilters} className="text-sm text-muted-foreground hover:text-foreground underline transition-colors">
+          Clear all filters
+        </button>
+      ) : (
+        <Link to="/knowledge/new" className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium transition-colors">
+          <Plus size={14} /> Create your first item
+        </Link>
       )}
     </div>
   )

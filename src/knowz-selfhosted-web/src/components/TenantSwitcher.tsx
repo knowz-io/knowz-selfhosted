@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { ArrowLeftRight, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowLeftRight, ChevronDown, Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
 import { UserRole } from '../lib/types'
+import { AnchoredPortal } from './ui/AnchoredPortal'
 
 const roleLabels: Record<number, string> = {
   [UserRole.SuperAdmin]: 'SuperAdmin',
@@ -21,18 +22,41 @@ export default function TenantSwitcher() {
   const queryClient = useQueryClient()
   const [switching, setSwitching] = useState(false)
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
-  // Only show if user has 2+ tenants (tolerate undefined availableTenants from legacy callers/mocks)
+  useEffect(() => {
+    if (!open) return
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node
+      if (containerRef.current?.contains(target)) return
+      if (panelRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
   if (!user || !availableTenants || availableTenants.length < 2) return null
 
-  const currentTenant = availableTenants.find(t => t.tenantId === user.tenantId)
-  const otherTenants = availableTenants.filter(t => t.tenantId !== user.tenantId)
+  const currentTenant = availableTenants.find((tenant) => tenant.tenantId === user.tenantId)
+  const otherTenants = availableTenants.filter((tenant) => tenant.tenantId !== user.tenantId)
+  const currentName = currentTenant?.tenantName ?? user.tenantName ?? 'Unknown'
+  const currentRole = currentTenant?.role ?? user.role
 
   const handleSwitch = async (tenantId: string) => {
     setSwitching(true)
     try {
       await switchTenant(tenantId)
-      queryClient.clear() // Clear all cached data - it's all tenant-scoped
+      queryClient.clear()
       setOpen(false)
     } catch (err) {
       console.error('Failed to switch tenant:', err)
@@ -42,46 +66,70 @@ export default function TenantSwitcher() {
   }
 
   return (
-    <div className="px-3 py-2 border-b">
-      <div className="flex items-center gap-1.5 mb-1">
-        <ArrowLeftRight size={12} className="text-indigo-500" />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-          Tenant
-        </span>
-      </div>
-
+    <div className="relative shrink-0" ref={containerRef}>
       <button
-        onClick={() => setOpen(!open)}
+        ref={triggerRef}
+        type="button"
+        data-testid="sh-tenant-switcher"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="sh-tenant-switcher-menu"
+        onClick={() => setOpen((prev) => !prev)}
         disabled={switching}
-        className="w-full flex items-center justify-between px-2 py-1.5 text-xs border border-input rounded-md bg-muted text-foreground shadow-sm hover:bg-accent transition-colors text-left"
+        className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-3 py-2 shadow-sm transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        <div className="min-w-0 flex-1">
-          <p className="font-medium truncate">{currentTenant?.tenantName ?? user.tenantName ?? 'Unknown'}</p>
-          <span className={`inline-flex px-1 py-0 rounded text-[9px] font-medium ${roleBadgeStyles[currentTenant?.role ?? user.role] ?? roleBadgeStyles[UserRole.User]}`}>
-            {roleLabels[currentTenant?.role ?? user.role] ?? 'User'}
+        <ArrowLeftRight size={14} className="text-muted-foreground" />
+        <div className="hidden min-w-0 text-left sm:block">
+          <p className="max-w-40 truncate text-sm font-medium">{currentName}</p>
+          <span
+            className={`inline-flex rounded px-1 py-0 text-[9px] font-medium ${
+              roleBadgeStyles[currentRole] ?? roleBadgeStyles[UserRole.User]
+            }`}
+          >
+            {roleLabels[currentRole] ?? 'User'}
           </span>
         </div>
-        {switching && <Loader2 size={12} className="animate-spin ml-1" />}
+        {switching ? (
+          <Loader2 size={12} className="animate-spin text-muted-foreground" />
+        ) : (
+          <ChevronDown size={12} className="text-muted-foreground" />
+        )}
       </button>
 
-      {open && !switching && (
-        <div className="mt-1 border border-border rounded-md bg-background text-foreground shadow-md overflow-hidden">
-          {otherTenants.map((tenant) => (
-            <button
-              key={tenant.tenantId}
-              onClick={() => handleSwitch(tenant.tenantId)}
-              className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-muted transition-colors text-left border-b last:border-b-0"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium truncate">{tenant.tenantName}</p>
-                <span className={`inline-flex px-1 py-0 rounded text-[9px] font-medium ${roleBadgeStyles[tenant.role] ?? roleBadgeStyles[UserRole.User]}`}>
-                  {roleLabels[tenant.role] ?? 'User'}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <AnchoredPortal
+        open={open && !switching}
+        anchorRef={triggerRef}
+        panelRef={panelRef}
+        placement="bottom-end"
+        offset={8}
+        id="sh-tenant-switcher-menu"
+        data-testid="sh-tenant-switcher-menu"
+        role="menu"
+        aria-orientation="vertical"
+        className="w-56 overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-elevated"
+      >
+        {otherTenants.map((tenant) => (
+          <button
+            key={tenant.tenantId}
+            type="button"
+            role="menuitem"
+            data-testid={`sh-tenant-switcher-option-${tenant.tenantId}`}
+            onClick={() => handleSwitch(tenant.tenantId)}
+            className="flex w-full items-center justify-between border-b border-border/50 px-3 py-2 text-left text-xs transition-colors last:border-b-0 hover:bg-muted"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{tenant.tenantName}</p>
+              <span
+                className={`inline-flex rounded px-1 py-0 text-[9px] font-medium ${
+                  roleBadgeStyles[tenant.role] ?? roleBadgeStyles[UserRole.User]
+                }`}
+              >
+                {roleLabels[tenant.role] ?? 'User'}
+              </span>
+            </div>
+          </button>
+        ))}
+      </AnchoredPortal>
     </div>
   )
 }

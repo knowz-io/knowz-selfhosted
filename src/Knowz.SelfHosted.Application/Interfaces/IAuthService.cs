@@ -58,4 +58,14 @@ public interface IAuthService
     /// Gets all tenant memberships for a user.
     /// </summary>
     Task<List<TenantMembershipDto>> GetUserTenantsAsync(Guid userId);
+
+    /// <summary>
+    /// Issue a bootstrap API key for the seeded SuperAdmin.
+    /// SH_ENTERPRISE_CREDENTIAL_BOOTSTRAP §2.3 — returns the plaintext of a
+    /// newly-minted <c>ksh_*</c> key stored on the SuperAdmin user. Idempotent:
+    /// if the SuperAdmin already has an ApiKey set, returns null (the caller
+    /// treats this as "nothing to write").
+    /// </summary>
+    /// <returns>The plaintext API key, or null if one already exists.</returns>
+    Task<string?> IssueBootstrapApiKeyForSuperAdminAsync();
 }

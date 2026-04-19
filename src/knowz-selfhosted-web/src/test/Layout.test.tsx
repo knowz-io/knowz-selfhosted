@@ -35,35 +35,39 @@ vi.mock('../lib/auth', () => ({
   }),
 }))
 
-vi.mock('../components/Sidebar', () => ({
-  default: () => <div data-testid="sidebar-stub" />,
+vi.mock('../components/Header', () => ({
+  default: () => <header data-testid="sh-header" role="banner">header-stub</header>,
 }))
 
 describe('Layout', () => {
-  it('Should_RenderRouteAwarePageTitle_WhenNavigatingWithinShell', () => {
+  it('Should_RenderHeaderLandmark_WhenShellMounts', () => {
     renderWithProviders(
       <Layout>
         <div>Content</div>
       </Layout>,
-      { initialEntries: ['/search'] },
     )
-
-    expect(screen.getByText('Discover')).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: 'Search' }),
-    ).toBeInTheDocument()
+    expect(screen.getByTestId('sh-header')).toBeInTheDocument()
   })
 
-  it('Should_RenderRouteDescription_ForKnowledgePages', () => {
+  it('Should_ExposeMainLandmark_WithCorrectIdAndTabIndex', () => {
     renderWithProviders(
       <Layout>
         <div>Content</div>
       </Layout>,
-      { initialEntries: ['/knowledge'] },
     )
+    const main = screen.getByRole('main')
+    expect(main.id).toBe('main-content')
+    expect(main.getAttribute('tabindex')).toBe('-1')
+  })
 
-    expect(
-      screen.getByText('Browse, refine, and manage your self-hosted knowledge base.'),
-    ).toBeInTheDocument()
+  it('Should_RenderSkipLink_AsFirstFocusableElement', () => {
+    renderWithProviders(
+      <Layout>
+        <div>Content</div>
+      </Layout>,
+    )
+    const skipLink = screen.getByTestId('sh-skip-link')
+    expect(skipLink.tagName.toLowerCase()).toBe('a')
+    expect(skipLink).toHaveAttribute('href', '#main-content')
   })
 })

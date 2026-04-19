@@ -127,19 +127,119 @@ param apiKey string = newGuid()
 param jwtSecret string = '${newGuid()}${newGuid()}'
 
 // ============================================================================
+// BYO INFRASTRUCTURE (optional; all empty defaults preserve back-compat)
+// See SH_ENTERPRISE_BYO_INFRA.md for spec + rationale.
+// ============================================================================
+
+@description('BYO Container Apps delegated subnet resource ID. Empty = auto-provision VNet.')
+param byoVnetSubnetId string = ''
+
+@description('BYO non-delegated PE subnet resource ID. Empty AND peSubnetAddressPrefix empty = auto-provision inside BYO VNet.')
+param byoVnetPeSubnetId string = ''
+
+@description('CIDR to auto-create PE subnet inside BYO VNet (used when byoVnetPeSubnetId empty).')
+param peSubnetAddressPrefix string = ''
+
+@description('Auto-provision VNet when BYO inputs absent. Set false for strict BYO mode with fail-fast asserts.')
+param autoProvisionVnet bool = true
+
+@description('BYO Key Vault resource ID (full /subscriptions/.../Microsoft.KeyVault/vaults/<name>). Empty = create new per-env KV.')
+param byoKeyVaultId string = ''
+
+@description('Central Log Analytics workspace resource ID. Empty = per-env LAW.')
+param centralLogAnalyticsId string = ''
+
+@description('Customer-provisioned Azure OpenAI resource ID. Empty = deploy local OpenAI (gated on deployOpenAI) or use externalOpenAiEndpoint.')
+param existingOpenAiResourceId string = ''
+
+@description('External ACR name (not FQDN) for air-gapped/policy-restricted pulls. Empty = pull from ghcr.io.')
+param externalAcrName string = ''
+
+@description('External ACR resource group (required when externalAcrName non-empty).')
+param externalAcrResourceGroup string = ''
+
+// ============================================================================
+// ENTERPRISE HARDENING PARAMS (SH_ENTERPRISE_BICEP_HARDENING.md)
+// ============================================================================
+
+@allowed(['Detection', 'Prevention'])
+@description('WAF policy mode. Default Prevention for enterprise tier (blocks attacks instead of only logging).')
+param wafMode string = 'Prevention'
+
+@allowed(['Basic', 'S0', 'S1', 'S2', 'S3', 'P1', 'P2'])
+@description('SQL database SKU name. Default S1 for enterprise workload. Basic@2GB dies at ~5 concurrent enrichment jobs.')
+param sqlDatabaseSkuName string = 'S1'
+
+@description('SQL database max size in bytes. Default 250GB for S1 tier.')
+param sqlDatabaseMaxSizeBytes int = 268435456000
+
+@description('Container image registry prefix (e.g., knowz-io for ghcr.io/knowz-io/*). Customize for vendored builds.')
+param imageRepositoryPrefix string = 'knowz-io'
+
+@description('Enforce strict ingestion PE (AMPLS) for App Insights. Default false — AMPLS deferred (see top-of-file note).')
+param strictIngestion bool = false
+
+@secure()
+@description('MCP service key. Default newGuid() on first deploy; pass from KV on rerun. Do NOT use uniqueString() — that is deterministic per RG name.')
+param mcpServiceKey string = newGuid()
+
+// ============================================================================
 // VARIABLES
 // ============================================================================
 
+// uniqueSuffix is OK for resource naming (RG-deterministic is intended for naming).
+// DO NOT use uniqueString() for secrets — use @secure() params seeded from newGuid() instead.
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var sqlServerName = '${prefix}-sql-${uniqueSuffix}'
 var storagePrefix = toLower(take(replace(prefix, '-', ''), 8))
 var storageAccountName = toLower('${storagePrefix}st${take(uniqueSuffix, 12)}')
 var kvPrefix = toLower(take(replace(prefix, '-', ''), 8))
 var keyVaultName = '${kvPrefix}kv${take(uniqueSuffix, 8)}'
-var mcpServiceKey = 'selfhosted-enterprise-mcp-service-key-${uniqueString(resourceGroup().id)}'
 
-var registryServer = 'ghcr.io'
+// Effective registry: switches to customer ACR when externalAcrName provided (air-gapped / policy deploys).
+// Uses azurecr.io literal — sovereign cloud ACR domains are customer-specific and would require
+// a separate `externalAcrFqdn` override param (deferred per SH_ENTERPRISE_BYO_INFRA.md §Rule 6).
+var registryServer = !empty(externalAcrName) ? '${externalAcrName}.azurecr.io' : 'ghcr.io'
+var registryPath = '${registryServer}/${imageRepositoryPrefix}'
+
+// Effective registries[] for container-app configuration:
+//   BYO ACR: MI-auth via `identity:`, no password secret ref
+//   GHCR with PAT: legacy username/passwordSecretRef flow
+//   GHCR public: empty array (anonymous pulls — only works for public repos)
+var effectiveRegistries = !empty(externalAcrName) ? [
+  {
+    server: registryServer
+    identity: managedIdentity.id
+  }
+] : (empty(registryUsername) ? [] : [
+  {
+    server: registryServer
+    username: registryUsername
+    passwordSecretRef: 'registry-password'
+  }
+])
+var effectiveRegistrySecrets = (!empty(externalAcrName) || empty(registryUsername)) ? [] : [
+  {
+    name: 'registry-password'
+    value: registryPassword
+  }
+]
+
 var embeddingModelName = 'text-embedding-3-small'
+
+// ============================================================================
+// BYO VNET REFERENCES + EFFECTIVE SUBNET IDS
+// ============================================================================
+// When byoVnetSubnetId is provided, we skip the VNet resource block below and
+// thread the customer-supplied IDs through downstream subnet consumers instead.
+// The `alz-assert-pe-subnet-sh` guard (below, in the assertion section) fails
+// template evaluation when strict BYO mode is requested without required inputs.
+
+// Parse BYO subnet IDs: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>
+// Split index reference: [0]='' [1]='subscriptions' [2]=<sub> [3]='resourceGroups' [4]=<rg> [5]='providers' [6]='Microsoft.Network' [7]='virtualNetworks' [8]=<vnet> [9]='subnets' [10]=<subnet>
+var byoVnetSubscriptionId = !empty(byoVnetSubnetId) ? split(byoVnetSubnetId, '/')[2] : ''
+var byoVnetResourceGroupName = !empty(byoVnetSubnetId) ? split(byoVnetSubnetId, '/')[4] : ''
+var byoVnetName = !empty(byoVnetSubnetId) ? split(byoVnetSubnetId, '/')[8] : ''
 
 // Resource tags
 var defaultTags = {
@@ -150,16 +250,23 @@ var defaultTags = {
 }
 var effectiveTags = union(defaultTags, tags)
 
-// Effective endpoints (local or external)
-var effectiveOpenAiEndpoint = deployOpenAI ? cognitiveServices.properties.endpoint : externalOpenAiEndpoint
+// Effective endpoints (local, BYO existing, or external string)
+// Priority: BYO existing resource → local deployment → external endpoint string
+var effectiveOpenAiEndpoint = !empty(existingOpenAiResourceId)
+  ? existingOpenAi.properties.endpoint
+  : (deployOpenAI ? cognitiveServices.properties.endpoint : externalOpenAiEndpoint)
 var effectiveVisionEndpoint = deployVision ? visionService.properties.endpoint : externalVisionEndpoint
 var effectiveDocIntelEndpoint = deployDocumentIntelligence ? documentIntelligence.properties.endpoint : externalDocIntelEndpoint
 
 // SQL connection string using AAD Managed Identity authentication (no password)
 var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=McpKnowledge;Authentication=Active Directory Managed Identity;User Id=${managedIdentity.properties.clientId};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
-// TODO: Switch to managed identity when app code supports DefaultAzureCredential for blob access
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+// Storage:Azure:AccountUrl pattern — app (BlobServiceClient) uses DefaultAzureCredential
+// via managed identity (commit 3a690a4ca — Builder B app-side MI swap). AccountKey-based
+// connection string retained as KV secret for legacy code paths (e.g. Azure Functions
+// that don't use DI registration), but is no longer the primary auth vector.
+// See SH_ENTERPRISE_MI_SWAP.md §2.2 for the full client-swap matrix.
+var storageBlobEndpoint = storageAccount.properties.primaryEndpoints.blob
 
 // App Insights connection string
 var appInsightsConnectionString = appInsights.properties.ConnectionString
@@ -241,10 +348,42 @@ resource privateEndpointsNsg 'Microsoft.Network/networkSecurityGroups@2023-11-01
 }
 
 // ============================================================================
+// ALZ FAIL-FAST ASSERTIONS (template-evaluation errors — no mutation before failure)
+// ============================================================================
+// Ported from infrastructure/modules/assert.bicep pattern. When strict BYO mode is
+// requested (autoProvisionVnet=false), these modules fire at compile time if required
+// BYO inputs are absent — prevents silent unreachable-PE deployments per the April 2026
+// partner outage postmortem.
+
+module alzAssertSubnet 'modules/assert.bicep' = if (!autoProvisionVnet && empty(byoVnetSubnetId)) {
+  name: 'alz-assert-subnet-sh'
+  params: {
+    message: 'Enterprise self-hosted: byoVnetSubnetId required when autoProvisionVnet=false. Provide a pre-existing Container Apps delegated subnet.'
+  }
+}
+
+module alzAssertPeSubnet 'modules/assert.bicep' = if (!autoProvisionVnet && empty(byoVnetPeSubnetId) && empty(peSubnetAddressPrefix)) {
+  name: 'alz-assert-pe-subnet-sh'
+  params: {
+    message: 'Enterprise self-hosted: either byoVnetPeSubnetId or peSubnetAddressPrefix required when autoProvisionVnet=false. publicNetworkAccess is disabled on SQL/Storage/KV/OpenAI/Search; services unreachable without a PE subnet.'
+  }
+}
+
+module alzAssertStrictIngestion 'modules/assert.bicep' = if (strictIngestion) {
+  name: 'alz-assert-strict-ingestion-sh'
+  params: {
+    message: 'strictIngestion=true requires AMPLS deployment which is not yet implemented. Set strictIngestion=false or file a feature request. App Insights uses public ingestion endpoint by design — see top-of-file note.'
+  }
+}
+
+// ============================================================================
 // VIRTUAL NETWORK
 // ============================================================================
+// Auto-provisioning path: only runs when no BYO VNet supplied AND autoProvisionVnet=true.
+// BYO path: `byoVnet` existing reference below pulls the customer-supplied VNet into scope
+// for DNS zone linking + PE subnet auto-creation (via modules/pe-subnet.bicep).
 
-resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
+resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = if (empty(byoVnetSubnetId) && autoProvisionVnet) {
   name: '${prefix}-vnet'
   location: location
   tags: effectiveTags
@@ -285,6 +424,32 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
   }
 }
 
+// BYO VNet — resolved in the customer's networking RG when byoVnetSubnetId is provided.
+resource byoVnet 'Microsoft.Network/virtualNetworks@2023-11-01' existing = if (!empty(byoVnetSubnetId)) {
+  name: byoVnetName
+  scope: resourceGroup(byoVnetSubscriptionId, byoVnetResourceGroupName)
+}
+
+// Optional: auto-create a PE subnet inside the BYO VNet (when byoVnetPeSubnetId empty but peSubnetAddressPrefix provided).
+module byoPeSubnet 'modules/pe-subnet.bicep' = if (!empty(byoVnetSubnetId) && empty(byoVnetPeSubnetId) && !empty(peSubnetAddressPrefix)) {
+  name: 'byo-pe-subnet'
+  scope: resourceGroup(byoVnetSubscriptionId, byoVnetResourceGroupName)
+  params: {
+    vnetName: byoVnetName
+    subnetName: '${prefix}-pe'
+    addressPrefix: peSubnetAddressPrefix
+  }
+}
+
+// Effective IDs — downstream consumers use these instead of the concrete `vnet.*` references.
+var effectiveContainerAppsSubnetId = !empty(byoVnetSubnetId) ? byoVnetSubnetId : vnet.properties.subnets[0].id
+var effectivePeSubnetId = !empty(byoVnetPeSubnetId)
+  ? byoVnetPeSubnetId
+  : (!empty(byoVnetSubnetId) && !empty(peSubnetAddressPrefix))
+      ? byoPeSubnet.outputs.subnetId
+      : vnet.properties.subnets[1].id
+var effectiveVnetId = !empty(byoVnetSubnetId) ? byoVnet.id : vnet.id
+
 // ============================================================================
 // PRIVATE DNS ZONES (6 zones for all private endpoint services)
 // ============================================================================
@@ -311,7 +476,8 @@ resource dnsZoneLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@202
   tags: effectiveTags
   properties: {
     virtualNetwork: {
-      id: vnet.id
+      // When BYO VNet, link zones to the customer VNet; otherwise link to the auto-provisioned VNet.
+      id: effectiveVnetId
     }
     registrationEnabled: false
   }
@@ -328,10 +494,14 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
 }
 
 // ============================================================================
-// LOG ANALYTICS WORKSPACE
+// LOG ANALYTICS WORKSPACE (local) OR CENTRAL LAW (cross-RG reference)
 // ============================================================================
+// When centralLogAnalyticsId is empty: create a per-env workspace.
+// When non-empty: use the customer's central workspace for all diagnostics + CAE logs.
+// Per SH_ENTERPRISE_BYO_INFRA §Rule 4 — enterprise customers typically centralize
+// log aggregation for unified query/billing/retention policy.
 
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = if (empty(centralLogAnalyticsId)) {
   name: '${prefix}-logs'
   location: location
   tags: effectiveTags
@@ -351,9 +521,32 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   }
 }
 
+// Central LAW reference — parsed from the customer-supplied resource ID.
+var centralLawSubscriptionId = !empty(centralLogAnalyticsId) ? split(centralLogAnalyticsId, '/')[2] : ''
+var centralLawResourceGroupName = !empty(centralLogAnalyticsId) ? split(centralLogAnalyticsId, '/')[4] : ''
+var centralLawName = !empty(centralLogAnalyticsId) ? split(centralLogAnalyticsId, '/')[8] : ''
+
+resource centralLaw 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = if (!empty(centralLogAnalyticsId)) {
+  name: centralLawName
+  scope: resourceGroup(centralLawSubscriptionId, centralLawResourceGroupName)
+}
+
+// Effective LAW values — all diagnostic settings + CAE logs thread through these.
+// listKeys() on the workspace is still required by the CAE API
+// (appLogsConfiguration.destination='log-analytics' expects a shared key). When Microsoft
+// ships MI-auth for CAE log sinks, this listKeys() call becomes removable (tracked as
+// external blocker D7 in SH_ENTERPRISE_BICEP_HARDENING spec).
+var effectiveLawId = !empty(centralLogAnalyticsId) ? centralLaw.id : logAnalytics.id
+var effectiveLawCustomerId = !empty(centralLogAnalyticsId) ? centralLaw.properties.customerId : logAnalytics.properties.customerId
+var effectiveLawKey = !empty(centralLogAnalyticsId) ? centralLaw.listKeys().primarySharedKey : logAnalytics.listKeys().primarySharedKey
+
 // ============================================================================
 // APPLICATION INSIGHTS
 // ============================================================================
+// Ingestion endpoint is PUBLIC by design (AMPLS deferred — see TRUSTED CONFIG SOURCES
+// note below + SH_ENTERPRISE_BICEP_HARDENING §Rule 8). Customers with strict egress policy
+// set strictIngestion=true (currently fails fast via alz-assert-strict-ingestion-sh
+// until AMPLS lands in a follow-up WorkGroup).
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: '${prefix}-appinsights'
@@ -362,7 +555,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   kind: 'web'
   properties: {
     Application_Type: 'web'
-    WorkspaceResourceId: logAnalytics.id
+    WorkspaceResourceId: effectiveLawId
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
   }
@@ -385,8 +578,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
-    // TODO: Switch to managed identity when app code supports DefaultAzureCredential for blob access
-    allowSharedKeyAccess: true
+    // MI-swap landed (Builder B commit 3a690a4c): BlobServiceClient uses DefaultAzureCredential
+    // + Storage:Azure:AccountUrl (no SAS / no account key). Shared-key access now disabled.
+    // Any legacy code path that still relies on AccountKey will fail-fast at runtime — that's
+    // intentional; customers should report those paths so we can finish the swap.
+    allowSharedKeyAccess: false
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
@@ -407,6 +603,18 @@ resource blobContainer 'Microsoft.Storage/storageAccounts/blobServices/container
   }
 }
 
+// Data Protection key ring storage — ASP.NET Core persists its key ring here so
+// cookies/tokens survive container restarts. Wrapped by the KV key `dp-master-key`
+// (below) for defense-in-depth. App-side wiring landed in Builder A commit 4b06cb3e4.
+// See SH_ENTERPRISE_BICEP_HARDENING §Rule 9 / SH_ENTERPRISE_SECURITY_HARDENING §Rule 8.
+resource dpKeysContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'dp-keys'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 // Private endpoint: Storage Blob
 resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   name: '${prefix}-pe-storage'
@@ -414,7 +622,7 @@ resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' 
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -450,7 +658,7 @@ resource storageDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   name: '${prefix}-storage-diagnostics'
   scope: blobService
   properties: {
-    workspaceId: logAnalytics.id
+    workspaceId: effectiveLawId
     logs: [
       {
         category: 'StorageRead'
@@ -500,19 +708,27 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   }
 }
 
+// SH_ENTERPRISE_BICEP_HARDENING §Rule 2: SKU raised from Basic@2GB to S1@250GB.
+// Basic@2GB dies at ~5 concurrent enrichment jobs (confirmed against selfhosted-test).
+// Tier / capacity mapping is derived from the SKU name via sqlSkuTier / sqlSkuCapacity vars.
+var sqlSkuTier = startsWith(sqlDatabaseSkuName, 'P') ? 'Premium' : (startsWith(sqlDatabaseSkuName, 'S') ? 'Standard' : 'Basic')
+var sqlSkuCapacity = sqlDatabaseSkuName == 'Basic'
+  ? 5
+  : (sqlDatabaseSkuName == 'S0' ? 10 : (sqlDatabaseSkuName == 'S1' ? 20 : (sqlDatabaseSkuName == 'S2' ? 50 : (sqlDatabaseSkuName == 'S3' ? 100 : (sqlDatabaseSkuName == 'P1' ? 125 : 250)))))
+
 resource mcpDb 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: 'McpKnowledge'
   location: location
   tags: effectiveTags
   sku: {
-    name: 'Basic'
-    tier: 'Basic'
-    capacity: 5
+    name: sqlDatabaseSkuName
+    tier: sqlSkuTier
+    capacity: sqlSkuCapacity
   }
   properties: {
     collation: 'SQL_Latin1_General_CP1_CI_AS'
-    maxSizeBytes: 2147483648
+    maxSizeBytes: sqlDatabaseMaxSizeBytes
     zoneRedundant: false
   }
 }
@@ -591,14 +807,50 @@ resource sqlPermissionScript 'Microsoft.Resources/deploymentScripts@2023-08-01' 
       param($SqlServerFqdn, $DatabaseName, $AadAdminObjectId, $AadAdminDisplayName)
       Install-Module -Name SqlServer -Force -AllowClobber -Scope CurrentUser
       $token = (Get-AzAccessToken -ResourceUrl "https://database.windows.net/").Token
+
+      # SEC_P0Triage §Rule 5: parameterize to prevent SQL injection via the
+      # customer-supplied aadAdminDisplayName / aadAdminObjectId Bicep inputs.
+      # Previously these were string-interpolated into T-SQL with a literal
+      # identifier, so a crafted display name like
+      #   O'Brien]; DROP TABLE Users;--
+      # would execute as SQL. sqlcmd variables ($(Name)) are substituted safely
+      # and are rejected if they contain reserved chars such as ']'.
+      # QUOTENAME wraps the identifier defensively in case a future change
+      # reintroduces dynamic identifier usage.
+
+      # Defensive input validation: display name must match the same regex the
+      # portal createUiDefinition uses. Reject anything else before the script
+      # touches SQL at all.
+      if ($AadAdminDisplayName -notmatch "^[A-Za-z0-9 _\-\.@']{1,128}$") {
+        throw "AadAdminDisplayName contains disallowed characters: '$AadAdminDisplayName'"
+      }
+      if ($AadAdminObjectId -notmatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$") {
+        throw "AadAdminObjectId is not a GUID: '$AadAdminObjectId'"
+      }
+
       $query = @"
-        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$AadAdminDisplayName')
+        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = $(AadAdminDisplayName))
         BEGIN
-          CREATE USER [$AadAdminDisplayName] WITH SID = $(CONVERT(varbinary(16), '$AadAdminObjectId')), TYPE = E;
-          ALTER ROLE db_owner ADD MEMBER [$AadAdminDisplayName];
+          DECLARE @stmt nvarchar(max) = N'CREATE USER ' + QUOTENAME($(AadAdminDisplayName)) +
+            N' WITH SID = ' + CONVERT(varchar(36), CAST($(AadAdminObjectId) AS uniqueidentifier)) +
+            N', TYPE = E;';
+          EXEC sp_executesql @stmt;
+          DECLARE @role nvarchar(max) = N'ALTER ROLE db_owner ADD MEMBER ' + QUOTENAME($(AadAdminDisplayName)) + N';';
+          EXEC sp_executesql @role;
         END
 "@
-      Invoke-Sqlcmd -ServerInstance $SqlServerFqdn -Database $DatabaseName -AccessToken $token -Query $query
+      # SEC_P0Triage §Rule 5 (defense-in-depth): -QueryTimeout 60 is the
+      # last-resort guard against a pathological identifier that slips past
+      # the PowerShell whitelist regex above and triggers locking on
+      # sys.database_principals. Without this, a hostile input that's
+      # whitelist-valid but computationally expensive could stall the deploy.
+      Invoke-Sqlcmd `
+        -ServerInstance $SqlServerFqdn `
+        -Database $DatabaseName `
+        -AccessToken $token `
+        -Variable @("AadAdminDisplayName=$AadAdminDisplayName", "AadAdminObjectId=$AadAdminObjectId") `
+        -QueryTimeout 60 `
+        -Query $query
     '''
   }
   dependsOn: [mcpDb]
@@ -609,7 +861,7 @@ resource sqlDbDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-prev
   name: '${prefix}-sqldb-diagnostics'
   scope: mcpDb
   properties: {
-    workspaceId: logAnalytics.id
+    workspaceId: effectiveLawId
     logs: [
       {
         category: 'SQLSecurityAuditEvents'
@@ -640,7 +892,7 @@ resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -675,7 +927,15 @@ resource sqlDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@20
 // KEY VAULT (hardened: purge protection, RBAC, private endpoint)
 // ============================================================================
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+// ============================================================================
+// KEY VAULT (local creation) OR BYO KEY VAULT (cross-RG reference)
+// ============================================================================
+// When byoKeyVaultId is empty: create a per-env vault locally and write all secrets.
+// When byoKeyVaultId is non-empty: skip creation, grant MI the Secrets User role
+// cross-RG on the customer's vault. Customer pre-populates secrets per the runbook
+// (deployer SP needs Key Vault Secrets Officer pre-granted on the BYO vault).
+
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (empty(byoKeyVaultId)) {
   name: keyVaultName
   location: location
   tags: effectiveTags
@@ -697,10 +957,28 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-// Key Vault Secrets User role for Managed Identity (read secrets at runtime)
-var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+// BYO KV existing reference — scope split: [2]=subId [4]=rgName [8]=kvName
+var byoKvSubscriptionId = !empty(byoKeyVaultId) ? split(byoKeyVaultId, '/')[2] : ''
+var byoKvResourceGroupName = !empty(byoKeyVaultId) ? split(byoKeyVaultId, '/')[4] : ''
+var byoKvName = !empty(byoKeyVaultId) ? split(byoKeyVaultId, '/')[8] : ''
 
-resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource byoKv 'Microsoft.KeyVault/vaults@2023-07-01' existing = if (!empty(byoKeyVaultId)) {
+  name: byoKvName
+  scope: resourceGroup(byoKvSubscriptionId, byoKvResourceGroupName)
+}
+
+// Effective KV metadata — used by container-app secret refs (keyVaultUrl).
+var effectiveKvName = !empty(byoKeyVaultId) ? byoKvName : keyVaultName
+var effectiveKvUri = !empty(byoKeyVaultId)
+  ? 'https://${byoKvName}${environment().suffixes.keyvaultDns}'
+  : 'https://${keyVaultName}${environment().suffixes.keyvaultDns}'
+
+// Role IDs — scoped as vars (consumed by both local + BYO paths).
+var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+
+// Key Vault Secrets User role for Managed Identity (read secrets at runtime) — LOCAL KV
+resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (empty(byoKeyVaultId)) {
   name: guid(keyVault.id, managedIdentity.id, keyVaultSecretsUserRoleId)
   scope: keyVault
   properties: {
@@ -710,13 +988,24 @@ resource kvSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   }
 }
 
-// Key Vault Secrets Officer role for the deploying user/SP (create secrets at deploy time)
+// BYO KV: cross-RG role grant for MI — uses cross-rg-role.bicep.
+// Customer deployer SP must have Key Vault Secrets Officer pre-granted on the BYO vault.
+module byoKvSecretsUserRole 'modules/cross-rg-role.bicep' = if (!empty(byoKeyVaultId)) {
+  name: 'byo-kv-mi-secrets-user'
+  scope: resourceGroup(byoKvSubscriptionId, byoKvResourceGroupName)
+  params: {
+    principalId: managedIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
+    targetResourceId: byoKeyVaultId
+  }
+}
+
+// Key Vault Secrets Officer role for the deploying user/SP (create secrets at deploy time).
 // RBAC-enabled vaults require explicit data-plane role assignment even for subscription
 // Owners. Without this, the deployment fails with 403 on every secretXxx resource.
 // Populated by the deploy script from `az ad signed-in-user show --query id -o tsv`.
-var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
-
-resource kvSecretsOfficerDeployerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerObjectId)) {
+// BYO KV: caller must pre-grant this role; we do NOT emit it cross-RG (deployer owns that).
+resource kvSecretsOfficerDeployerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerObjectId) && empty(byoKeyVaultId)) {
   name: guid(keyVault.id, deployerObjectId, keyVaultSecretsOfficerRoleId)
   scope: keyVault
   properties: {
@@ -726,14 +1015,14 @@ resource kvSecretsOfficerDeployerRole 'Microsoft.Authorization/roleAssignments@2
   }
 }
 
-// Private endpoint: Key Vault
-resource kvPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+// Private endpoint: Key Vault — only for LOCAL KV. BYO KV has its own PE (customer-managed).
+resource kvPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (empty(byoKeyVaultId)) {
   name: '${prefix}-pe-kv'
   location: location
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -749,7 +1038,7 @@ resource kvPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
   }
 }
 
-resource kvDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+resource kvDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (empty(byoKeyVaultId)) {
   parent: kvPrivateEndpoint
   name: 'default'
   properties: {
@@ -764,15 +1053,19 @@ resource kvDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@202
   }
 }
 
-// Key Vault diagnostics
-resource kvDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+// Key Vault diagnostics — only for LOCAL KV. BYO KV has customer-managed diagnostics.
+resource kvDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (empty(byoKeyVaultId)) {
   name: '${prefix}-kv-diagnostics'
   scope: keyVault
   properties: {
-    workspaceId: logAnalytics.id
+    workspaceId: effectiveLawId
     logs: [
       {
         category: 'AuditEvent'
+        enabled: true
+      }
+      {
+        category: 'AzurePolicyEvaluationDetails'
         enabled: true
       }
     ]
@@ -788,6 +1081,17 @@ resource kvDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview
 // ============================================================================
 // KEY VAULT SECRETS
 // ============================================================================
+// TRUSTED CONFIG SOURCES (KV-only; DatabaseConfigurationSource MUST skip these at runtime)
+// See ConfigurationManagementService.cs:806 for IsSecret==true filter (app-layer enforcement).
+// Secrets listed here are the CANONICAL source; override order is: env var → KV → DB (DB filtered).
+//   AzureOpenAI--Endpoint        (swap risk → attacker-controlled proxy)
+//   AzureOpenAI--ApiKey          (legacy external-endpoint flow only)
+//   SelfHosted--JwtSecret        (forgery risk)
+//   SelfHosted--SuperAdminPassword (admin takeover)
+//   MCP--ServiceKey              (RCE risk via MCP tool invocation)
+//   Storage--Azure--AccountUrl   (data redirect)
+//   ApplicationInsights--ConnectionString (telemetry redirect + tenant pivoting)
+// Per SH_ENTERPRISE_BICEP_HARDENING §Rule 10. Runtime-enforcement side is β spec.
 
 resource secretSqlConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
@@ -807,11 +1111,16 @@ resource secretSearchEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
-resource secretSearchKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// AzureAISearch--ApiKey — MI-swap: SearchClient/SearchIndexClient use DefaultAzureCredential
+// (Builder B commit 3a690a4c). listAdminKeys() REMOVED. Search Service Contributor role
+// has also been dropped in favor of Search Index Data Contributor (data-plane only) —
+// prevents runtime schema drift (2026-03 incident). Secret retained as placeholder so
+// the container-app secretRef 'search-apikey' stays valid during the transition.
+resource secretSearchKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
   parent: keyVault
   name: 'AzureAISearch--ApiKey'
   properties: {
-    value: searchService.listAdminKeys().primaryKey
+    value: 'mi-auth-placeholder'
   }
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
@@ -825,11 +1134,34 @@ resource secretOpenAiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
-resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// AzureOpenAI--ApiKey — MI-swap: AzureOpenAIClient uses DefaultAzureCredential when
+// deployOpenAI=true OR existingOpenAiResourceId is set (Builder B commit 3a690a4c).
+// Secret retained as placeholder for MI paths to keep container-app secretRef valid;
+// actual external-endpoint key flows through when deployOpenAI=false AND no BYO id.
+// SH_ENTERPRISE_BICEP_HARDENING §Rule 10 Trusted Config Sources — secret kept
+// in KV only; DB override filter blocks it at runtime.
+resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
   parent: keyVault
   name: 'AzureOpenAI--ApiKey'
   properties: {
-    value: deployOpenAI ? cognitiveServices.listKeys().key1 : externalOpenAiKey
+    value: (deployOpenAI || !empty(existingOpenAiResourceId)) ? 'mi-auth-placeholder' : externalOpenAiKey
+  }
+  dependsOn: [kvSecretsOfficerDeployerRole]
+}
+
+// MCP--ServiceKey — persisted to KV for idempotent reruns. First deploy: newGuid() default
+// generates the value → KV stores it. Subsequent deploys: fetch from KV and pass via
+// --parameters mcpServiceKey=<value> so the container app picks up the SAME key and
+// MCP tool-auth remains stable. Per SH_ENTERPRISE_BICEP_HARDENING §Rule 4 — replaces
+// the previous deterministic uniqueString(resourceGroup().id) pattern (predictable per RG).
+resource secretMcpServiceKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
+  parent: keyVault
+  name: 'MCP--ServiceKey'
+  properties: {
+    value: mcpServiceKey
+    attributes: {
+      enabled: true
+    }
   }
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
@@ -861,11 +1193,15 @@ resource secretDocIntelEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
-resource secretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// AzureDocumentIntelligence--ApiKey — MI-swap: listKeys() for locally-deployed DocIntel REMOVED.
+// DocumentIntelligenceClient uses DefaultAzureCredential when deployDocumentIntelligence=true
+// (Builder B commit 3a690a4c). Secret retained (placeholder when MI-active) so the container-app
+// secretRef 'docintel-apikey' doesn't fail even if the app no longer consumes it.
+resource secretDocIntelApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
   parent: keyVault
   name: 'AzureDocumentIntelligence--ApiKey'
   properties: {
-    value: deployDocumentIntelligence ? documentIntelligence.listKeys().key1 : externalDocIntelKey
+    value: deployDocumentIntelligence ? 'mi-auth-placeholder' : externalDocIntelKey
   }
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
@@ -879,20 +1215,27 @@ resource secretVisionEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
-resource secretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// AzureAIVision--ApiKey — MI-swap: listKeys() for locally-deployed Vision REMOVED.
+// Vision REST calls use Authorization: Bearer header when deployVision=true
+// (Builder B commit 3a690a4c). Secret retained (placeholder when MI-active).
+resource secretVisionApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
   parent: keyVault
   name: 'AzureAIVision--ApiKey'
   properties: {
-    value: deployVision ? visionService.listKeys().key1 : externalVisionKey
+    value: deployVision ? 'mi-auth-placeholder' : externalVisionKey
   }
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
 
-resource secretStorageConnection 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// Storage:Azure:AccountUrl — replaces Storage--Azure--ConnectionString after MI swap.
+// BlobServiceClient uses DefaultAzureCredential + this URL (no AccountKey needed).
+// Old Storage--Azure--ConnectionString secret REMOVED in this commit; app-layer
+// supports MI-only auth per Builder B's commit 3a690a4ca.
+resource secretStorageAccountUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (empty(byoKeyVaultId)) {
   parent: keyVault
-  name: 'Storage--Azure--ConnectionString'
+  name: 'Storage--Azure--AccountUrl'
   properties: {
-    value: storageConnectionString
+    value: storageBlobEndpoint
   }
   dependsOn: [kvSecretsOfficerDeployerRole]
 }
@@ -934,6 +1277,71 @@ resource secretAdminPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 }
 
 // ============================================================================
+// DATA PROTECTION MASTER KEY (co-scoped with Builder A commit 4b06cb3e4)
+// ============================================================================
+// SH_ENTERPRISE_BICEP_HARDENING §Rule 9 / security-officer finding #12.
+// App persists its ASP.NET Core Data Protection key ring to blob (dp-keys container)
+// and wraps it with this KV key (RSA 2048, 90-day rotation policy).
+// Without this, container restart rotates all cookies/tokens and logs users out.
+// Name MUST match the app-side default (selfhosted/src/Knowz.SelfHosted.API/Program.cs:50) —
+// "selfhosted-dp-key". Override via env var AzureKeyVault__DataProtectionKeyName if needed.
+resource dpMasterKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' = if (empty(byoKeyVaultId)) {
+  parent: keyVault
+  name: 'selfhosted-dp-key'
+  properties: {
+    kty: 'RSA'
+    keySize: 2048
+    keyOps: ['wrapKey', 'unwrapKey']
+    rotationPolicy: {
+      attributes: {
+        expiryTime: 'P2Y'
+      }
+      lifetimeActions: [
+        {
+          action: {
+            type: 'rotate'
+          }
+          trigger: {
+            timeAfterCreate: 'P90D'
+          }
+        }
+        {
+          action: {
+            type: 'notify'
+          }
+          trigger: {
+            timeBeforeExpiry: 'P30D'
+          }
+        }
+      ]
+    }
+  }
+  dependsOn: [kvSecretsOfficerDeployerRole]
+}
+
+// MI grant: Key Vault Crypto User (wrap/unwrap the DP key ring).
+// For BYO KV, the cross-rg role module grants this in the customer's RG.
+resource dpKeyCryptoUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (empty(byoKeyVaultId)) {
+  name: guid(keyVault.id, managedIdentity.id, keyVaultCryptoUserRoleId)
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultCryptoUserRoleId)
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+module byoDpKeyCryptoUserRole 'modules/cross-rg-role.bicep' = if (!empty(byoKeyVaultId)) {
+  name: 'byo-kv-dp-crypto-user'
+  scope: resourceGroup(byoKvSubscriptionId, byoKvResourceGroupName)
+  params: {
+    principalId: managedIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultCryptoUserRoleId)
+    targetResourceId: byoKeyVaultId
+  }
+}
+
+// ============================================================================
 // AZURE AI SEARCH (private endpoint, public access disabled)
 // ============================================================================
 
@@ -959,7 +1367,7 @@ resource searchPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' =
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -994,7 +1402,15 @@ resource searchDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups
 // AZURE OPENAI (private endpoint, public access disabled)
 // ============================================================================
 
-resource cognitiveServices 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (deployOpenAI) {
+// BYO Azure OpenAI — existing reference scoped to customer RG. Customer is responsible
+// for pre-existing chat + embedding deployments matching chatDeploymentName / embeddingDeploymentName.
+// See SH_ENTERPRISE_BYO_INFRA §Rule 5. Used by effectiveOpenAiEndpoint (above) + byoOpenAiRole (below).
+resource existingOpenAi 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = if (!empty(existingOpenAiResourceId)) {
+  name: split(existingOpenAiResourceId, '/')[8]
+  scope: resourceGroup(split(existingOpenAiResourceId, '/')[2], split(existingOpenAiResourceId, '/')[4])
+}
+
+resource cognitiveServices 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   name: '${prefix}-openai-${location}'
   location: location
   tags: effectiveTags
@@ -1011,7 +1427,7 @@ resource cognitiveServices 'Microsoft.CognitiveServices/accounts@2023-05-01' = i
   }
 }
 
-resource deploymentChat 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI) {
+resource deploymentChat 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   parent: cognitiveServices
   name: chatDeploymentName
   sku: {
@@ -1027,7 +1443,7 @@ resource deploymentChat 'Microsoft.CognitiveServices/accounts/deployments@2023-1
   }
 }
 
-resource deploymentMini 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI) {
+resource deploymentMini 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   parent: cognitiveServices
   name: 'gpt-5-mini'
   sku: {
@@ -1044,7 +1460,7 @@ resource deploymentMini 'Microsoft.CognitiveServices/accounts/deployments@2023-1
   dependsOn: [deploymentChat]
 }
 
-resource deploymentEmbedding 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI) {
+resource deploymentEmbedding 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01-preview' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   parent: cognitiveServices
   name: embeddingDeploymentName
   sku: {
@@ -1062,13 +1478,13 @@ resource deploymentEmbedding 'Microsoft.CognitiveServices/accounts/deployments@2
 }
 
 // Private endpoint: OpenAI
-resource openAiPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (deployOpenAI) {
+resource openAiPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   name: '${prefix}-pe-openai'
   location: location
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -1084,7 +1500,7 @@ resource openAiPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' =
   }
 }
 
-resource openAiDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (deployOpenAI) {
+resource openAiDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
   parent: openAiPrivateEndpoint
   name: 'default'
   properties: {
@@ -1095,6 +1511,25 @@ resource openAiDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups
           privateDnsZoneId: dnsZones[3].id // privatelink.openai.azure.com
         }
       }
+    ]
+  }
+}
+
+// Azure OpenAI diagnostics — SH_ENTERPRISE_BICEP_HARDENING §Rule 7 fanout.
+// Captures Audit + RequestResponse + Trace categories. Only attaches to locally-deployed
+// OpenAI; BYO OpenAI has customer-managed diagnostics in their RG.
+resource openAiDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
+  name: '${prefix}-openai-diagnostics'
+  scope: cognitiveServices
+  properties: {
+    workspaceId: effectiveLawId
+    logs: [
+      { category: 'Audit', enabled: true }
+      { category: 'RequestResponse', enabled: true }
+      { category: 'Trace', enabled: true }
+    ]
+    metrics: [
+      { category: 'AllMetrics', enabled: true }
     ]
   }
 }
@@ -1127,7 +1562,7 @@ resource docIntelPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01'
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -1186,7 +1621,7 @@ resource visionPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' =
   tags: effectiveTags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[1].id
+      id: effectivePeSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -1222,10 +1657,15 @@ resource visionDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups
 // ============================================================================
 
 // Built-in role definition IDs
-var cognitiveServicesOpenAIContributorRoleId = 'a001fd3d-188f-4b5d-821b-7da978bf7442'
+// SH_ENTERPRISE_BICEP_HARDENING §Rule 3: downgraded from OpenAI Contributor (a001fd3d-...)
+// to OpenAI User (5e0bd9bd-...) — principle of least privilege. User allows inference only;
+// Contributor allowed deployment mutation (spinning up rogue deployments, changing model SKUs).
+var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var searchServiceContributorRoleId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var acrPullRoleId = '7f951dda-4ed3-11e8-9c2d-fa7ae01bbebc'
+var keyVaultCryptoUserRoleId = '12338af0-0e69-4776-bea7-57ae8d297424'
 
 // Search: Index Data Contributor
 resource searchIndexDataRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -1238,25 +1678,57 @@ resource searchIndexDataRole 'Microsoft.Authorization/roleAssignments@2022-04-01
   }
 }
 
-// Search: Service Contributor
-resource searchServiceRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(searchService.id, managedIdentity.id, searchServiceContributorRoleId)
-  scope: searchService
+// Search Service Contributor role REMOVED — runtime no longer needs schema-mutation rights
+// (MI-swap: SearchIndexClient.CreateIndexAsync path is gated off at the app layer).
+// Search Index Data Contributor (granted above) is sufficient for data-plane read/write.
+// This closes the 2026-03 runtime-schema-drift incident. Keep var declaration so
+// `no-unused-vars` doesn't trip; it's scoped for potential future use (e.g. index
+// provisioning deployment script). Do NOT re-add this role assignment without a
+// compensating control.
+
+// OpenAI: Cognitive Services OpenAI User (least-privilege; was Contributor before hardening)
+resource openAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployOpenAI && empty(existingOpenAiResourceId)) {
+  name: guid(cognitiveServices.id, managedIdentity.id, cognitiveServicesOpenAIUserRoleId)
+  scope: cognitiveServices
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchServiceContributorRoleId)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAIUserRoleId)
     principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-// OpenAI: Cognitive Services OpenAI Contributor
-resource openAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployOpenAI) {
-  name: guid(cognitiveServices.id, managedIdentity.id, cognitiveServicesOpenAIContributorRoleId)
-  scope: cognitiveServices
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAIContributorRoleId)
+// BYO OpenAI: cross-resource role grant when customer supplies existingOpenAiResourceId.
+// Customer OpenAI MUST be in the same Entra tenant (cross-tenant is out of scope per D1).
+// Customer deployer SP needs Cognitive Services Contributor OR Owner on the target resource
+// to emit this role assignment — documented in DOC_EnterpriseRunbook pre-grant section.
+module byoOpenAiRole 'modules/cross-rg-role.bicep' = if (!empty(existingOpenAiResourceId)) {
+  name: 'byo-openai-user-role'
+  scope: resourceGroup(split(existingOpenAiResourceId, '/')[2], split(existingOpenAiResourceId, '/')[4])
+  params: {
     principalId: managedIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAIUserRoleId)
+    targetResourceId: existingOpenAiResourceId
+  }
+}
+
+// External ACR (air-gapped / policy-restricted pulls): AcrPull role at customer ACR.
+// Customer is responsible for:
+//   1. Mirroring ghcr.io/knowz-io/knowz-{api,mcp,web}:<tag> into their ACR
+//      (docs: `docker buildx imagetools create --tag <acr>.azurecr.io/knowz-io/<image>:<tag> ghcr.io/knowz-io/<image>:<tag>`)
+//   2. Ensuring ACR is AAD-enabled (classic admin-only ACRs are D4 out of scope)
+//   3. Pre-granting deployer SP `Contributor` on the ACR RG to allow role emission
+// Matches `infrastructure/modules/external-acr-role.bicep` pattern from partner platform.
+var effectiveAcrResourceId = !empty(externalAcrName)
+  ? resourceId(subscription().subscriptionId, externalAcrResourceGroup, 'Microsoft.ContainerRegistry/registries', externalAcrName)
+  : ''
+
+module externalAcrPullRole 'modules/cross-rg-role.bicep' = if (!empty(externalAcrName)) {
+  name: 'external-acr-pull-role'
+  scope: resourceGroup(externalAcrResourceGroup)
+  params: {
+    principalId: managedIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+    targetResourceId: effectiveAcrResourceId
   }
 }
 
@@ -1281,14 +1753,14 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   tags: effectiveTags
   properties: {
     vnetConfiguration: {
-      infrastructureSubnetId: vnet.properties.subnets[0].id
+      infrastructureSubnetId: effectiveContainerAppsSubnetId
       internal: true
     }
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
+        customerId: effectiveLawCustomerId
+        sharedKey: effectiveLawKey
       }
     }
     zoneRedundant: false
@@ -1319,19 +1791,8 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8080
         transport: 'http'
       }
-      registries: empty(registryUsername) ? [] : [
-        {
-          server: registryServer
-          username: registryUsername
-          passwordSecretRef: 'registry-password'
-        }
-      ]
-      secrets: concat(empty(registryUsername) ? [] : [
-        {
-          name: 'registry-password'
-          value: registryPassword
-        }
-      ], [
+      registries: effectiveRegistries
+      secrets: concat(effectiveRegistrySecrets, [
         {
           name: 'sql-connection'
           keyVaultUrl: '${keyVault.properties.vaultUri}secrets/ConnectionStrings--McpDb'
@@ -1358,8 +1819,9 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: managedIdentity.id
         }
         {
-          name: 'storage-connection-string'
-          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/Storage--Azure--ConnectionString'
+          // MI swap: AccountUrl instead of connection string; app uses DefaultAzureCredential.
+          name: 'storage-account-url'
+          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/Storage--Azure--AccountUrl'
           identity: managedIdentity.id
         }
         {
@@ -1408,7 +1870,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'api'
-          image: '${registryServer}/knowz-io/knowz-selfhosted-api:${imageTag}'
+          image: '${registryPath}/knowz-selfhosted-api:${imageTag}'
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -1451,12 +1913,31 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'AzureBlob'
             }
             {
-              name: 'Storage__Azure__ConnectionString'
-              secretRef: 'storage-connection-string'
+              // Post-MI-swap: app reads Storage:Azure:AccountUrl + uses DefaultAzureCredential.
+              // Old Storage__Azure__ConnectionString binding removed (see Builder B commit 3a690a4c).
+              name: 'Storage__Azure__AccountUrl'
+              secretRef: 'storage-account-url'
             }
             {
               name: 'Storage__Azure__ContainerName'
               value: 'selfhosted-files'
+            }
+            {
+              // Data Protection key ring (Builder A commit 4b06cb3e4) reads this key.
+              // Co-located with Storage:Azure:AccountUrl so the single storage account
+              // hosts both files and DP keys (different containers).
+              name: 'Storage__AzureBlob__AccountUrl'
+              secretRef: 'storage-account-url'
+            }
+            {
+              // VaultUri used by AddDataProtection() + BootstrapService + ConfigurationManagementService.
+              name: 'AzureKeyVault__VaultUri'
+              value: effectiveKvUri
+            }
+            {
+              // DP key name — must match resource dpMasterKey above.
+              name: 'AzureKeyVault__DataProtectionKeyName'
+              value: 'selfhosted-dp-key'
             }
             {
               name: 'SelfHosted__ApiKey'
@@ -1533,25 +2014,14 @@ resource mcpContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8080
         transport: 'http'
       }
-      registries: empty(registryUsername) ? [] : [
-        {
-          server: registryServer
-          username: registryUsername
-          passwordSecretRef: 'registry-password'
-        }
-      ]
-      secrets: empty(registryUsername) ? [] : [
-        {
-          name: 'registry-password'
-          value: registryPassword
-        }
-      ]
+      registries: effectiveRegistries
+      secrets: effectiveRegistrySecrets
     }
     template: {
       containers: [
         {
           name: 'mcp'
-          image: '${registryServer}/knowz-io/knowz-selfhosted-mcp:${imageTag}'
+          image: '${registryPath}/knowz-selfhosted-mcp:${imageTag}'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -1602,25 +2072,14 @@ resource webContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 8080
         transport: 'http'
       }
-      registries: empty(registryUsername) ? [] : [
-        {
-          server: registryServer
-          username: registryUsername
-          passwordSecretRef: 'registry-password'
-        }
-      ]
-      secrets: empty(registryUsername) ? [] : [
-        {
-          name: 'registry-password'
-          value: registryPassword
-        }
-      ]
+      registries: effectiveRegistries
+      secrets: effectiveRegistrySecrets
     }
     template: {
       containers: [
         {
           name: 'web'
-          image: '${registryServer}/knowz-io/knowz-selfhosted-web:${imageTag}'
+          image: '${registryPath}/knowz-selfhosted-web:${imageTag}'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -1659,7 +2118,10 @@ resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@20
   properties: {
     policySettings: {
       enabledState: 'Enabled'
-      mode: 'Detection'
+      // SH_ENTERPRISE_BICEP_HARDENING §Rule 1: Prevention blocks attacks (not just logs).
+      // Customers can temporarily flip back to Detection during incident triage by passing
+      // wafMode='Detection' via bicepparam — no template rewrite needed.
+      mode: wafMode
       requestBodyCheck: 'Enabled'
     }
     managedRules: {
@@ -1942,7 +2404,7 @@ resource fdDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview
   name: '${prefix}-fd-diagnostics'
   scope: frontDoor
   properties: {
-    workspaceId: logAnalytics.id
+    workspaceId: effectiveLawId
     logs: [
       {
         category: 'FrontDoorAccessLog'
@@ -1977,7 +2439,7 @@ output searchIndexName string = 'knowledge'
 
 // Azure OpenAI
 output openAiEndpoint string = effectiveOpenAiEndpoint
-output openAiResourceName string = deployOpenAI ? cognitiveServices.name : 'external'
+output openAiResourceName string = !empty(existingOpenAiResourceId) ? split(existingOpenAiResourceId, '/')[8] : (deployOpenAI ? cognitiveServices.name : 'external')
 output chatDeploymentNameOutput string = chatDeploymentName
 output miniDeploymentName string = 'gpt-5-mini'
 output embeddingDeploymentNameOutput string = embeddingDeploymentName
@@ -1992,7 +2454,7 @@ output documentIntelligenceName string = deployDocumentIntelligence ? documentIn
 // the lookup and passes resolved endpoint/key via external* parameters. These params are
 // accepted here so the portal UI can pass them without deployment failures.
 output aiConfigurationSummary object = {
-  openai: deployOpenAI ? 'deployed' : (existingOpenAiName != '' ? 'existing:${existingOpenAiName}' : 'external')
+  openai: !empty(existingOpenAiResourceId) ? 'byo:${split(existingOpenAiResourceId, '/')[8]}' : (deployOpenAI ? 'deployed' : (existingOpenAiName != '' ? 'existing:${existingOpenAiName}' : 'external'))
   vision: deployVision ? 'deployed' : (existingVisionName != '' ? 'existing:${existingVisionName}' : 'external')
   docIntel: deployDocumentIntelligence ? 'deployed' : (existingDocIntelName != '' ? 'existing:${existingDocIntelName}' : 'external')
 }
@@ -2013,12 +2475,12 @@ output managedIdentityPrincipalId string = managedIdentity.properties.principalI
 output managedIdentityClientId string = managedIdentity.properties.clientId
 
 // Key Vault
-output keyVaultName string = keyVault.name
-output keyVaultUri string = keyVault.properties.vaultUri
+output keyVaultName string = effectiveKvName
+output keyVaultUri string = effectiveKvUri
 
 // Monitoring
-output logAnalyticsWorkspaceId string = logAnalytics.id
-output logAnalyticsWorkspaceName string = logAnalytics.name
+output logAnalyticsWorkspaceId string = effectiveLawId
+output logAnalyticsWorkspaceName string = empty(centralLogAnalyticsId) ? logAnalytics.name : centralLawName
 output appInsightsName string = appInsights.name
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey
@@ -2031,4 +2493,4 @@ output webContainerAppFqdn string = webContainerApp.properties.configuration.ing
 // Enterprise additions
 output frontDoorEndpoint string = fdEndpoint.properties.hostName
 output vnetName string = vnet.name
-output vnetId string = vnet.id
+output vnetId string = effectiveVnetId

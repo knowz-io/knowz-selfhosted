@@ -58,6 +58,8 @@ vi.mock('../lib/api-client', () => ({
 describe('KnowledgeListPage Sort Order', () => {
   beforeEach(() => {
     mockListKnowledge.mockClear()
+    // Force 'list' view mode so the sort tests can assert table rows.
+    localStorage.setItem('knowz-sh-view-mode:knowledge', 'list')
   })
 
   it('Should_DefaultToCreatedDescending_WhenNoSortParamsSpecified', async () => {

@@ -214,4 +214,70 @@ Describe "selfhosted-deploy.ps1 - NodeID 1C (existing AI resources, RBAC retry)"
             ($scriptText.Contains('[7/7]')) | Should Be $true
         }
     }
+
+    Context "VERIFY SEC_P0Triage §Rule 6: crypto-safe RNG for secret generation" {
+        # Strip comments before searching for Get-Random so the rule-documentation
+        # lines above the helper function don't register as code uses of Get-Random.
+        $lines = Get-Content $scriptPath
+        $codeLines = $lines | Where-Object { $_ -notmatch '^\s*#' }
+        $codeText = ($codeLines -join "`n")
+
+        It "Should_NotInvokeGetRandom_InExecutableCode" {
+            # Get-Random draws from System.Random — not cryptographic. Must not be
+            # used anywhere in executable paths of the deploy script.
+            $codeText | Should Not Match '(?<!#.*)Get-Random'
+        }
+
+        It "Should_DefineNewCryptoSecretHelper_WhenScriptParsed" {
+            # Canonical helper must exist so every secret-mint site uses the OS CSPRNG.
+            $scriptText | Should Match 'function New-CryptoSecret'
+        }
+
+        It "Should_UseRandomNumberGeneratorFill_InHelper" {
+            $scriptText | Should Match 'RandomNumberGenerator\]::Fill'
+        }
+
+        It "Should_CallNewCryptoSecret_AtLeastTwice_WhenSecretsGenerated" {
+            # Both the Container Apps JWT override path AND the appsettings.Local.json
+            # template must use the crypto helper. Grep for the two canonical call
+            # sites — regenerations of this script should keep both.
+            $count = ([regex]::Matches($codeText, 'New-CryptoSecret')).Count
+            $count | Should BeGreaterThan 1
+        }
+    }
+
+    Context "VERIFY SEC_P0Triage §Rule 5: parameterized SQL in enterprise Bicep" {
+        $bicepPath = Join-Path $PSScriptRoot "..\selfhosted-enterprise.bicep"
+
+        It "Should_ExistAtExpectedPath_WhenTestsRun" {
+            Test-Path $bicepPath | Should Be $true
+        }
+
+        $bicepText = if (Test-Path $bicepPath) { Get-Content $bicepPath -Raw } else { "" }
+
+        It "Should_NotInterpolateAadAdminDisplayNameDirectlyIntoTSql" {
+            # Legacy pattern was: CREATE USER [$AadAdminDisplayName] WITH SID = ...
+            # Post-fix: identifier comes through QUOTENAME($(AadAdminDisplayName))
+            # and the value is supplied via -Variable. The raw `[$AadAdminDisplayName]`
+            # pattern inside a CREATE USER statement is forbidden.
+            $bicepText | Should Not Match 'CREATE USER \[\$AadAdminDisplayName\]'
+        }
+
+        It "Should_PassAadVariables_ViaInvokeSqlcmdVariable" {
+            $bicepText | Should Match 'Invoke-Sqlcmd'
+            $bicepText | Should Match '-Variable'
+            $bicepText | Should Match 'AadAdminDisplayName='
+            $bicepText | Should Match 'AadAdminObjectId='
+        }
+
+        It "Should_UseQuoteName_ForIdentifierConstruction" {
+            $bicepText | Should Match 'QUOTENAME'
+        }
+
+        It "Should_ValidateInputFormat_BeforeTouchingSql" {
+            # The defensive regex guard against '] and other T-SQL metacharacters.
+            $bicepText | Should Match '\$AadAdminDisplayName -notmatch'
+            $bicepText | Should Match '\$AadAdminObjectId -notmatch'
+        }
+    }
 }

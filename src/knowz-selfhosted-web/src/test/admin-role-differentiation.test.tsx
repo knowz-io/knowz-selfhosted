@@ -156,71 +156,76 @@ describe('SuperAdminRoute', () => {
   })
 })
 
-// ---- Sidebar Nav Filtering Tests ----
+// ---- Header Nav Role-Filter Tests (post-SH_HeaderNavigation) ----
+// These replace the previous `Sidebar Admin Nav Filtering` block. The admin
+// sub-nav (Tenants/Users/SSO/Configuration) now lives inside `/admin/*` page
+// layouts — not in the primary nav — so these cases assert the primary-nav
+// contract: `/admin` shows for Admin+SuperAdmin, not for User; and the
+// SuperAdmin cross-tenant select only renders for SuperAdmin.
 
-describe('Sidebar Admin Nav Filtering', () => {
+describe('Header Primary Nav Role Filtering', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('Should_ShowAllAdminItems_WhenUserIsSuperAdmin', async () => {
+  async function renderHeader() {
+    const { default: HeaderComp } = await import('../components/Header')
+    return renderWithProviders(<HeaderComp />)
+  }
+
+  function mockTheme() {
+    vi.doMock('../lib/theme', () => ({
+      useTheme: () => ({ theme: 'dark', toggle: vi.fn() }),
+    }))
+  }
+
+  it('Should_ShowAdminNavEntry_WhenUserIsSuperAdmin', async () => {
     vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.SuperAdmin }))))
     vi.doMock('../lib/api-client', () => ({
-      api: {
-        listTenants: vi.fn().mockResolvedValue([]),
-      },
+      api: { listTenants: vi.fn().mockResolvedValue([]) },
     }))
-    const { default: SidebarComp } = await import('../components/Sidebar')
-    renderWithProviders(<SidebarComp open={true} onClose={() => {}} />)
+    mockTheme()
+    await renderHeader()
 
-    expect(screen.getByText('Overview')).toBeInTheDocument()
-    expect(screen.getByText('Tenants')).toBeInTheDocument()
-    expect(screen.getByText('Users')).toBeInTheDocument()
-    expect(screen.getByText('SSO')).toBeInTheDocument()
-    expect(screen.getByText('Configuration')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-link-admin')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-link-knowledge')).toBeInTheDocument()
   })
 
-  it('Should_ShowOnlyOverviewAndUsers_WhenUserIsAdmin', async () => {
+  it('Should_ShowAdminNavEntry_WhenUserIsAdmin', async () => {
     vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
-      api: {
-        listTenants: vi.fn().mockResolvedValue([]),
-      },
+      api: { listTenants: vi.fn().mockResolvedValue([]) },
     }))
-    const { default: SidebarComp } = await import('../components/Sidebar')
-    renderWithProviders(<SidebarComp open={true} onClose={() => {}} />)
+    mockTheme()
+    await renderHeader()
 
-    expect(screen.getByText('Overview')).toBeInTheDocument()
-    expect(screen.getByText('Users')).toBeInTheDocument()
-    expect(screen.queryByText('Tenants')).not.toBeInTheDocument()
-    expect(screen.queryByText('SSO')).not.toBeInTheDocument()
-    expect(screen.queryByText('Configuration')).not.toBeInTheDocument()
+    expect(screen.getByTestId('nav-link-admin')).toBeInTheDocument()
   })
 
-  it('Should_NotShowAdminSection_WhenUserIsRegularUser', async () => {
+  it('Should_NotShowAdminNavEntry_WhenUserIsRegularUser', async () => {
     vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.User }))))
     vi.doMock('../lib/api-client', () => ({
-      api: {
-        listTenants: vi.fn().mockResolvedValue([]),
-      },
+      api: { listTenants: vi.fn().mockResolvedValue([]) },
     }))
-    const { default: SidebarComp } = await import('../components/Sidebar')
-    renderWithProviders(<SidebarComp open={true} onClose={() => {}} />)
+    mockTheme()
+    await renderHeader()
 
-    expect(screen.queryByText('Administration')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-link-admin')).not.toBeInTheDocument()
   })
 
-  it('Should_NotShowTenantSelector_WhenUserIsAdmin', async () => {
+  it('Should_NotShowSuperAdminTenantSelect_WhenUserIsAdmin', async () => {
     vi.doMock('../lib/auth', () => authModuleMock(mockAuth(makeMockUser({ role: UserRole.Admin }))))
     vi.doMock('../lib/api-client', () => ({
       api: {
-        listTenants: vi.fn().mockResolvedValue([]),
+        listTenants: vi.fn().mockResolvedValue([
+          { id: 't1', name: 'Tenant 1', slug: 't1', description: null, isActive: true, userCount: 0, createdAt: '2026-01-01T00:00:00Z' },
+        ]),
       },
     }))
-    const { default: SidebarComp } = await import('../components/Sidebar')
-    renderWithProviders(<SidebarComp open={true} onClose={() => {}} />)
+    mockTheme()
+    await renderHeader()
 
-    expect(screen.queryByText('Tenant Context')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sh-superadmin-tenant-select')).not.toBeInTheDocument()
   })
 })
 

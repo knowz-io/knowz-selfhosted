@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Knowz.Core\Knowz.Core.csproj" />
     <ProjectReference Include="..\Knowz.SelfHosted.Application\Knowz.SelfHosted.Application.csproj" />
     <ProjectReference Include="..\Knowz.SelfHosted.Infrastructure\Knowz.SelfHosted.Infrastructure.csproj" />
+    <ProjectReference Include="..\Knowz.SelfHosted.Setup\Knowz.SelfHosted.Setup.csproj" />
   </ItemGroup>
 
   <ItemGroup>

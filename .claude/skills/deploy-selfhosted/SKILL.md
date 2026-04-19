@@ -1,23 +1,38 @@
 ---
 name: deploy-selfhosted
-description: "Deploy Knowz self-hosted to Azure — guides infrastructure provisioning, AI service configuration, and post-deployment verification. Use when the user wants to deploy or set up a new self-hosted instance."
+description: "Deploy Knowz self-hosted to Azure — guides infrastructure provisioning, AI service configuration, and post-deployment verification. --enterprise adds BYO VNet/KV/LAW/OpenAI/ACR, MI-only auth, post-deploy smoke, and Front Door PL approval for landing-zone-ready customer deploys. Use when the user wants to deploy or set up a new self-hosted instance."
 user-invocable: true
 allowed-tools: Read, Write, Bash, Glob, Grep, AskUserQuestion
-argument-hint: "[--terraform|--bicep] [--resource-group=NAME] [--location=REGION]"
+argument-hint: "[--terraform|--bicep] [--enterprise] [--resource-group=NAME] [--location=REGION]"
 ---
 
 # Deploy Knowz Self-Hosted to Azure
 
 A guided deployment of Knowz self-hosted to Azure. Covers pre-flight checks (Azure CLI, subscription, providers), interactive configuration (AI services with 3 modes: Deploy New / Use Existing / External), deployment execution (Terraform or Bicep), post-deployment verification, targeted remediation, and a final summary.
 
-**Usage**: `/deploy-selfhosted [--terraform|--bicep] [--resource-group=NAME] [--location=REGION]`
+The `--enterprise` flag is **additive**: it inserts Phases 1.3.5 (Sentry DSN), 1.5 BYO-capture extension (VNet/PE subnet/KV/LAW/OpenAI/ACR), 4.5 (GHCR pull PAT → KV), 6.5 (real-enrichment smoke), and 6.6 (Front Door private-link approval). Standard deploys ignore every new phase.
+
+**Usage**: `/deploy-selfhosted [--terraform|--bicep] [--enterprise] [--resource-group=NAME] [--location=REGION]`
 
 **Examples**:
-- `/deploy-selfhosted` — Full interactive deployment
+- `/deploy-selfhosted` — Full interactive standard deployment
 - `/deploy-selfhosted --terraform --location=eastus2` — Terraform path, location pre-set
 - `/deploy-selfhosted --bicep --resource-group=my-knowz-rg` — Bicep path, RG pre-set
+- `/deploy-selfhosted --enterprise --bicep --resource-group=rg-sh-enterprise-customer-01` — Enterprise ALZ-ready deploy with BYO-infra prompts, MI-only auth, smoke test, FD PL approval
 
-Parse arguments. Extract `--terraform`, `--bicep`, `--resource-group`, `--location` if provided.
+Parse arguments. Extract `--terraform`, `--bicep`, `--enterprise`, `--resource-group`, `--location` if provided.
+
+```bash
+# Argument parsing — --enterprise is additive
+ENTERPRISE=false
+for arg in "$@"; do
+  case "$arg" in
+    --enterprise) ENTERPRISE=true ;;
+  esac
+done
+```
+
+When `$ENTERPRISE = true`, every Phase marked "enterprise only" below runs in addition to the standard phases. API-key/JWT prompts in Phase 1.5 are **skipped** under enterprise (MI-only auth per `SH_ENTERPRISE_MI_SWAP.md`); credentials come from first-run bootstrap (β's `APP_CredentialBootstrap`).
 
 ---
 
@@ -203,6 +218,32 @@ az cognitiveservices usage list \
 If the API returns quota data and it's insufficient, offer fallback via `AskUserQuestion`:
 - **Options**: Switch to Use Existing / Try different region / Skip OpenAI
 
+### Step 1.3.5: Sentry DSN (enterprise only)
+
+**Runs only if `$ENTERPRISE = true`.** Skipped in standard flow.
+
+Ask with `AskUserQuestion`:
+- **Question**: "Configure error tracking (Sentry)?"
+- **Options**:
+  - Yes — provide DSN (stores as KV secret `sentrydsn`)
+  - No — skip (disables Sentry; no telemetry data leaves the tenant)
+
+If Yes, prompt for the DSN and validate format before accepting. Re-prompt up to 2 more times, then fail the skill with a clear error (Rule 2 of `SH_ENTERPRISE_SKILL.md`: catch malformed input at prompt time, not post-deploy).
+
+```bash
+SENTRY_DSN_REGEX='^https://[a-f0-9]+@[a-z0-9.]+\.ingest\.sentry\.io/[0-9]+$'
+attempt=0
+while [ "$attempt" -lt 3 ]; do
+  read -rp "Sentry DSN: " SENTRY_DSN
+  if [[ "$SENTRY_DSN" =~ $SENTRY_DSN_REGEX ]]; then break; fi
+  echo "Invalid DSN format (expect https://<key>@<org>.ingest.sentry.io/<project>)"
+  attempt=$((attempt + 1))
+done
+[[ "$SENTRY_DSN" =~ $SENTRY_DSN_REGEX ]] || { echo "ERROR: Sentry DSN format invalid after 3 attempts"; exit 1; }
+```
+
+Persist the DSN to KV in Phase 3 (secret name `sentrydsn`). If the user answered "No", write an empty string to that secret so Bicep's secretRef resolves.
+
 ### Step 1.4: Optional features
 
 Ask with `AskUserQuestion` (multi-select):
@@ -213,8 +254,42 @@ Ask with `AskUserQuestion` (multi-select):
 ### Step 1.5: Credentials
 
 - **SQL admin password**: Ask user. Validate: 12-128 chars with uppercase, lowercase, digit, special char. Regex: `^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,128}$`
-- **SuperAdmin password** (for Web UI): Ask user. Validate: 8+ chars similar complexity.
-- **API key + JWT secret** (if Container Apps): Auto-generate, display once, recommend saving.
+- **SuperAdmin password** (for Web UI): Ask user. Validate: 8+ chars similar complexity. **Skipped in `--enterprise` mode** — credentials come from first-run bootstrap (`SelfHosted--BootstrapApiKey` KV secret, 24-hour auto-expiry).
+- **API key + JWT secret** (if Container Apps): Auto-generate, display once, recommend saving. **Skipped in `--enterprise` mode** (MI-only auth per `SH_ENTERPRISE_MI_SWAP.md`).
+
+#### Step 1.5 extension: BYO infrastructure capture (enterprise only)
+
+**Runs only if `$ENTERPRISE = true`.** Each prompt validates the value before accepting. Failures re-prompt up to 2 more times, then abort the skill.
+
+Ask sequentially with `AskUserQuestion` — **NOT multi-select**; each Yes branches into a follow-up:
+
+1. **"Bring-your-own VNet subnet (for Container Apps)?"**
+   - **Yes** → prompt `byoVnetSubnetId`. Validate: `az network vnet subnet show --ids "$ID" -o json` returns 200 AND the subnet has no delegation conflicting with CAE requirements.
+   - **No** → Bicep creates a VNet with default CIDR.
+
+2. **"Bring-your-own private-endpoint subnet?"**
+   - **Yes** → prompt `byoVnetPeSubnetId`. Validate: same `az network vnet subnet show` check AND `.properties.delegations == []` (PE subnets must be non-delegated, enforced by `alz-assert-pe-subnet` Bicep guard).
+   - **Create for me** → prompt `peSubnetAddressPrefix` (e.g., `10.100.0.0/24`). RFC-1918 validate: regex `^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)[0-9./]+$`.
+
+3. **"Bring-your-own Key Vault?"**
+   - **Yes** → prompt `byoKeyVaultId`. Validate: `az keyvault show --ids "$ID"` returns 200 AND `.properties.enableRbacAuthorization == true` (enterprise standard — no access-policy KVs).
+
+4. **"Bring-your-own Log Analytics Workspace (central)?"**
+   - **Yes** → prompt `centralLogAnalyticsId`. Validate: `az monitor log-analytics workspace show --ids "$ID"` returns 200.
+
+5. **"Bring-your-own Azure OpenAI?"**
+   - **Yes** → prompt `existingOpenAiResourceId`. Validate: `az cognitiveservices account show --ids "$ID"` returns 200 AND `.kind in ('OpenAI', 'AIServices')`. Reject other kinds (e.g., `TextAnalytics`). Also probe required deployments (`gpt-5.2-chat`, `text-embedding-3-small`) via `az cognitiveservices account deployment list` — warn if missing, offer to proceed.
+   - **No** → Bicep deploys a new OpenAI resource (warn about quota in the tenant).
+
+6. **"Pull images from external ACR (instead of GHCR)?"**
+   - **Yes** → prompt `externalAcrName` + `externalAcrResourceGroup`. Validate: `az acr show -n "$NAME" -g "$RG"` returns 200. Check the deployer or the target MI already has `AcrPull` on that registry — if not, offer to grant it.
+   - **No** → use GHCR (default). Phase 4.5 will collect the pull PAT.
+
+7. **"Entra ID admin group object ID for SQL AAD auth?"** (mandatory in enterprise)
+   - Prompt `aadAdminObjectId`. Validate: `az ad group show --group "$OID"` returns 200.
+   - Prompt `aadAdminEmail` (for alerting; Bicep can't look up email from OID — see `SH_ENTERPRISE_SKILL.md` D2). Validate: basic email regex AND cross-check matches `.mail` on the AAD group if present; warn if mismatched.
+
+Each captured value flows into Bicep parameters in Phase 3 (see `SH_ENTERPRISE_BYO_INFRA.md` param list). If both `byoVnetPeSubnetId` and `peSubnetAddressPrefix` are unset, Bicep's `alz-assert-pe-subnet` guard will fail the template at evaluation time with a clear message — this matches the 2026-04-17 partner-outage hardening.
 
 ### Step 1.6: Confirmation
 
@@ -455,6 +530,51 @@ curl -sfS "https://${SEARCH_NAME}.search.windows.net/indexes/knowledge?api-versi
 ═══════════════════════════════════════════════════════════════════
 ```
 
+### Step 4.8: GHCR pull PAT (enterprise only)
+
+**Runs only if `$ENTERPRISE = true` AND the user did NOT select external ACR in Phase 1.5.**
+
+Enterprise Container Apps pull private images from `ghcr.io/knowz-io/knowz-selfhosted:*`. The PAT lives in Key Vault (secret `ghcr--pull--token`), referenced by `containerApp.registries[].passwordSecretRef` — never passed through env vars or the shell history (Rule 3, `SH_ENTERPRISE_SKILL.md`).
+
+Ask with `AskUserQuestion`:
+- **Question**: "Provide a fine-grained GitHub PAT with `read:packages` scope?"
+- **Options**:
+  - Provide now (Recommended — required for image pulls)
+  - I'll set it later via `az keyvault secret set` (deploy succeeds, but Container Apps revisions will fail to pull until the secret is populated)
+
+If "Provide now":
+
+```bash
+# Prompt + format validation
+PAT_REGEX='^(ghp_|github_pat_)[A-Za-z0-9_]{36,}$'
+attempt=0
+while [ "$attempt" -lt 3 ]; do
+  read -rsp "GitHub PAT (read:packages, 90-day expiry): " GHCR_PAT
+  echo
+  if [[ "$GHCR_PAT" =~ $PAT_REGEX ]]; then break; fi
+  echo "Invalid PAT format (expect ghp_... or github_pat_..., 40+ chars)"
+  attempt=$((attempt + 1))
+done
+[[ "$GHCR_PAT" =~ $PAT_REGEX ]] || { echo "ERROR: GHCR PAT format invalid after 3 attempts"; exit 1; }
+
+# Persist to KV with expiry tag (90-day rotation reminder)
+EXPIRES_AT="$(date -d '+90 days' -Iseconds 2>/dev/null || date -u -v+90d +%Y-%m-%dT%H:%M:%SZ)"
+az keyvault secret set \
+  --vault-name "$KV_NAME" \
+  --name "ghcr--pull--token" \
+  --value "$GHCR_PAT" \
+  --tags "expiresAt=$EXPIRES_AT" "scope=read:packages" "rotationInterval=90d" \
+  > /dev/null
+unset GHCR_PAT
+
+# Restart revisions so the Container App picks up the updated registry credential
+for app in ${PREFIX}-api ${PREFIX}-mcp ${PREFIX}-web; do
+  az containerapp revision restart -n "$app" -g "$RG" 2>/dev/null || true
+done
+```
+
+Log a reminder to the deployment summary: "Rotate `ghcr--pull--token` before $EXPIRES_AT (14-day advance reminder recommended)."
+
 ---
 
 ## Phase 5: Remediation (if any checks failed)
@@ -522,7 +642,7 @@ terraform workspace select $WORKSPACE
 terraform destroy
 ```
 
-### Step 6.5: Cost monitoring
+### Step 6.4b: Cost monitoring
 
 ```bash
 az consumption usage list \
@@ -531,7 +651,52 @@ az consumption usage list \
   --end-date $(date +%Y-%m-%d) -o table
 ```
 
-### Step 6.6: Save deployment record (optional)
+### Step 6.5: Real-enrichment smoke (enterprise only)
+
+**Runs only if `$ENTERPRISE = true`.** Fails the skill on any non-zero exit — resources remain in place for post-mortem (Rule 2 of `SH_ENTERPRISE_SMOKE_TEST.md`).
+
+The smoke test exercises the full write path (upload → enrichment → summary → tags → chunks → search → outbox) using three file types (MD, PDF, PNG) so OpenAI summarization, DocIntel extraction, and Vision analysis are each verified once. `/healthz`-only smoke is explicitly forbidden — it reports green on schema-drift-broken deploys (2026-04-15 incident).
+
+```bash
+# Export RESOURCE_GROUP + API_APP_NAME so smoke Step 8 (Data Protection canary,
+# VERIFY 12) runs by default — restarts the API revision and decrypts a token.
+# Without these, the canary prints a WARN and skips; exporting them here makes
+# the default enterprise flow cover DP recovery end-to-end.
+export RESOURCE_GROUP="$RG"
+export API_APP_NAME="${PREFIX}-api"
+
+bash "$REPO_ROOT/selfhosted/scripts/post-deploy-smoke.sh" \
+    "https://${API_FQDN}" "$KV_NAME" \
+    || {
+        echo "ERROR: Post-deploy smoke FAILED. Resources remain in place for inspection."
+        echo "  Inspect API logs:   az containerapp logs show -n ${PREFIX}-api -g $RG --tail 200"
+        echo "  Inspect outbox:     az sql db query ... 'SELECT TOP 20 * FROM EnrichmentOutboxEntries WHERE Status=''Failed'''"
+        echo "  Re-run after fix:   bash $REPO_ROOT/selfhosted/scripts/post-deploy-smoke.sh https://$API_FQDN $KV_NAME"
+        exit 1
+    }
+```
+
+On success the smoke script prints `[8/8] SMOKE PASSED` and cleans up its 3 seed knowledge items so the vault returns empty for the bootstrap user.
+
+### Step 6.6: Front Door private-link approval (enterprise only, conditional)
+
+**Runs only if `$ENTERPRISE = true` AND Front Door was deployed (`$ENTERPRISE_FD = true`).** Invoked AFTER Phase 6.5 succeeds — never enable traffic on a broken stack (Rule 6 of `SH_ENTERPRISE_SMOKE_TEST.md`).
+
+```bash
+if [ "$ENTERPRISE_FD" = "true" ]; then
+    pwsh "$REPO_ROOT/selfhosted/infrastructure/post-deploy/approve-front-door-pl.ps1" \
+        -ResourceGroup "$RG" \
+        || {
+            echo "ERROR: Front Door private-link approval FAILED."
+            echo "  Inspect PL connections: az network private-endpoint-connection list --id \$(az containerapp env show -n ${PREFIX}-env -g $RG --query id -o tsv)"
+            exit 1
+        }
+fi
+```
+
+The script polls for up to 180s for Pending FD shared-private-link connections on the CAE, approves them via `az network private-endpoint-connection approve`, and fails if any remaining connection is `Pending`, `Disconnected`, or `Rejected` (VERIFY criterion in `SH_ENTERPRISE_SMOKE_TEST.md`).
+
+### Step 6.7: Save deployment record (optional)
 
 Ask with `AskUserQuestion` if the user wants to save this deployment to the Knowz vault for future reference (only if MCP Knowz tools are available).
 

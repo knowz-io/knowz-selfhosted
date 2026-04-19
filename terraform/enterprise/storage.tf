@@ -15,8 +15,9 @@ resource "azurerm_storage_account" "main" {
   https_traffic_only_enabled    = true
   min_tls_version               = "TLS1_2"
   allow_nested_items_to_be_public = false
-  # TODO: Switch to managed identity when app code supports DefaultAzureCredential for blob access
-  shared_access_key_enabled     = true
+  # MI-swap landed (Builder B commit 3a690a4c): BlobServiceClient uses DefaultAzureCredential
+  # + Storage:Azure:AccountUrl (no AccountKey). Shared-key access disabled for enterprise.
+  shared_access_key_enabled     = false
   tags                          = local.effective_tags
 
   network_rules {
@@ -27,6 +28,14 @@ resource "azurerm_storage_account" "main" {
 
 resource "azurerm_storage_container" "files" {
   name                  = "selfhosted-files"
+  storage_account_id    = azurerm_storage_account.main.id
+  container_access_type = "private"
+}
+
+# Data Protection key ring container — SH_ENTERPRISE_BICEP_HARDENING §Rule 9.
+# App persists ASP.NET Core DP key ring here (wrapped by dp-master-key KV key).
+resource "azurerm_storage_container" "dp_keys" {
+  name                  = "dp-keys"
   storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }

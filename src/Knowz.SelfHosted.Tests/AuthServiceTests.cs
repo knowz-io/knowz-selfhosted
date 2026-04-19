@@ -18,6 +18,12 @@ public class AuthServiceTests : IDisposable
     private readonly SelfHostedOptions _options;
     private static readonly Guid TenantId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
+    /// <summary>
+    /// Seed password that must pass <see cref="AuthService.IsWeakPassword"/>:
+    /// 16 chars, upper + lower + digit + symbol, no denylist fragment.
+    /// </summary>
+    private const string TestStrongPassword = "R4pid!Vault-Seed";
+
     public AuthServiceTests()
     {
         var dbOptions = new DbContextOptionsBuilder<SelfHostedDbContext>()
@@ -27,8 +33,11 @@ public class AuthServiceTests : IDisposable
         _options = new SelfHostedOptions
         {
             TenantId = TenantId,
-            SuperAdminUsername = "admin",
-            SuperAdminPassword = "changeme",
+            // SuperAdmin seed creds — strong enough to pass AuthService.IsWeakPassword
+            // (>=12 chars, upper+lower+digit+symbol, not on the denylist). The literal
+            // "changeme" default was removed in SEC_P0Triage §Rule 3.
+            SuperAdminUsername = "svc-seed-test",
+            SuperAdminPassword = TestStrongPassword,
             JwtSecret = "this-is-a-test-secret-key-at-least-32-characters",
             JwtExpirationMinutes = 60,
             JwtIssuer = "test-issuer"
@@ -95,7 +104,7 @@ public class AuthServiceTests : IDisposable
 
         var users = await _db.Users.ToListAsync();
         Assert.Single(users);
-        Assert.Equal("admin", users[0].Username);
+        Assert.Equal(_options.SuperAdminUsername, users[0].Username);
         Assert.Equal(UserRole.SuperAdmin, users[0].Role);
         Assert.True(users[0].IsActive);
     }
@@ -127,14 +136,15 @@ public class AuthServiceTests : IDisposable
         await _authService.EnsureSuperAdminExistsAsync();
 
         var user = await _db.Users.FirstAsync();
-        Assert.NotEqual("changeme", user.PasswordHash);
-        Assert.True(_authService.VerifyPassword("changeme", user.PasswordHash));
+        Assert.NotEqual(TestStrongPassword, user.PasswordHash);
+        Assert.True(_authService.VerifyPassword(TestStrongPassword, user.PasswordHash));
     }
 
     [Fact]
     public async Task Should_FixExistingAdminRole_WhenSuperAdminMissing()
     {
-        // Simulate legacy DB state: admin exists with Role=0 (old enum SuperAdmin=0)
+        // Simulate legacy DB state: the configured admin exists with Role=0
+        // (old enum SuperAdmin=0, post-SwapUserRoleValues it's User=0).
         var tenant = new Tenant
         {
             Name = "Default", Slug = "default", IsActive = true,
@@ -143,8 +153,8 @@ public class AuthServiceTests : IDisposable
         _db.Tenants.Add(tenant);
         var user = new User
         {
-            TenantId = tenant.Id, Username = "admin",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("changeme"),
+            TenantId = tenant.Id, Username = _options.SuperAdminUsername,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(TestStrongPassword),
             DisplayName = "Admin", Role = UserRole.User, // Wrong role — the bug
             IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
@@ -153,7 +163,7 @@ public class AuthServiceTests : IDisposable
 
         await _authService.EnsureSuperAdminExistsAsync();
 
-        var repaired = await _db.Users.FirstAsync(u => u.Username == "admin");
+        var repaired = await _db.Users.FirstAsync(u => u.Username == _options.SuperAdminUsername);
         Assert.Equal(UserRole.SuperAdmin, repaired.Role);
         // Should NOT create a duplicate
         Assert.Single(await _db.Users.ToListAsync());
@@ -178,12 +188,12 @@ public class AuthServiceTests : IDisposable
     {
         await _authService.EnsureSuperAdminExistsAsync();
 
-        var result = await _authService.LoginAsync("admin", "changeme");
+        var result = await _authService.LoginAsync(_options.SuperAdminUsername, TestStrongPassword);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Token);
         Assert.True(result.ExpiresAt > DateTime.UtcNow);
-        Assert.Equal("admin", result.User.Username);
+        Assert.Equal(_options.SuperAdminUsername, result.User.Username);
         Assert.Equal(UserRole.SuperAdmin, result.User.Role);
     }
 
@@ -202,7 +212,7 @@ public class AuthServiceTests : IDisposable
         await _authService.EnsureSuperAdminExistsAsync();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _authService.LoginAsync("admin", "wrongpassword"));
+            () => _authService.LoginAsync(_options.SuperAdminUsername, "wrongpassword"));
     }
 
     [Fact]
@@ -214,7 +224,7 @@ public class AuthServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            () => _authService.LoginAsync("admin", "changeme"));
+            () => _authService.LoginAsync(_options.SuperAdminUsername, TestStrongPassword));
     }
 
     [Fact]
@@ -223,7 +233,7 @@ public class AuthServiceTests : IDisposable
         await _authService.EnsureSuperAdminExistsAsync();
         var beforeLogin = DateTime.UtcNow;
 
-        await _authService.LoginAsync("admin", "changeme");
+        await _authService.LoginAsync(_options.SuperAdminUsername, TestStrongPassword);
 
         var user = await _db.Users.FirstAsync();
         Assert.NotNull(user.LastLoginAt);
@@ -235,7 +245,7 @@ public class AuthServiceTests : IDisposable
     {
         await _authService.EnsureSuperAdminExistsAsync();
 
-        var result = await _authService.LoginAsync("admin", "changeme");
+        var result = await _authService.LoginAsync(_options.SuperAdminUsername, TestStrongPassword);
 
         Assert.Equal("Default", result.User.TenantName);
     }
@@ -253,7 +263,7 @@ public class AuthServiceTests : IDisposable
         var result = await _authService.ValidateApiKeyAsync("ksh_testapikey12345678901234567890");
 
         Assert.NotNull(result);
-        Assert.Equal("admin", result!.User.Username);
+        Assert.Equal(_options.SuperAdminUsername, result!.User.Username);
         Assert.NotEmpty(result.Token);
     }
 
@@ -293,7 +303,7 @@ public class AuthServiceTests : IDisposable
 
         Assert.NotNull(result);
         Assert.Equal(user.Id, result!.Id);
-        Assert.Equal("admin", result.Username);
+        Assert.Equal(_options.SuperAdminUsername, result.Username);
     }
 
     [Fact]
@@ -311,7 +321,7 @@ public class AuthServiceTests : IDisposable
     {
         await _authService.EnsureSuperAdminExistsAsync();
 
-        var result = await _authService.LoginAsync("admin", "changeme");
+        var result = await _authService.LoginAsync(_options.SuperAdminUsername, TestStrongPassword);
 
         // Parse the JWT to verify claims
         var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
@@ -322,5 +332,103 @@ public class AuthServiceTests : IDisposable
         Assert.Contains(token.Claims, c => c.Type == "name" && c.Value == "Super Administrator");
         Assert.Contains(token.Claims, c => c.Type == "role" && c.Value == "SuperAdmin");
         Assert.Contains(token.Claims, c => c.Type == "tenantId");
+    }
+
+    // --- SEC_P0Triage §Rule 3: weak-password denylist + complexity ---
+
+    [Theory]
+    [InlineData("changeme")]
+    [InlineData("admin")]
+    [InlineData("Admin1234567!")]    // contains "admin"
+    [InlineData("ChangeMe123!XYZ")]  // contains "changeme"
+    [InlineData("Password123!")]     // contains "password"
+    [InlineData("Knowz!Deploy9")]    // contains "knowz"
+    [InlineData("LetMeIn1234!")]     // contains "letmein"
+    public void IsWeakPassword_Rejects_DenylistSubstrings(string password)
+    {
+        Assert.True(AuthService.IsWeakPassword(password),
+            $"Expected weak-password check to reject '{password}'.");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("short1!A")]              // 8 chars — too short
+    [InlineData("nouppercase123!")]       // no uppercase
+    [InlineData("NOLOWERCASE123!")]       // no lowercase
+    [InlineData("NoDigitsOrSymbols")]     // no digit or symbol (also <12 is fine here; 17 chars)
+    [InlineData("NoSymbol12345678")]      // no non-alnum
+    public void IsWeakPassword_Rejects_ComplexityFailures(string? password)
+    {
+        Assert.True(AuthService.IsWeakPassword(password),
+            $"Expected weak-password check to reject '{password ?? "<null>"}'.");
+    }
+
+    [Theory]
+    [InlineData("R4pid!Vault-Seed")]
+    [InlineData("Str0ng#Random-Value-2026")]
+    [InlineData("Xy!8zQp9mTvR2wL7")]
+    public void IsWeakPassword_Accepts_StrongPasswords(string password)
+    {
+        Assert.False(AuthService.IsWeakPassword(password),
+            $"Expected weak-password check to accept '{password}'.");
+    }
+
+    [Fact]
+    public async Task EnsureSuperAdmin_Throws_WhenPasswordOnDenylist()
+    {
+        _options.SuperAdminPassword = "changeme";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _authService.EnsureSuperAdminExistsAsync());
+
+        Assert.Contains("fails policy", ex.Message, StringComparison.Ordinal);
+        // No DB writes on failure — tenant creation is downstream of the guard.
+        Assert.Empty(await _db.Users.ToListAsync());
+        Assert.Empty(await _db.Tenants.ToListAsync());
+    }
+
+    [Fact]
+    public async Task EnsureSuperAdmin_Throws_WhenPasswordEmpty()
+    {
+        _options.SuperAdminPassword = "";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _authService.EnsureSuperAdminExistsAsync());
+
+        Assert.Contains("SuperAdminPassword is required", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EnsureSuperAdmin_Throws_WhenUsernameEmpty()
+    {
+        _options.SuperAdminUsername = "";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _authService.EnsureSuperAdminExistsAsync());
+
+        Assert.Contains("SuperAdminUsername is required", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EnsureSuperAdmin_Throws_WhenPasswordFailsComplexity()
+    {
+        _options.SuperAdminPassword = "nouppercase12!";  // no uppercase
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _authService.EnsureSuperAdminExistsAsync());
+
+        Assert.Contains("fails policy", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EnsureSuperAdmin_Succeeds_WhenPasswordIsStrong()
+    {
+        // Covered by Should_CreateSuperAdmin_WhenNoneExists — this is the explicit
+        // sibling to the denylist tests for readability.
+        await _authService.EnsureSuperAdminExistsAsync();
+
+        var user = await _db.Users.SingleAsync();
+        Assert.Equal(UserRole.SuperAdmin, user.Role);
     }
 }

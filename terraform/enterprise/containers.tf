@@ -80,9 +80,10 @@ resource "azurerm_container_app" "api" {
     identity            = azurerm_user_assigned_identity.main.id
   }
 
+  # MI-swap: AccountUrl + DefaultAzureCredential replaces the connection-string flow.
   secret {
-    name                = "storage-connection-string"
-    key_vault_secret_id = azurerm_key_vault_secret.storage_connection.versionless_id
+    name                = "storage-account-url"
+    key_vault_secret_id = azurerm_key_vault_secret.storage_account_url.versionless_id
     identity            = azurerm_user_assigned_identity.main.id
   }
 
@@ -192,12 +193,26 @@ resource "azurerm_container_app" "api" {
         value = "AzureBlob"
       }
       env {
-        name        = "Storage__Azure__ConnectionString"
-        secret_name = "storage-connection-string"
+        # MI-swap: app reads AccountUrl + uses DefaultAzureCredential.
+        name        = "Storage__Azure__AccountUrl"
+        secret_name = "storage-account-url"
       }
       env {
         name  = "Storage__Azure__ContainerName"
         value = "selfhosted-files"
+      }
+      env {
+        # Data Protection key ring (Builder A commit 4b06cb3e4) reads this.
+        name        = "Storage__AzureBlob__AccountUrl"
+        secret_name = "storage-account-url"
+      }
+      env {
+        name  = "AzureKeyVault__VaultUri"
+        value = azurerm_key_vault.main.vault_uri
+      }
+      env {
+        name  = "AzureKeyVault__DataProtectionKeyName"
+        value = "selfhosted-dp-key"
       }
       env {
         name        = "SelfHosted__ApiKey"

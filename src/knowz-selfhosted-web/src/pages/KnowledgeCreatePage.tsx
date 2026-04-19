@@ -150,7 +150,7 @@ export default function KnowledgeCreatePage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4">
       <Link
         to="/knowledge"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -160,7 +160,7 @@ export default function KnowledgeCreatePage() {
 
       <h1 className="text-2xl font-bold">Create Knowledge</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">Title</label>
           <input

@@ -124,9 +124,25 @@ public class EnrichmentBackgroundService : BackgroundService
                 .FirstOrDefaultAsync(e => e.KnowledgeId == workItem.KnowledgeId &&
                     (e.Status == EnrichmentStatus.Pending || e.Status == EnrichmentStatus.Processing), ct);
 
+            // SH_ENTERPRISE_RUNTIME_RESILIENCE §Rule 4: increment attempts counter
+            // + mint activity-log row BEFORE the enrichment body runs. `finally`
+            // stamps FinishedAt and Status so operators can distinguish "still
+            // running" from "silently died".
+            EnrichmentActivityLog? activity = null;
             if (outboxItem != null)
             {
                 outboxItem.Status = EnrichmentStatus.Processing;
+                outboxItem.AiProcessingAttempts += 1;
+                outboxItem.StartedProcessingAt = DateTime.UtcNow;
+                activity = new EnrichmentActivityLog
+                {
+                    TenantId = outboxItem.TenantId,
+                    KnowledgeId = outboxItem.KnowledgeId,
+                    AttemptNumber = outboxItem.AiProcessingAttempts,
+                    StartedAt = DateTime.UtcNow,
+                    Status = EnrichmentStatus.Processing,
+                };
+                db.EnrichmentActivityLogs.Add(activity);
                 await db.SaveChangesAsync(ct);
             }
 
@@ -273,6 +289,11 @@ public class EnrichmentBackgroundService : BackgroundService
                 {
                     outboxItem.Status = EnrichmentStatus.Completed;
                     outboxItem.ProcessedAt = DateTime.UtcNow;
+                    if (activity != null)
+                    {
+                        activity.Status = EnrichmentStatus.Completed;
+                        activity.FinishedAt = DateTime.UtcNow;
+                    }
                     await db.SaveChangesAsync(ct);
                 }
 
@@ -293,6 +314,12 @@ public class EnrichmentBackgroundService : BackgroundService
                     {
                         outboxItem.Status = EnrichmentStatus.Pending;
                         outboxItem.NextRetryAt = DateTime.UtcNow + TimeSpan.FromMinutes(Math.Pow(2, outboxItem.RetryCount));
+                    }
+                    if (activity != null)
+                    {
+                        activity.Status = EnrichmentStatus.Failed;
+                        activity.FinishedAt = DateTime.UtcNow;
+                        activity.ErrorMessage = outboxItem.ErrorMessage;
                     }
                     await db.SaveChangesAsync(ct);
                 }

@@ -83,6 +83,9 @@ public class SelfHostedDbContext : DbContext
     // Infrastructure entities (no query filters)
     public DbSet<EnrichmentOutboxItem> EnrichmentOutbox => Set<EnrichmentOutboxItem>();
 
+    // Enrichment activity log — 1 row per attempt. Tenant-scoped via query filter.
+    public DbSet<EnrichmentActivityLog> EnrichmentActivityLogs => Set<EnrichmentActivityLog>();
+
     // System configuration (no query filter — admin-level, not tenant-scoped)
     public DbSet<SystemConfiguration> SystemConfigurations => Set<SystemConfiguration>();
 
@@ -356,6 +359,16 @@ public class SelfHostedDbContext : DbContext
             entity.HasIndex(e => new { e.Status, e.NextRetryAt });
             entity.HasIndex(e => new { e.TenantId, e.Status });
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+        });
+
+        // EnrichmentActivityLog — tenant-scoped, one row per attempt
+        modelBuilder.Entity<EnrichmentActivityLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.TenantId, e.KnowledgeId });
+            entity.HasIndex(e => new { e.TenantId, e.StartedAt });
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+            entity.HasQueryFilter(e => e.TenantId == _tenantId);
         });
 
         // --- PromptTemplate entity configuration (NO query filter — scoping in service) ---

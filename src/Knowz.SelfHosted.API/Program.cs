@@ -1,14 +1,17 @@
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
+using Azure.Core;
 using Azure.Identity;
+using Knowz.Core.Configuration;
+using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.API.Endpoints;
 using Knowz.SelfHosted.API.Middleware;
 using Knowz.SelfHosted.API.Services;
 using Knowz.SelfHosted.Application.Extensions;
-using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Application.Interfaces;
 using Knowz.SelfHosted.Application.Services;
-using Knowz.Core.Configuration;
+using Knowz.SelfHosted.Infrastructure.Interfaces;
+using Knowz.SelfHosted.Application.Options;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Extensions;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -27,9 +30,36 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 // take precedence over appsettings.Local.json when running under Aspire AppHost.
 builder.Configuration.AddEnvironmentVariables();
 
-// Data Protection (used by DatabaseConfigurationProvider and ConfigurationManagementService)
-builder.Services.AddDataProtection()
-    .SetApplicationName("Knowz.SelfHosted");
+// Data Protection (used by DatabaseConfigurationProvider and ConfigurationManagementService).
+// SEC_P0Triage Item 10 / §Rule 8: when running on Azure Container Apps with a
+// customer-managed Key Vault, persist the key ring to Blob Storage and wrap it with
+// the customer's KV key. Default in-memory / filesystem rings evaporate on every
+// container restart, which drops every encrypted SystemConfiguration row on the
+// floor (silent credential loss, telemetry shows up as a cascade of decrypt-failure
+// LogError entries from DatabaseConfigurationProvider).
+//
+// Both Blob storage and KV are opt-in — set Storage:AzureBlob:AccountUrl and
+// AzureKeyVault:VaultUri to activate. Local/docker dev keeps the filesystem ring
+// (set by SetApplicationName), which is what developers expect.
+{
+    var dpBuilder = builder.Services.AddDataProtection()
+        .SetApplicationName("Knowz.SelfHosted");
+
+    var blobAccountUrl = builder.Configuration["Storage:AzureBlob:AccountUrl"];
+    var dpKvVaultUri = builder.Configuration["AzureKeyVault:VaultUri"];
+    var dpKeyName = builder.Configuration["AzureKeyVault:DataProtectionKeyName"] ?? "selfhosted-dp-key";
+
+    if (!string.IsNullOrWhiteSpace(blobAccountUrl) && !string.IsNullOrWhiteSpace(dpKvVaultUri))
+    {
+        var credential = new DefaultAzureCredential();
+        var blobUri = new Uri($"{blobAccountUrl.TrimEnd('/')}/dataprotection/keys.xml");
+        var kvKeyUri = new Uri($"{dpKvVaultUri.TrimEnd('/')}/keys/{dpKeyName}");
+
+        dpBuilder
+            .PersistKeysToAzureBlobStorage(blobUri, credential)
+            .ProtectKeysWithAzureKeyVault(kvKeyUri, credential);
+    }
+}
 
 // Optional: Azure Key Vault configuration (enterprise secret store)
 var kvEnabled = builder.Configuration.GetValue<bool>("AzureKeyVault:Enabled");
@@ -49,13 +79,39 @@ var dbConfigSource = new DatabaseConfigurationSource
 };
 ((IConfigurationBuilder)builder.Configuration).Add(dbConfigSource);
 
-// Bind SelfHostedOptions
-builder.Services.Configure<SelfHostedOptions>(
-    builder.Configuration.GetSection(SelfHostedOptions.SectionName));
+// Bind SelfHostedOptions with startup-time validation (SEC_P0Triage Item 4).
+// SelfHostedOptionsValidator crashes the app at boot when JWT auth is enabled
+// but the signing secret is missing or too short, instead of letting
+// AuthenticationMiddleware silently reject requests or fall back to a literal.
+builder.Services.AddSingleton<IValidateOptions<SelfHostedOptions>, SelfHostedOptionsValidator>();
+builder.Services.AddOptions<SelfHostedOptions>()
+    .BindConfiguration(SelfHostedOptions.SectionName)
+    .ValidateOnStart();
 
 // Tenant provider (must be registered before database so DbContext can resolve it)
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, HttpTenantProvider>();
+
+// Azure TokenCredential singleton (SH_ENTERPRISE_MI_SWAP §2.1):
+// single source of truth for Azure SDK auth across the self-hosted stack. Infra-layer
+// extensions (Storage / OpenAI / Search / AttachmentAI) consume this via DI so tests
+// can substitute AzureCliCredential or a mock without touching every Add* extension.
+// Dev: AzureCliCredential (fast path). Non-dev: DefaultAzureCredential with the slow
+// interactive sources excluded.
+builder.Services.AddSingleton<TokenCredential>(_ =>
+{
+    var useAzureCli = builder.Environment.IsDevelopment()
+        && builder.Configuration.GetValue("Azure:UseAzureCliCredential", true);
+    return useAzureCli
+        ? new AzureCliCredential()
+        : new DefaultAzureCredential(new DefaultAzureCredentialOptions
+        {
+            ExcludeInteractiveBrowserCredential = true,
+            ExcludeSharedTokenCacheCredential = true,
+            ExcludeVisualStudioCredential = true,
+            ManagedIdentityClientId = builder.Configuration["Azure:ManagedIdentityClientId"]
+        });
+});
 
 // Shared library DI extensions (identical to MCP Direct mode)
 builder.Services.AddSelfHostedDatabase(builder.Configuration);
@@ -87,6 +143,10 @@ builder.Services.AddHostedService<GitSyncBackgroundService>();
 // One-shot data-copy migration: backfills PlatformConnection rows from the legacy per-link
 // columns on VaultSyncLink. Idempotent — safe to run on every boot.
 builder.Services.AddHostedService<PlatformConnectionMigrationService>();
+
+// SH_ENTERPRISE_CREDENTIAL_BOOTSTRAP §2.1: first-run bootstrap hosted service.
+// Seeds SuperAdmin + mints bootstrap API key to Key Vault (idempotent).
+builder.Services.AddHostedService<BootstrapService>();
 
 // Upload size ceiling: 1 GB. Raise BOTH the MVC multipart form limit and
 // Kestrel's global MaxRequestBodySize (default 30 MB). Kestrel rejects the
@@ -278,37 +338,31 @@ if (allowedOrigins is not { Length: > 0 })
         "SelfHosted:AllowedOrigins not configured — CORS restricted to localhost only. Set origins for production access.");
 }
 
-// Auto-migrate database when configured (for Aspire local dev)
+// Auto-migrate database when configured (for Aspire local dev).
+// SH_ENTERPRISE_RUNTIME_RESILIENCE §Rule 3: fail-closed on exhausted retries via
+// MigrationRunner helper. Orchestrator restarts the container on throw, which is
+// the correct action when the DB just wasn't ready yet.
 var migrationSucceeded = false;
 if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {
-    const int maxRetries = 10;
-    for (var attempt = 1; attempt <= maxRetries; attempt++)
-    {
-        using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
-        try
+    await MigrationRunner.RunWithRetryAsync(
+        migrateAsync: async attempt =>
         {
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SelfHostedDbContext>();
             await dbContext.Database.MigrateAsync();
             app.Logger.LogInformation("Database migration completed successfully on attempt {Attempt}.", attempt);
-            migrationSucceeded = true;
-            break;
-        }
-        catch (Exception ex)
-        {
-            if (attempt == maxRetries)
-            {
-                app.Logger.LogError(ex, "Database migration failed after {MaxRetries} attempts. Tables may not exist — login and other features will fail.", maxRetries);
-            }
-            else
-            {
-                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)); // 1s, 2s, 4s, 8s, 16s...
-                app.Logger.LogWarning("Database migration attempt {Attempt}/{MaxRetries} failed: {Message}. Retrying in {Delay}s...",
-                    attempt, maxRetries, ex.Message, delay.TotalSeconds);
-                await Task.Delay(delay);
-            }
-        }
-    }
+        },
+        maxRetries: 10,
+        delay: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)), // 1s, 2s, 4s, 8s, 16s...
+        onRetry: (attempt, ex) =>
+            app.Logger.LogWarning(ex,
+                "Database migration attempt {Attempt}/10 failed: {Message}. Retrying with backoff...",
+                attempt, ex.Message),
+        onFailure: ex =>
+            app.Logger.LogCritical(ex,
+                "Database migration failed after 10 attempts — aborting startup."));
+    migrationSucceeded = true;
 }
 else
 {
@@ -344,6 +398,13 @@ if (migrationSucceeded)
             // Update the DatabaseConfigurationSource with Data Protection provider for reload
             var dpProvider = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
             dbConfigSource.DataProtectionProvider = dpProvider;
+
+            // SEC_P0Triage §Rule 4: wire a real logger so denied-secret-tier keys
+            // (LogWarning) and decrypt failures (LogError) surface in telemetry.
+            // The source was built before DI existed; attach now so Reload() calls
+            // after config edits get the same treatment as the initial Load.
+            dbConfigSource.Logger = scope.ServiceProvider
+                .GetRequiredService<ILogger<DatabaseConfigurationProvider>>();
         }
         catch (Exception ex)
         {
@@ -384,15 +445,14 @@ else
         app.Logger.LogInformation("Search Provider: Database (SQL keyword search — no vector/semantic)");
 }
 
+// MI swap SH_ENTERPRISE_MI_SWAP §2.5: attachment AI capabilities are now endpoint-only;
+// the MI-issued token is validated on first Azure SDK call.
 var attachmentVisionConfigured =
-    !string.IsNullOrWhiteSpace(builder.Configuration["AzureAIVision:Endpoint"]) &&
-    !string.IsNullOrWhiteSpace(builder.Configuration["AzureAIVision:ApiKey"]);
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureAIVision:Endpoint"]);
 var attachmentDocumentConfigured =
-    !string.IsNullOrWhiteSpace(builder.Configuration["AzureDocumentIntelligence:Endpoint"]) &&
-    !string.IsNullOrWhiteSpace(builder.Configuration["AzureDocumentIntelligence:ApiKey"]);
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureDocumentIntelligence:Endpoint"]);
 var attachmentSynthesisConfigured =
     !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:Endpoint"]) &&
-    !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:ApiKey"]) &&
     !string.IsNullOrWhiteSpace(builder.Configuration["AzureOpenAI:DeploymentName"]);
 
 app.Logger.LogInformation(
@@ -400,6 +460,58 @@ app.Logger.LogInformation(
     attachmentVisionConfigured,
     attachmentDocumentConfigured,
     attachmentSynthesisConfigured);
+
+// SH_ENTERPRISE_RUNTIME_RESILIENCE §Rule 1-2: validate the DI surface at startup.
+// Required services throw; optional services warn. Strict mode (throw) is on in
+// every non-Development environment unless overridden via Knowz:StrictDIValidation.
+{
+    var validatorLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    validatorLogger.LogInformation("Validating self-hosted DI dependencies…");
+
+    var validationResult = StartupDependencyValidator.ValidateSelfHostedDependencies(
+        app.Services,
+        requiredServices: new[]
+        {
+            typeof(SelfHostedDbContext),
+            typeof(IOpenAIService),
+            typeof(ISearchService),
+            typeof(IFileStorageProvider),
+        },
+        optionalServices: SelfHostedOptionalList.Default,
+        services: builder.Services);
+
+    var strictDiValidation = builder.Configuration.GetValue<bool?>("Knowz:StrictDIValidation")
+        ?? !builder.Environment.IsDevelopment();
+
+    foreach (var warning in validationResult.Warnings)
+    {
+        validatorLogger.LogWarning("[Optional] {Service}: {Error}. Fix: {Fix}",
+            warning.ServiceTypeName, warning.ErrorMessage, warning.ConfigurationHint);
+    }
+
+    if (!validationResult.IsValid)
+    {
+        if (strictDiValidation)
+        {
+            validatorLogger.LogCritical(
+                "DI validation FAILED with {Count} error(s) (strict mode; Env={Env}). Aborting startup. Override with Knowz:StrictDIValidation=false.\n{Report}",
+                validationResult.Errors.Count, builder.Environment.EnvironmentName, validationResult.GetDetailedReport());
+            validationResult.ThrowIfInvalid();
+        }
+        else
+        {
+            validatorLogger.LogWarning(
+                "DI validation has {Count} error(s) in {Env} — continuing anyway (lenient mode). Enable strict mode with Knowz:StrictDIValidation=true.\n{Report}",
+                validationResult.Errors.Count, builder.Environment.EnvironmentName, validationResult.GetDetailedReport());
+        }
+    }
+    else
+    {
+        validatorLogger.LogInformation(
+            "DI validation PASSED ({Successes} required services, {Warnings} optional warnings)",
+            validationResult.Successes.Count, validationResult.Warnings.Count);
+    }
+}
 
 app.UseCors();
 
@@ -437,6 +549,8 @@ app.MapInboxEndpoints();
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapAdminEndpoints();
+app.MapAdminEnrichmentEndpoints();
+app.MapBootstrapEndpoints();
 app.MapConfigurationEndpoints();
 app.MapPortabilityEndpoints();
 app.MapSyncEndpoints();

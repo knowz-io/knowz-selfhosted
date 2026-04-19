@@ -32,12 +32,15 @@ resource "azurerm_mssql_server" "main" {
 # Database
 # -----------------------------------------------------------------------------
 
+# SH_ENTERPRISE_BICEP_HARDENING §Rule 2: Basic@2GB → S1@250GB (parameterized).
+# Basic@2GB dies at ~5 concurrent enrichment jobs. Customers can opt UP to P1 or
+# DOWN to Basic via var.sql_database_sku_name.
 resource "azurerm_mssql_database" "main" {
   name                 = "McpKnowledge"
   server_id            = azurerm_mssql_server.main.id
   collation            = "SQL_Latin1_General_CP1_CI_AS"
-  max_size_gb          = 2
-  sku_name             = "Basic"
+  max_size_gb          = floor(var.sql_database_max_size_bytes / 1073741824)
+  sku_name             = var.sql_database_sku_name
   zone_redundant       = false
   tags                 = local.effective_tags
 

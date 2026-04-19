@@ -22,7 +22,12 @@ public class AuthenticationMiddleware
     private readonly SelfHostedOptions _options;
     private readonly ILogger<AuthenticationMiddleware> _logger;
 
-    private static readonly string[] PublicPathPrefixes = ["/healthz", "/swagger", "/index.html", "/api/v1/auth/login", "/api/v1/auth/select-tenant", "/api/v1/auth/sso", "/api/v1/internal/"];
+    private static readonly string[] PublicPathPrefixes = ["/healthz", "/swagger", "/index.html", "/api/v1/auth/login", "/api/v1/auth/select-tenant", "/api/v1/auth/sso", "/api/v1/internal/",
+        // SH_ENTERPRISE_CREDENTIAL_BOOTSTRAP §3.4: status endpoint is intentionally
+        // anonymous so deploy tooling can poll without credentials. Response shape
+        // is intentionally trivial ({ready: bool}) — no recon value. Rate-limit
+        // policy "auth" is applied on the endpoint to cap enumeration budget.
+        "/api/bootstrap/status"];
 
     public AuthenticationMiddleware(
         RequestDelegate next,
@@ -92,9 +97,14 @@ public class AuthenticationMiddleware
             return Task.FromResult(false);
         }
 
-        // Don't attempt JWT validation if no JwtSecret is configured
+        // Fail-closed when JwtSecret is missing or <32 chars. SelfHostedOptionsValidator
+        // normally prevents this state at startup; this is a defense-in-depth guard.
+        // Never substitute a literal fallback — that was the 2026-04 P0-3 finding.
         if (string.IsNullOrWhiteSpace(_options.JwtSecret) || _options.JwtSecret.Length < 32)
         {
+            _logger.LogCritical(
+                "SelfHosted:JwtSecret is missing or <32 chars; JWT request rejected. " +
+                "Set SelfHosted:JwtSecret (>=32 chars, cryptographically random).");
             return Task.FromResult(false);
         }
 
@@ -151,12 +161,20 @@ public class AuthenticationMiddleware
                 return false;
             }
 
-            // Set the user principal from the JWT claims in the auth result
+            // Set the user principal from the JWT claims in the auth result.
+            // No fallback secret: SelfHostedOptionsValidator ensures JwtSecret is >=32 chars
+            // at startup. If we somehow reach here with an empty/short secret (e.g. validator
+            // bypassed), fail-closed rather than sign with a literal.
+            if (string.IsNullOrWhiteSpace(_options.JwtSecret) || _options.JwtSecret.Length < 32)
+            {
+                _logger.LogCritical(
+                    "SelfHosted:JwtSecret is missing or <32 chars at user-API-key auth path. " +
+                    "Request rejected. Check SelfHostedOptionsValidator registration.");
+                return false;
+            }
+
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                string.IsNullOrWhiteSpace(_options.JwtSecret) || _options.JwtSecret.Length < 32
-                    ? "dev-fallback-secret-key-must-be-at-least-32-chars!!"
-                    : _options.JwtSecret));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.JwtSecret));
 
             var principal = tokenHandler.ValidateToken(result.Token, new TokenValidationParameters
             {
@@ -246,12 +264,23 @@ public class AuthenticationMiddleware
             return false;
         }
 
-        // Set a minimal identity for legacy API key users
+        // SEC_P0Triage §Rule 7: legacy key is scoped to a dedicated "LegacyApiKey"
+        // role — NOT SuperAdmin. AuthorizationHelpers.IsSuperAdmin / IsAdminOrAbove
+        // therefore return false for legacy callers, so /api/superadmin/*,
+        // /api/config/*, /api/users/*, /api/admin/* endpoints return 403.
+        // The legacy key retains read/write access to knowledge endpoints for
+        // backward compatibility until the 2026-06-18 sunset tracked as
+        // SEC_LegacyApiKeyRemoval.
+        _logger.LogWarning(
+            "Legacy API key used from {RemoteIp} — deprecated, scheduled for removal 2026-06-18. " +
+            "Migrate callers to per-user ksh_ keys (POST /api/v1/apikeys).",
+            context.Connection.RemoteIpAddress);
+
         var claims = new[]
         {
-            new Claim(ClaimTypes.Name, "api-key-user"),
-            new Claim(ClaimTypes.Role, "SuperAdmin"),
-            new Claim("role", "SuperAdmin")
+            new Claim(ClaimTypes.Name, "legacy-api-key"),
+            new Claim(ClaimTypes.Role, "LegacyApiKey"),
+            new Claim("role", "LegacyApiKey")
         };
         var identity = new ClaimsIdentity(claims, "ApiKey");
         context.User = new ClaimsPrincipal(identity);
