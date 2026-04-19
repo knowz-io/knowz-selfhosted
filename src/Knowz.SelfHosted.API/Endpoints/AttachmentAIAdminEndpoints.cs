@@ -5,6 +5,7 @@ using Knowz.SelfHosted.API.Helpers;
 using Knowz.SelfHosted.Infrastructure.Data;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Knowz.SelfHosted.API.Endpoints;
 
@@ -17,6 +18,7 @@ public static class AttachmentAIAdminEndpoints
             HttpContext context,
             SelfHostedDbContext db,
             IFileStorageProvider storageProvider,
+            ILogger<Marker> logger,
             ReprocessRequest? req,
             IFileContentExtractor? contentExtractor = null,
             IEnrichmentOutboxWriter? enrichmentWriter = null,
@@ -31,14 +33,23 @@ public static class AttachmentAIAdminEndpoints
             var contentTypeFilter = req?.ContentTypeFilter;
             var onlyMissing = req?.OnlyMissing ?? false;
             var maxCount = Math.Clamp(req?.MaxCount ?? 100, 1, 1000);
+            // FileIds filter (optional, overrides content-type + onlyMissing when present).
+            var fileIds = req?.FileIds?.Where(id => id != Guid.Empty).Distinct().ToArray();
 
             var query = db.FileRecords.Where(f => !f.IsDeleted);
 
-            if (!string.IsNullOrWhiteSpace(contentTypeFilter))
-                query = query.Where(f => f.ContentType != null && f.ContentType.StartsWith(contentTypeFilter));
+            if (fileIds != null && fileIds.Length > 0)
+            {
+                query = query.Where(f => fileIds.Contains(f.Id));
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(contentTypeFilter))
+                    query = query.Where(f => f.ContentType != null && f.ContentType.StartsWith(contentTypeFilter));
 
-            if (onlyMissing)
-                query = query.Where(BuildOnlyMissingPredicate(contentTypeFilter));
+                if (onlyMissing)
+                    query = query.Where(BuildOnlyMissingPredicate(contentTypeFilter));
+            }
 
             var files = await query
                 .OrderBy(f => f.CreatedAt)
@@ -46,6 +57,7 @@ public static class AttachmentAIAdminEndpoints
                 .ToListAsync(ct);
 
             int queued = 0, skipped = 0, errors = 0;
+            var errorDetails = new List<object>();
 
             foreach (var file in files)
             {
@@ -67,6 +79,8 @@ public static class AttachmentAIAdminEndpoints
                             file.ExtractedText = extraction.ExtractedText;
                         file.UpdatedAt = DateTime.UtcNow;
 
+                        // Resolve both knowledge-direct and comment-scoped parents so
+                        // re-enrichment fires for attachments added via the comment flow.
                         if (enrichmentWriter != null)
                         {
                             var knowledgeIds = await db.FileAttachments
@@ -74,7 +88,12 @@ public static class AttachmentAIAdminEndpoints
                                 .Select(fa => fa.KnowledgeId!.Value)
                                 .ToListAsync(ct);
 
-                            foreach (var kid in knowledgeIds)
+                            var commentScopedKnowledgeIds = await db.FileAttachments
+                                .Where(fa => fa.FileRecordId == file.Id && fa.CommentId != null)
+                                .Join(db.Comments, fa => fa.CommentId, c => c.Id, (fa, c) => c.KnowledgeId)
+                                .ToListAsync(ct);
+
+                            foreach (var kid in knowledgeIds.Concat(commentScopedKnowledgeIds).Distinct())
                                 await enrichmentWriter.EnqueueAsync(kid, file.TenantId, ct);
                         }
 
@@ -83,17 +102,25 @@ public static class AttachmentAIAdminEndpoints
                     else
                     {
                         errors++;
+                        errorDetails.Add(new { fileId = file.Id, fileName = file.FileName, error = extraction.ErrorMessage });
+                        logger.LogWarning(
+                            "Reprocess extraction returned non-success for FileRecord {FileId} ({FileName}): {Reason}",
+                            file.Id, file.FileName, extraction.ErrorMessage);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
                     errors++;
+                    errorDetails.Add(new { fileId = file.Id, fileName = file.FileName, error = ex.GetType().Name + ": " + ex.Message });
+                    logger.LogWarning(ex,
+                        "Reprocess failed for FileRecord {FileId} ({FileName})",
+                        file.Id, file.FileName);
                 }
             }
 
             await db.SaveChangesAsync(ct);
 
-            return Results.Ok(new { queued, skipped, errors });
+            return Results.Ok(new { queued, skipped, errors, errorDetails });
         })
         .WithTags("Administration")
         .Produces<object>()
@@ -206,4 +233,9 @@ public static class AttachmentAIAdminEndpoints
 public record ReprocessRequest(
     string? ContentTypeFilter = null,
     bool OnlyMissing = false,
-    int MaxCount = 100);
+    int MaxCount = 100,
+    Guid[]? FileIds = null);
+
+// Marker class for ILogger<> category (kept internal — logger category reads as
+// "Knowz.SelfHosted.API.Endpoints.AttachmentAIAdminEndpoints+Marker").
+internal sealed class Marker { }

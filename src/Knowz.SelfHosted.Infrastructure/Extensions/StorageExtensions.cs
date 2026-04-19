@@ -14,10 +14,12 @@ public static class StorageExtensions
     /// Registers file storage provider based on configuration.
     /// Fallback to LocalFileStorageProvider if Azure not configured.
     ///
-    /// MI swap (SH_ENTERPRISE_MI_SWAP §2.2): BlobServiceClient now authenticates via
-    /// the DI-injected <see cref="TokenCredential"/> against `Storage:Azure:AccountUrl`.
-    /// Legacy `Storage:Azure:ConnectionString` is no longer read — leaving it configured
-    /// has no effect (and will be removed from bicep by partition α).
+    /// Auth precedence (matches OpenAI + Search + AttachmentAI pattern):
+    ///   1. `Storage:Azure:ConnectionString` → AccountKey/SAS — works for external-mode
+    ///      deploys where the UAMI lacks Blob Data roles on the target account.
+    ///   2. `Storage:Azure:AccountUrl` + DI-injected `TokenCredential` — enterprise
+    ///      MI-only deploys per SH_ENTERPRISE_MI_SWAP §2.2.
+    /// Either path registers AzureBlobStorageProvider; otherwise falls back to local.
     /// </summary>
     public static IServiceCollection AddSelfHostedFileStorage(
         this IServiceCollection services,
@@ -25,24 +27,34 @@ public static class StorageExtensions
     {
         var provider = configuration["Storage:Provider"];
         var accountUrl = configuration["Storage:Azure:AccountUrl"];
+        var connectionString = configuration["Storage:Azure:ConnectionString"];
         var containerName = configuration["Storage:Azure:ContainerName"];
 
-        // Azure Blob Storage (primary) — requires endpoint URL + MI role assignment
+        // Azure Blob Storage (primary) — requires either a connection string OR
+        // endpoint URL + MI role assignment, plus a container name.
+        var hasConnectionString = !string.IsNullOrWhiteSpace(connectionString);
+        var hasAccountUrl = !string.IsNullOrWhiteSpace(accountUrl);
+        var hasContainer = !string.IsNullOrWhiteSpace(containerName);
         if (string.Equals(provider, "AzureBlob", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(accountUrl) &&
-            !string.IsNullOrWhiteSpace(containerName))
+            hasContainer &&
+            (hasConnectionString || hasAccountUrl))
         {
             services.AddSingleton(sp =>
             {
-                var credential = sp.GetRequiredService<TokenCredential>();
                 var logger = sp.GetRequiredService<ILogger<AzureBlobStorageProvider>>();
                 try
                 {
-                    return new BlobServiceClient(new Uri(accountUrl), credential);
+                    if (hasConnectionString)
+                    {
+                        return new BlobServiceClient(connectionString);
+                    }
+                    var credential = sp.GetRequiredService<TokenCredential>();
+                    return new BlobServiceClient(new Uri(accountUrl!), credential);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Failed to initialize BlobServiceClient with MI. AccountUrl={Url}", accountUrl);
+                    logger.LogError(ex, "Failed to initialize BlobServiceClient. AccountUrl={Url} UsedConnectionString={UsedCs}",
+                        accountUrl, hasConnectionString);
                     throw;
                 }
             });
