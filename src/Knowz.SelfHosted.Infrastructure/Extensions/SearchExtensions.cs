@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Core;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
@@ -31,22 +32,33 @@ public static class SearchExtensions
             return services;
         }
 
-        // Tier 2: Azure AI Search (MI swap SH_ENTERPRISE_MI_SWAP §2.4 — endpoint+index only;
-        // TokenCredential from DI, AzureAISearch:ApiKey no longer consulted).
+        // Tier 2: Azure AI Search. MI-first per SH_ENTERPRISE_MI_SWAP §2.4; however,
+        // `AzureAISearch:ApiKey` takes precedence when present so external-mode
+        // deploys can still authenticate against a search service outside the
+        // UAMI's RBAC scope.
         var endpoint = configuration["AzureAISearch:Endpoint"];
         var indexName = configuration["AzureAISearch:IndexName"];
+        var searchApiKey = configuration["AzureAISearch:ApiKey"];
 
         if (!string.IsNullOrWhiteSpace(endpoint) &&
             !string.IsNullOrWhiteSpace(indexName))
         {
             services.AddSingleton(sp =>
             {
+                if (!string.IsNullOrWhiteSpace(searchApiKey))
+                {
+                    return new SearchClient(new Uri(endpoint), indexName, new AzureKeyCredential(searchApiKey));
+                }
                 var credential = sp.GetRequiredService<TokenCredential>();
                 return new SearchClient(new Uri(endpoint), indexName, credential);
             });
 
             services.AddSingleton(sp =>
             {
+                if (!string.IsNullOrWhiteSpace(searchApiKey))
+                {
+                    return new SearchIndexClient(new Uri(endpoint), new AzureKeyCredential(searchApiKey));
+                }
                 var credential = sp.GetRequiredService<TokenCredential>();
                 return new SearchIndexClient(new Uri(endpoint), credential);
             });

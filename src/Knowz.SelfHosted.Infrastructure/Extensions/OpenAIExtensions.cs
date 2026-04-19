@@ -1,3 +1,4 @@
+using Azure;
 using Azure.AI.OpenAI;
 using Azure.Core;
 using Knowz.Core.Interfaces;
@@ -50,14 +51,21 @@ public static class OpenAIExtensions
             }
         }
 
-        // Tier 2: Azure OpenAI (MI swap SH_ENTERPRISE_MI_SWAP §2.3 — endpoint-only;
-        // TokenCredential resolved from DI, AzureOpenAI:ApiKey no longer consulted).
+        // Tier 2: Azure OpenAI. MI-first per SH_ENTERPRISE_MI_SWAP §2.3; however,
+        // `AzureOpenAI:ApiKey` takes precedence when present so external-mode
+        // deploys (pointing at a shared/third-party OpenAI resource where the
+        // UAMI has no data-plane role) can still authenticate.
         var endpoint = configuration["AzureOpenAI:Endpoint"];
+        var apiKey = configuration["AzureOpenAI:ApiKey"];
 
         if (!string.IsNullOrWhiteSpace(endpoint))
         {
             services.AddSingleton(sp =>
             {
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    return new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
+                }
                 var credential = sp.GetRequiredService<TokenCredential>();
                 return new AzureOpenAIClient(new Uri(endpoint), credential);
             });
