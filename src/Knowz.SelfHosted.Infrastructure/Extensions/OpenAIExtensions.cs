@@ -1,5 +1,5 @@
-using Azure;
 using Azure.AI.OpenAI;
+using Azure.Core;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -50,15 +50,17 @@ public static class OpenAIExtensions
             }
         }
 
-        // Tier 2: Azure OpenAI
+        // Tier 2: Azure OpenAI (MI swap SH_ENTERPRISE_MI_SWAP §2.3 — endpoint-only;
+        // TokenCredential resolved from DI, AzureOpenAI:ApiKey no longer consulted).
         var endpoint = configuration["AzureOpenAI:Endpoint"];
-        var apiKey = configuration["AzureOpenAI:ApiKey"];
 
-        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(apiKey))
+        if (!string.IsNullOrWhiteSpace(endpoint))
         {
-            services.AddSingleton(_ => new AzureOpenAIClient(
-                new Uri(endpoint),
-                new AzureKeyCredential(apiKey)));
+            services.AddSingleton(sp =>
+            {
+                var credential = sp.GetRequiredService<TokenCredential>();
+                return new AzureOpenAIClient(new Uri(endpoint), credential);
+            });
 
             services.AddScoped<IOpenAIService, AzureOpenAIService>();
             services.AddScoped<IContentAmendmentService, AzureOpenAIService>();

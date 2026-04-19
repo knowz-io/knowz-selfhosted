@@ -40,6 +40,11 @@ resource "random_password" "jwt_secret" {
   special = false
 }
 
+# MCP service key — SH_ENTERPRISE_BICEP_HARDENING §Rule 4.
+# Unconditional random_uuid so `local.mcp_service_key` can reference .result without `[0]`.
+# When var.mcp_service_key is set (idempotent rerun from KV), random_uuid.result is ignored.
+resource "random_uuid" "mcp_service_key" {}
+
 locals {
   unique_suffix      = random_string.unique.result
   sql_server_name    = "${var.prefix}-sql-${local.unique_suffix}"
@@ -47,7 +52,9 @@ locals {
   storage_account_name = lower("${local.storage_prefix}st${substr(local.unique_suffix, 0, 12)}")
   kv_prefix          = lower(substr(replace(var.prefix, "-", ""), 0, 8))
   key_vault_name     = "${local.kv_prefix}kv${substr(local.unique_suffix, 0, 8)}"
-  mcp_service_key    = "selfhosted-enterprise-mcp-service-key-${local.unique_suffix}"
+  # SH_ENTERPRISE_BICEP_HARDENING §Rule 4: mcp_service_key was deterministic per RG name —
+  # now sourced from var.mcp_service_key (caller-supplied) or random_uuid (first-deploy default).
+  mcp_service_key    = var.mcp_service_key != "" ? var.mcp_service_key : random_uuid.mcp_service_key.result
 
   effective_api_key    = var.api_key != "" ? var.api_key : random_uuid.api_key[0].result
   effective_jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.jwt_secret[0].result
@@ -75,8 +82,13 @@ locals {
   # SQL connection string using AAD Managed Identity authentication (no password)
   sql_connection_string = "Server=tcp:${azurerm_mssql_server.main.fully_qualified_domain_name},1433;Initial Catalog=McpKnowledge;Authentication=Active Directory Managed Identity;User Id=${azurerm_user_assigned_identity.main.client_id};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
 
-  # Storage connection string (shared key until MI blob support in app code)
-  storage_connection_string = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.main.name};AccountKey=${azurerm_storage_account.main.primary_access_key};EndpointSuffix=core.windows.net"
+  # MI-swap landed (Builder B commit 3a690a4c): BlobServiceClient uses DefaultAzureCredential
+  # + Storage:Azure:AccountUrl (no AccountKey). The connection-string local is RETIRED.
+  # storage_connection_string = REMOVED — use azurerm_storage_account.main.primary_blob_endpoint instead.
+
+  # Effective registry path — switches to customer ACR when external_acr_name provided.
+  effective_registry_server = var.external_acr_name != "" ? "${var.external_acr_name}.azurecr.io" : "ghcr.io"
+  registry_path             = "${local.effective_registry_server}/${var.image_repository_prefix}"
 
   default_tags = {
     project      = "knowz-selfhosted"

@@ -1,7 +1,9 @@
 # frontdoor.tf — Front Door Premium + WAF policy + origin groups + routes
 
 # -----------------------------------------------------------------------------
-# WAF Policy (DRS 2.1 + Bot Manager in Detection mode)
+# WAF Policy (DRS 2.1 + Bot Manager — Prevention mode at enterprise tier)
+# SH_ENTERPRISE_BICEP_HARDENING §Rule 1. Prevention blocks attacks (not just logs).
+# Customers can flip to Detection during incident triage via var.waf_mode.
 # -----------------------------------------------------------------------------
 
 resource "azurerm_cdn_frontdoor_firewall_policy" "main" {
@@ -9,7 +11,7 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "main" {
   resource_group_name               = azurerm_resource_group.main.name
   sku_name                          = "Premium_AzureFrontDoor"
   enabled                           = true
-  mode                              = "Detection"
+  mode                              = var.waf_mode
   request_body_check_enabled        = true
   tags                              = local.effective_tags
 

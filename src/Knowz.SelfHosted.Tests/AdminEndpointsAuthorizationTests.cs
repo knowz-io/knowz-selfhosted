@@ -267,12 +267,21 @@ public class AdminEndpointsAuthorizationTests
     }
 
     [Fact]
-    public void LegacyApiKeyUser_SuperAdminNoTenantId_CanAccessAllEndpoints()
+    public void LegacyApiKeyUser_ScopedToLegacyRole_DeniedFromAdminEndpoints()
     {
-        var ctx = MakeContext("SuperAdmin");
-        Assert.True(AuthorizationHelpers.IsSuperAdmin(ctx));
-        Assert.True(AuthorizationHelpers.IsAdminOrAbove(ctx));
+        // SEC_P0Triage §Rule 7: legacy global API key no longer grants SuperAdmin.
+        // AuthenticationMiddleware.TryAuthenticateLegacyApiKey now emits role
+        // "LegacyApiKey" which fails both IsSuperAdmin and IsAdminOrAbove checks,
+        // forcing /api/superadmin/*, /api/config/*, /api/users/*, /api/admin/*
+        // endpoints to 403 for legacy callers.
+        var ctx = MakeContext("LegacyApiKey");
+        Assert.False(AuthorizationHelpers.IsSuperAdmin(ctx));
+        Assert.False(AuthorizationHelpers.IsAdminOrAbove(ctx));
         Assert.Null(AuthorizationHelpers.GetCallerTenantId(ctx));
+        // Can't be used to assign privileged roles either.
+        Assert.False(AuthorizationHelpers.CanAssignRole(ctx, UserRole.User));
+        Assert.False(AuthorizationHelpers.CanAssignRole(ctx, UserRole.Admin));
+        Assert.False(AuthorizationHelpers.CanAssignRole(ctx, UserRole.SuperAdmin));
     }
 
     [Fact]

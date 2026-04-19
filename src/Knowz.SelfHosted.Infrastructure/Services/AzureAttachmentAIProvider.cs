@@ -1,7 +1,9 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.AI.OpenAI;
+using Azure.Core;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -15,30 +17,34 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
         "You analyze software diagrams, architecture images, screenshots, and scanned documents. " +
         "Describe the image in clear prose, explain relationships or flow when visible, and extract visible text accurately.";
 
+    private static readonly string[] CognitiveServicesScope = { "https://cognitiveservices.azure.com/.default" };
+
     private readonly string? _visionEndpoint;
-    private readonly string? _visionApiKey;
     private readonly string? _openAiEndpoint;
-    private readonly string? _openAiApiKey;
     private readonly string? _openAiDeploymentName;
     private readonly string? _docIntelligenceEndpoint;
-    private readonly string? _docIntelligenceApiKey;
     private readonly ILogger<AzureAttachmentAIProvider> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly TokenCredential _tokenCredential;
+
+    // Bearer-token cache for Vision REST (TokenCredential dedupes concurrent token requests,
+    // but caching here avoids the inter-thread allocation + ExpiresOn check on every call).
+    private AccessToken? _cachedCognitiveToken;
+    private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
     public AzureAttachmentAIProvider(
         IConfiguration configuration,
         ILogger<AzureAttachmentAIProvider> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        TokenCredential tokenCredential)
     {
         _visionEndpoint = configuration["AzureAIVision:Endpoint"];
-        _visionApiKey = configuration["AzureAIVision:ApiKey"];
         _openAiEndpoint = configuration["AzureOpenAI:Endpoint"];
-        _openAiApiKey = configuration["AzureOpenAI:ApiKey"];
         _openAiDeploymentName = configuration["AzureOpenAI:DeploymentName"];
         _docIntelligenceEndpoint = configuration["AzureDocumentIntelligence:Endpoint"];
-        _docIntelligenceApiKey = configuration["AzureDocumentIntelligence:ApiKey"];
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _tokenCredential = tokenCredential;
     }
 
     public string ProviderName =>
@@ -52,17 +58,47 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
 
     public bool HasModelSynthesisCapability => HasOpenAIConfig;
 
+    // MI swap SH_ENTERPRISE_MI_SWAP §2.5: capabilities derive from endpoint presence only.
+    // The TokenCredential is a singleton; whether it can acquire a token is determined at
+    // first call (surfaced as an `AuthorizationFailed` 401 from the Azure SDK, not here).
     private bool HasVisionConfig =>
-        !string.IsNullOrWhiteSpace(_visionEndpoint) && !string.IsNullOrWhiteSpace(_visionApiKey);
+        !string.IsNullOrWhiteSpace(_visionEndpoint);
 
     private bool HasOpenAIConfig =>
         !string.IsNullOrWhiteSpace(_openAiEndpoint) &&
-        !string.IsNullOrWhiteSpace(_openAiApiKey) &&
         !string.IsNullOrWhiteSpace(_openAiDeploymentName);
 
     private bool HasDocIntelligenceConfig =>
-        !string.IsNullOrWhiteSpace(_docIntelligenceEndpoint) &&
-        !string.IsNullOrWhiteSpace(_docIntelligenceApiKey);
+        !string.IsNullOrWhiteSpace(_docIntelligenceEndpoint);
+
+    private async ValueTask<string> GetCognitiveBearerTokenAsync(CancellationToken ct)
+    {
+        var cached = _cachedCognitiveToken;
+        if (cached.HasValue && cached.Value.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(5))
+        {
+            return cached.Value.Token;
+        }
+
+        await _tokenLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            cached = _cachedCognitiveToken;
+            if (cached.HasValue && cached.Value.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(5))
+            {
+                return cached.Value.Token;
+            }
+
+            var token = await _tokenCredential
+                .GetTokenAsync(new TokenRequestContext(CognitiveServicesScope), ct)
+                .ConfigureAwait(false);
+            _cachedCognitiveToken = token;
+            return token.Token;
+        }
+        finally
+        {
+            _tokenLock.Release();
+        }
+    }
 
     public async Task<VisionAnalysisResult> AnalyzeImageAsync(
         byte[] imageBytes, string contentType, CancellationToken ct = default)
@@ -111,7 +147,7 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
         {
             var client = new DocumentIntelligenceClient(
                 new Uri(_docIntelligenceEndpoint!),
-                new AzureKeyCredential(_docIntelligenceApiKey!));
+                _tokenCredential);
 
             var bytesSource = BinaryData.FromBytes(documentBytes);
             var operation = await client.AnalyzeDocumentAsync(
@@ -187,7 +223,8 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
             var requestUrl = $"{_visionEndpoint!.TrimEnd('/')}/computervision/imageanalysis:analyze?api-version=2024-02-01&features={features}";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
-            request.Headers.Add("Ocp-Apim-Subscription-Key", _visionApiKey);
+            var bearer = await GetCognitiveBearerTokenAsync(ct).ConfigureAwait(false);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             request.Content = new ByteArrayContent(imageBytes);
             request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
 
@@ -312,7 +349,7 @@ public class AzureAttachmentAIProvider : IAttachmentAIProvider
     {
         var client = new AzureOpenAIClient(
             new Uri(_openAiEndpoint!),
-            new AzureKeyCredential(_openAiApiKey!));
+            _tokenCredential);
 
         return client.GetChatClient(_openAiDeploymentName);
     }

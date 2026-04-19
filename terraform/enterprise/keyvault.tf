@@ -113,9 +113,11 @@ resource "azurerm_key_vault_secret" "vision_key" {
   depends_on   = [azurerm_role_assignment.keyvault_secrets_user, time_sleep.wait_kv_rbac]
 }
 
-resource "azurerm_key_vault_secret" "storage_connection" {
-  name         = "Storage--Azure--ConnectionString"
-  value        = local.storage_connection_string
+# SH_ENTERPRISE_BICEP_HARDENING §MI-swap: Storage--Azure--ConnectionString RETIRED.
+# App reads Storage--Azure--AccountUrl + uses DefaultAzureCredential.
+resource "azurerm_key_vault_secret" "storage_account_url" {
+  name         = "Storage--Azure--AccountUrl"
+  value        = azurerm_storage_account.main.primary_blob_endpoint
   key_vault_id = azurerm_key_vault.main.id
   depends_on   = [azurerm_role_assignment.keyvault_secrets_user, time_sleep.wait_kv_rbac]
 }
@@ -146,4 +148,38 @@ resource "azurerm_key_vault_secret" "admin_password" {
   value        = var.admin_password
   key_vault_id = azurerm_key_vault.main.id
   depends_on   = [azurerm_role_assignment.keyvault_secrets_user, time_sleep.wait_kv_rbac]
+}
+
+# MCP service key KV secret — the random_uuid resource itself is declared in main.tf
+# so local.mcp_service_key can reference it. SH_ENTERPRISE_BICEP_HARDENING §Rule 4.
+# Previous pattern was deterministic (uniqueString per RG name → predictable).
+resource "azurerm_key_vault_secret" "mcp_service_key" {
+  name         = "MCP--ServiceKey"
+  value        = local.mcp_service_key
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.keyvault_secrets_user, time_sleep.wait_kv_rbac]
+}
+
+# Data Protection master key — SH_ENTERPRISE_BICEP_HARDENING §Rule 9.
+# Wraps the ASP.NET Core DP key ring persisted to the dp-keys blob container.
+# Name MUST match app-side default at selfhosted/src/Knowz.SelfHosted.API/Program.cs:50.
+resource "azurerm_key_vault_key" "dp_master_key" {
+  name         = "selfhosted-dp-key"
+  key_vault_id = azurerm_key_vault.main.id
+  key_type     = "RSA"
+  key_size     = 2048
+  key_opts     = ["wrapKey", "unwrapKey"]
+
+  rotation_policy {
+    automatic {
+      time_after_creation = "P90D"
+    }
+    expire_after         = "P2Y"
+    notify_before_expiry = "P30D"
+  }
+
+  depends_on = [
+    azurerm_role_assignment.kv_deployer_secrets_officer,
+    time_sleep.wait_kv_rbac,
+  ]
 }

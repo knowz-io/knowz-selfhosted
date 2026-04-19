@@ -1169,11 +1169,51 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
                     b.ToTable("VaultPersons");
                 });
 
+            modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.EnrichmentActivityLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("KnowledgeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "KnowledgeId");
+
+                    b.HasIndex("TenantId", "StartedAt");
+
+                    b.ToTable("EnrichmentActivityLogs");
+                });
+
             modelBuilder.Entity("Knowz.SelfHosted.Infrastructure.Data.Entities.EnrichmentOutboxItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AiProcessingAttempts")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -1196,6 +1236,9 @@ namespace Knowz.SelfHosted.Infrastructure.Data.Migrations
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedProcessingAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");

@@ -140,9 +140,9 @@ param apiKey string = ''
 @secure()
 param jwtSecret string = ''
 
-@description('SuperAdmin password for initial setup')
+@description('SuperAdmin password for initial setup. REQUIRED — must be >=12 chars with upper/lower/digit/symbol and must not contain admin/changeme/password/letmein/... (see AuthService.WeakPasswordList). No default: SEC_P0Triage §Rule 2 forbids shipping a known-weak credential with the infrastructure template.')
 @secure()
-param adminPassword string = 'changeme'
+param adminPassword string
 
 @description('Chat model deployment name for Container Apps config')
 param caDeploymentName string = chatDeploymentName

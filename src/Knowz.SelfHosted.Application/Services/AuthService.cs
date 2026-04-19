@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.RegularExpressions;
 using Knowz.Core.Configuration;
 using Knowz.Core.Entities;
 using Knowz.Core.Enums;
@@ -27,6 +28,49 @@ public class AuthService : IAuthService
     /// Prevents unauthenticated callers from selecting a tenant with just a userId.
     /// </summary>
     private static readonly ConcurrentDictionary<Guid, (string Token, DateTime Expiry)> _tenantSelectionTokens = new();
+
+    /// <summary>
+    /// Denylist of fragments that MUST NOT appear (case-insensitive substring match)
+    /// in the SuperAdmin seed password. Seeded with the "top-N" common credentials
+    /// enterprise deployers have historically left in place, plus project-specific
+    /// values a rushed operator might type. Refresh quarterly against HIBP — tracked
+    /// in SEC_P0Triage debt item SEC_WeakPasswordListRefresh.
+    /// </summary>
+    internal static readonly string[] WeakPasswordList =
+    {
+        "admin", "changeme", "password", "p@ssw0rd", "p@ssword",
+        "letmein", "welcome", "knowz", "selfhosted", "default",
+        "root", "qwerty", "abc123", "iloveyou", "monkey",
+        "dragon", "master", "superuser", "administrator",
+        "dev-fallback-secret-key", // the literal removed in Item 4
+    };
+
+    /// <summary>
+    /// Complexity policy (SEC_P0Triage §Rule 3): &gt;=12 chars with at least one
+    /// uppercase, one lowercase, one digit, and one non-alphanumeric.
+    /// </summary>
+    private static readonly Regex PasswordComplexityRegex = new(
+        @"^(?=.{12,})(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Returns true when <paramref name="password"/> fails the weak-password policy
+    /// (empty/null, matches denylist substring case-insensitively, or fails
+    /// complexity regex). Internal so tests can assert policy decisions directly.
+    /// </summary>
+    internal static bool IsWeakPassword(string? password)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+            return true;
+
+        foreach (var fragment in WeakPasswordList)
+        {
+            if (password.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return !PasswordComplexityRegex.IsMatch(password);
+    }
 
     private readonly SelfHostedDbContext _db;
     private readonly SelfHostedOptions _options;
@@ -116,6 +160,34 @@ public class AuthService : IAuthService
             return;
         }
 
+        // SEC_P0Triage §Rule 3: refuse to seed with weak/guessable credentials.
+        // Validate BEFORE any DB writes (tenant creation) so a misconfigured
+        // deploy crashes at boot rather than half-creating records.
+        if (string.IsNullOrWhiteSpace(_options.SuperAdminUsername))
+        {
+            throw new InvalidOperationException(
+                "SelfHosted:SuperAdminUsername is required at first boot. " +
+                "Supply via env var SelfHosted__SuperAdminUsername or KV secret " +
+                "SelfHosted--SuperAdmin--Username.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_options.SuperAdminPassword))
+        {
+            throw new InvalidOperationException(
+                "SelfHosted:SuperAdminPassword is required at first boot. " +
+                "Supply via env var SelfHosted__SuperAdminPassword or KV secret " +
+                "SelfHosted--SuperAdmin--Password.");
+        }
+
+        if (IsWeakPassword(_options.SuperAdminPassword))
+        {
+            throw new InvalidOperationException(
+                "SelfHosted:SuperAdminPassword fails policy — " +
+                "must be >=12 chars, include upper/lower/digit/non-alphanumeric, " +
+                "and must not contain common fragments (admin, changeme, password, ...). " +
+                "Rotate via KV secret SelfHosted--SuperAdmin--Password.");
+        }
+
         // Check if admin exists with wrong role (legacy enum values from before SwapUserRoleValues)
         var existingAdmin = await _db.Users
             .FirstOrDefaultAsync(u => u.Username == _options.SuperAdminUsername);
@@ -179,6 +251,39 @@ public class AuthService : IAuthService
 
         _logger.LogInformation("Created SuperAdmin user: {Username} in tenant: {TenantName}",
             superAdmin.Username, defaultTenant.Name);
+    }
+
+    public async Task<string?> IssueBootstrapApiKeyForSuperAdminAsync()
+    {
+        // SH_ENTERPRISE_CREDENTIAL_BOOTSTRAP §Rule 2: idempotent — if a key already
+        // exists on the SuperAdmin row, we do NOT mint a new one. The bootstrap
+        // key is single-issue; rotation is an explicit operator action.
+        var superAdmin = await _db.Users
+            .FirstOrDefaultAsync(u => u.Role == UserRole.SuperAdmin);
+        if (superAdmin is null)
+        {
+            _logger.LogWarning("IssueBootstrapApiKeyForSuperAdminAsync: no SuperAdmin row found.");
+            return null;
+        }
+        if (!string.IsNullOrWhiteSpace(superAdmin.ApiKey))
+        {
+            return null; // already issued
+        }
+
+        // Format: ksh_ + 32 url-safe random chars. Short name, unambiguous prefix.
+        var bytes = new byte[24];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        var plaintext = "ksh_" + Convert.ToBase64String(bytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+        superAdmin.ApiKey = plaintext;
+        superAdmin.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        // Intentionally do NOT log the plaintext — caller is responsible for
+        // writing it to Key Vault, not stdout / telemetry.
+        _logger.LogInformation("Bootstrap API key issued for SuperAdmin {UserId}.", superAdmin.Id);
+        return plaintext;
     }
 
     public string HashPassword(string password)

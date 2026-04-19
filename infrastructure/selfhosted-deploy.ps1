@@ -56,6 +56,23 @@ $ErrorActionPreference = "Continue"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
+# SEC_P0Triage §Rule 6: Get-Random uses System.Random internally — its output is
+# predictable from a handful of observed draws, which undermines every secret
+# the deploy script mints. New-CryptoSecret uses the OS CSPRNG via
+# RandomNumberGenerator.Fill and base64url-encodes the bytes (URL-safe, no
+# padding, usable as a JWT signing key, API key, etc). 48 random bytes give
+# 384 bits of entropy and produce a 64-char base64url string.
+function New-CryptoSecret {
+    param(
+        [int]$ByteCount = 48
+    )
+    $bytes = New-Object byte[] $ByteCount
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    # Base64url: + -> -, / -> _, strip padding. Guarantees JWT-safe and URL-safe.
+    $b64 = [Convert]::ToBase64String($bytes)
+    return $b64.Replace('+', '-').Replace('/', '_').TrimEnd('=')
+}
+
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host " Knowz Self-Hosted Deployment" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -93,8 +110,9 @@ if ($DeployContainerApps) {
         Write-Host "  Auto-generated API key for Container Apps." -ForegroundColor DarkGray
     }
     if (-not $JwtSecretOverride) {
-        $JwtSecretOverride = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
-        Write-Host "  Auto-generated JWT secret for Container Apps." -ForegroundColor DarkGray
+        # SEC_P0Triage §Rule 6: crypto-safe RNG, not Get-Random.
+        $JwtSecretOverride = New-CryptoSecret -ByteCount 48
+        Write-Host "  Auto-generated JWT secret for Container Apps (crypto-RNG, 384-bit)." -ForegroundColor DarkGray
     }
 }
 
@@ -545,7 +563,7 @@ $localSettings = @{
         TenantId = "00000000-0000-0000-0000-000000000001"
         ServerName = "knowz-selfhosted-api"
         ApiKey = $apiKey
-        JwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
+        JwtSecret = (New-CryptoSecret -ByteCount 48)  # SEC_P0Triage §Rule 6: crypto-RNG, 384-bit
         SuperAdminUsername = "admin"
         EnableSwagger = $true
     }

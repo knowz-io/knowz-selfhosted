@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BookOpen, Loader2, Info, X } from 'lucide-react'
 import { api } from '../lib/api-client'
 import type { KnowledgeItem } from '../lib/types'
+import { AnchoredPortal } from './ui/AnchoredPortal'
 
 interface SourcesBubbleProps {
   sources: { knowledgeId: string }[]
@@ -147,12 +148,15 @@ export default function SourcesBubble({ sources }: SourcesBubbleProps) {
   const [hasOpened, setHasOpened] = useState(false)
   const [excerptItem, setExcerptItem] = useState<KnowledgeItem | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
+      const target = event.target as Node
+      if (popoverRef.current?.contains(target)) return
+      if (panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
@@ -171,6 +175,7 @@ export default function SourcesBubble({ sources }: SourcesBubbleProps) {
   return (
     <div className="relative inline-block" ref={popoverRef}>
       <button
+        ref={triggerRef}
         onClick={handleToggle}
         className="inline-flex items-center gap-1 px-2 py-0.5 bg-muted text-muted-foreground text-[10px] rounded hover:bg-accent transition-colors"
       >
@@ -178,28 +183,33 @@ export default function SourcesBubble({ sources }: SourcesBubbleProps) {
         {sources.length} {sources.length === 1 ? 'source' : 'sources'}
       </button>
 
-      {open && (
-        <div className="absolute bottom-full mb-1.5 left-0 z-40 w-72 bg-card border border-border/60 rounded-xl shadow-lg animate-slide-up">
-          <div className="px-3 py-2 border-b border-border/40">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              Sources
-            </span>
-          </div>
-          <div className="py-1 max-h-48 overflow-y-auto">
-            {sources.map((s, idx) => {
-              const id = s.knowledgeId ?? (s as any).KnowledgeId ?? ''
-              return (
-                <SourceRow
-                  key={id || idx}
-                  knowledgeId={id}
-                  enabled={hasOpened}
-                  onShowExcerpt={setExcerptItem}
-                />
-              )
-            })}
-          </div>
+      <AnchoredPortal
+        open={open}
+        anchorRef={triggerRef}
+        panelRef={panelRef}
+        placement="top-start"
+        offset={6}
+        className="w-72 rounded-xl border border-border/80 bg-card text-card-foreground shadow-elevated animate-slide-up"
+      >
+        <div className="px-3 py-2 border-b border-border/40">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            Sources
+          </span>
         </div>
-      )}
+        <div className="py-1 max-h-48 overflow-y-auto">
+          {sources.map((source, idx) => {
+            const id = source.knowledgeId ?? (source as any).KnowledgeId ?? ''
+            return (
+              <SourceRow
+                key={id || idx}
+                knowledgeId={id}
+                enabled={hasOpened}
+                onShowExcerpt={setExcerptItem}
+              />
+            )
+          })}
+        </div>
+      </AnchoredPortal>
 
       {excerptItem && (
         <ExcerptModal

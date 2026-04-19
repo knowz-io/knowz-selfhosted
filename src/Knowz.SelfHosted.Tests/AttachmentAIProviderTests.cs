@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Azure.Core;
 using Knowz.SelfHosted.Infrastructure.Extensions;
 using Knowz.SelfHosted.Infrastructure.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
@@ -184,6 +185,15 @@ public class AzureAttachmentAIProviderTests
         Substitute.For<ILogger<AzureAttachmentAIProvider>>();
     private readonly IHttpClientFactory _httpClientFactory =
         Substitute.For<IHttpClientFactory>();
+    private readonly TokenCredential _tokenCredential = BuildFakeTokenCredential();
+
+    private static TokenCredential BuildFakeTokenCredential()
+    {
+        var cred = Substitute.For<TokenCredential>();
+        cred.GetTokenAsync(Arg.Any<TokenRequestContext>(), Arg.Any<CancellationToken>())
+            .Returns(new AccessToken("fake", DateTimeOffset.UtcNow.AddHours(1)));
+        return cred;
+    }
 
     [Fact]
     public void Should_HaveProviderName_WithAzureAIVision()
@@ -196,7 +206,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory, _tokenCredential);
         Assert.Equal("AzureAIVision", provider.ProviderName);
     }
 
@@ -212,7 +222,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory, _tokenCredential);
         Assert.Equal("AzureOpenAI", provider.ProviderName);
     }
 
@@ -228,7 +238,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory, _tokenCredential);
         var result = await provider.AnalyzeImageAsync(new byte[] { 1 }, "image/png");
 
         Assert.False(result.Success);
@@ -247,7 +257,7 @@ public class AzureAttachmentAIProviderTests
             })
             .Build();
 
-        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory);
+        var provider = new AzureAttachmentAIProvider(config, _logger, _httpClientFactory, _tokenCredential);
         var result = await provider.ExtractDocumentAsync(new byte[] { 1 }, "application/pdf");
 
         Assert.False(result.Success);
@@ -263,6 +273,12 @@ public class AttachmentAIDIRoutingTests
         services.AddLogging();
         services.AddSingleton<IConfiguration>(config);
         services.AddHttpClient();
+        // MI swap SH_ENTERPRISE_MI_SWAP §2.1: AzureAttachmentAIProvider requires a
+        // TokenCredential from DI. Tests register a fake that never gets called.
+        var fakeCred = Substitute.For<TokenCredential>();
+        fakeCred.GetTokenAsync(Arg.Any<TokenRequestContext>(), Arg.Any<CancellationToken>())
+            .Returns(new AccessToken("fake", DateTimeOffset.UtcNow.AddHours(1)));
+        services.AddSingleton(fakeCred);
         services.AddAttachmentAI(config);
         return services;
     }

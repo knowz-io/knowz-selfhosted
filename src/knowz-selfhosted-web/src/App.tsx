@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, ProtectedRoute, AdminRoute, SuperAdminRoute } from './lib/auth'
 import ErrorBoundary from './components/ErrorBoundary'
 import { initTheme } from './lib/theme'
+import { ViewModeProvider } from './contexts/ViewModeContext'
 
 initTheme()
 import Layout from './components/Layout'
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <AuthProvider>
+    <ViewModeProvider>
       <Routes>
         {/* Public routes: no auth required */}
         <Route path="/login" element={<LoginPage />} />
@@ -132,6 +134,7 @@ export default function App() {
           }
         />
       </Routes>
+    </ViewModeProvider>
     </AuthProvider>
     </ErrorBoundary>
   )

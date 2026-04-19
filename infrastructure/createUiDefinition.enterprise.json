@@ -41,8 +41,8 @@
             "defaultValue": "",
             "constraints": {
               "required": true,
-              "regex": "^.{1,128}$",
-              "validationMessage": "Display name is required. Maximum 128 characters."
+              "regex": "^[A-Za-z0-9 _\\-\\.@']{1,128}$",
+              "validationMessage": "Display name is required. Allowed characters: letters, digits, space, underscore, hyphen, period, at-sign, apostrophe. Maximum 128 characters."
             }
           },
           {

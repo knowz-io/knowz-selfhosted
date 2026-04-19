@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "13584484512007185203"
+      "templateHash": "7283743084232921138"
     }
   },
   "parameters": {
@@ -274,9 +274,8 @@
     },
     "adminPassword": {
       "type": "securestring",
-      "defaultValue": "changeme",
       "metadata": {
-        "description": "SuperAdmin password for initial setup"
+        "description": "SuperAdmin password for initial setup. REQUIRED — must be >=12 chars with upper/lower/digit/symbol and must not contain admin/changeme/password/letmein/... (see AuthService.WeakPasswordList). No default: SEC_P0Triage §Rule 2 forbids shipping a known-weak credential with the infrastructure template."
       }
     },
     "caDeploymentName": {
@@ -666,6 +665,32 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', format('{0}-openai-{1}', parameters('prefix'), parameters('location')))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), parameters('deployerObjectId'), variables('keyVaultSecretsOfficerRoleId')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureOpenAI--DeploymentName')]",
+      "properties": {
+        "value": "[parameters('chatDeploymentName')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), parameters('deployerObjectId'), variables('keyVaultSecretsOfficerRoleId')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('keyVaultName'), 'AzureOpenAI--EmbeddingDeploymentName')]",
+      "properties": {
+        "value": "[parameters('embeddingDeploymentName')]"
+      },
+      "dependsOn": [
         "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
         "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), parameters('deployerObjectId'), variables('keyVaultSecretsOfficerRoleId')))]"
       ]

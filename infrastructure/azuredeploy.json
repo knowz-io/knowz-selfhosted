@@ -274,9 +274,8 @@
     },
     "adminPassword": {
       "type": "securestring",
-      "defaultValue": "changeme",
       "metadata": {
-        "description": "SuperAdmin password for initial setup"
+        "description": "SuperAdmin password for initial setup. REQUIRED — must be >=12 chars with upper/lower/digit/symbol and must not contain admin/changeme/password/letmein/... (see AuthService.WeakPasswordList). No default: SEC_P0Triage §Rule 2."
       }
     },
     "caDeploymentName": {

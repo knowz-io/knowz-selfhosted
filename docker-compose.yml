@@ -7,7 +7,8 @@
 #   web - Knowz Self-Hosted Web (React + nginx)
 #   mcp - Knowz MCP Server (Model Context Protocol for AI tools)
 #
-# First run: API auto-migrates the database and seeds SuperAdmin (admin/changeme).
+# First run: API auto-migrates the database and seeds SuperAdmin from the
+# ADMIN_USERNAME / ADMIN_PASSWORD values in your .env. No defaults ship.
 # Access: http://localhost:3000 (web) | http://localhost:5000/swagger (API) | http://localhost:3001 (MCP)
 #
 # AI: Copy .env.example to .env. Easiest: uncomment KNOWZ_PLATFORM section + paste your API key.
@@ -45,10 +46,14 @@ services:
       ConnectionStrings__McpDb: "Server=db,1433;Database=KnowzSelfHosted;User Id=sa;Password=${SA_PASSWORD:-Knowz_Dev_P@ssw0rd!};TrustServerCertificate=True;Encrypt=True"
       Database__AutoMigrate: "true"
 
-      # Required: Authentication
-      SelfHosted__JwtSecret: "${JWT_SECRET:-change-this-to-a-random-64-char-string-in-production-please!!}"
-      SelfHosted__SuperAdminUsername: "${ADMIN_USERNAME:-admin}"
-      SelfHosted__SuperAdminPassword: "${ADMIN_PASSWORD:-changeme}"
+      # Required: Authentication — MUST be supplied via .env (no defaults).
+      # Copy .env.example to .env and set JWT_SECRET (>=32 chars, cryptographically random),
+      # ADMIN_USERNAME, and ADMIN_PASSWORD (>=12 chars mixed alpha-num-symbol, not on the
+      # weak-password denylist in AuthService.WeakPasswordList). First boot will fail fast
+      # if any are missing or weak — by design, per SEC_P0Triage.
+      SelfHosted__JwtSecret: "${JWT_SECRET:?JWT_SECRET must be set in .env (>=32 chars)}"
+      SelfHosted__SuperAdminUsername: "${ADMIN_USERNAME:?ADMIN_USERNAME must be set in .env}"
+      SelfHosted__SuperAdminPassword: "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}"
 
       # Security: CORS (restrict to web container's external URL)
       SelfHosted__AllowedOrigins__0: "http://localhost:3000"

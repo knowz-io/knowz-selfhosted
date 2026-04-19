@@ -235,3 +235,113 @@ variable "registry_password" {
   sensitive   = true
   default     = ""
 }
+
+# -----------------------------------------------------------------------------
+# BYO Infrastructure (optional — preserves back-compat when all empty)
+# See SH_ENTERPRISE_BYO_INFRA.md for spec rationale.
+# -----------------------------------------------------------------------------
+
+variable "byo_vnet_subnet_id" {
+  description = "BYO Container Apps delegated subnet resource ID. Empty = auto-provision VNet."
+  type        = string
+  default     = ""
+}
+
+variable "byo_vnet_pe_subnet_id" {
+  description = "BYO non-delegated PE subnet resource ID. Empty AND pe_subnet_address_prefix empty = auto-provision inside BYO VNet."
+  type        = string
+  default     = ""
+}
+
+variable "pe_subnet_address_prefix" {
+  description = "CIDR to auto-create PE subnet inside BYO VNet (used when byo_vnet_pe_subnet_id empty)."
+  type        = string
+  default     = ""
+}
+
+variable "auto_provision_vnet" {
+  description = "Auto-provision VNet when BYO inputs absent. Set false for strict BYO mode with fail-fast asserts."
+  type        = bool
+  default     = true
+}
+
+variable "byo_key_vault_id" {
+  description = "BYO Key Vault resource ID (full /subscriptions/.../Microsoft.KeyVault/vaults/<name>). Empty = create new per-env KV."
+  type        = string
+  default     = ""
+}
+
+variable "central_log_analytics_id" {
+  description = "Central Log Analytics workspace resource ID. Empty = per-env LAW."
+  type        = string
+  default     = ""
+}
+
+variable "existing_openai_resource_id" {
+  description = "Customer-provisioned Azure OpenAI resource ID. Empty = deploy local OpenAI."
+  type        = string
+  default     = ""
+}
+
+variable "external_acr_name" {
+  description = "External ACR name (not FQDN) for air-gapped pulls. Empty = pull from ghcr.io."
+  type        = string
+  default     = ""
+}
+
+variable "external_acr_resource_group" {
+  description = "External ACR resource group (required when external_acr_name non-empty)."
+  type        = string
+  default     = ""
+}
+
+# -----------------------------------------------------------------------------
+# Enterprise Hardening (SH_ENTERPRISE_BICEP_HARDENING.md)
+# -----------------------------------------------------------------------------
+
+variable "waf_mode" {
+  description = "WAF policy mode. Default Prevention for enterprise tier (blocks attacks instead of only logging)."
+  type        = string
+  default     = "Prevention"
+
+  validation {
+    condition     = contains(["Detection", "Prevention"], var.waf_mode)
+    error_message = "waf_mode must be Detection or Prevention."
+  }
+}
+
+variable "sql_database_sku_name" {
+  description = "SQL database SKU name. Default S1 for enterprise workload."
+  type        = string
+  default     = "S1"
+
+  validation {
+    condition     = contains(["Basic", "S0", "S1", "S2", "S3", "P1", "P2"], var.sql_database_sku_name)
+    error_message = "sql_database_sku_name must be one of: Basic, S0, S1, S2, S3, P1, P2."
+  }
+}
+
+variable "sql_database_max_size_bytes" {
+  description = "SQL database max size in bytes. Default 250GB for S1 tier."
+  type        = number
+  default     = 268435456000
+}
+
+variable "image_repository_prefix" {
+  description = "Container image registry prefix (e.g., knowz-io for ghcr.io/knowz-io/*)."
+  type        = string
+  default     = "knowz-io"
+}
+
+variable "strict_ingestion" {
+  description = "Enforce strict ingestion PE (AMPLS) for App Insights. Default false — AMPLS deferred."
+  type        = bool
+  default     = false
+}
+
+variable "mcp_service_key" {
+  description = "MCP service key. Empty = auto-generate (random_uuid) on first apply; pass from KV on reruns for idempotency."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

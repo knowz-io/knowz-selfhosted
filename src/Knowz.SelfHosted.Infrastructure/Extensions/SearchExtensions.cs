@@ -1,4 +1,4 @@
-using Azure;
+using Azure.Core;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Knowz.Core.Interfaces;
@@ -31,25 +31,25 @@ public static class SearchExtensions
             return services;
         }
 
-        // Tier 2: Azure AI Search
+        // Tier 2: Azure AI Search (MI swap SH_ENTERPRISE_MI_SWAP §2.4 — endpoint+index only;
+        // TokenCredential from DI, AzureAISearch:ApiKey no longer consulted).
         var endpoint = configuration["AzureAISearch:Endpoint"];
-        var apiKey = configuration["AzureAISearch:ApiKey"];
         var indexName = configuration["AzureAISearch:IndexName"];
 
         if (!string.IsNullOrWhiteSpace(endpoint) &&
-            !string.IsNullOrWhiteSpace(apiKey) &&
             !string.IsNullOrWhiteSpace(indexName))
         {
-            var credential = new AzureKeyCredential(apiKey);
+            services.AddSingleton(sp =>
+            {
+                var credential = sp.GetRequiredService<TokenCredential>();
+                return new SearchClient(new Uri(endpoint), indexName, credential);
+            });
 
-            services.AddSingleton(_ => new SearchClient(
-                new Uri(endpoint),
-                indexName,
-                credential));
-
-            services.AddSingleton(_ => new SearchIndexClient(
-                new Uri(endpoint),
-                credential));
+            services.AddSingleton(sp =>
+            {
+                var credential = sp.GetRequiredService<TokenCredential>();
+                return new SearchIndexClient(new Uri(endpoint), credential);
+            });
 
             services.AddScoped<ISearchService, AzureSearchService>();
             return services;
