@@ -213,7 +213,7 @@ export default function Header() {
             <TenantSwitcher />
 
             {isSuperAdmin && tenants && tenants.length > 0 && (
-              <div className="hidden items-center gap-1 lg:inline-flex">
+              <div className="hidden items-center gap-1 xl:inline-flex">
                 <ArrowLeftRight size={12} className="text-purple-500" />
                 <select
                   data-testid="sh-superadmin-tenant-select"
