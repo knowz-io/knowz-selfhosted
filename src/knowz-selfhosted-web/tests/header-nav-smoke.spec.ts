@@ -87,6 +87,34 @@ test.describe('Header nav smoke', () => {
     await page.setViewportSize(VIEWPORTS.desktop)
   })
 
+  // Regression guard for the v0.14.0 logo/nav overlap bug (sh.knowz.io header
+  // previously rendered nav items on top of the Pacifico logo at desktop widths).
+  // See knowzcode/planning/greedy-waddling-fox.md — fix restructured the row to a
+  // two-column layout mirroring src/knowz-web-client/src/components/Layout.tsx.
+  for (const [vpName, viewport] of [
+    ['tablet', VIEWPORTS.tablet],
+    ['desktop', VIEWPORTS.desktop],
+  ] as const) {
+    test(`logo and first nav link do not horizontally overlap — ${vpName} viewport`, async ({ page }) => {
+      await stubAuth(page, { role: 1 /* Admin — all 8 items visible */ })
+      await page.setViewportSize(viewport)
+      await page.goto('/')
+
+      const logo = page.getByTestId('sh-logo-link')
+      const firstNav = page.getByTestId('nav-link-knowledge')
+      await expect(logo).toBeVisible()
+      await expect(firstNav).toBeVisible()
+
+      const logoBox = await logo.boundingBox()
+      const firstNavBox = await firstNav.boundingBox()
+      expect(logoBox).not.toBeNull()
+      expect(firstNavBox).not.toBeNull()
+
+      // Logo's right edge MUST be strictly left of first nav item's left edge.
+      expect(logoBox!.x + logoBox!.width).toBeLessThan(firstNavBox!.x)
+    })
+  }
+
   for (const roleName of ['user', 'admin', 'superadmin'] as const) {
     test.skip(`renders role-appropriate primary nav — ${roleName}`, async ({ page }) => {
       // Marked skip until (a) sh-test has User + SuperAdmin seeded accounts, or
