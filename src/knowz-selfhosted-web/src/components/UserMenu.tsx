@@ -105,7 +105,7 @@ export default function UserMenu() {
         <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-sm font-bold text-primary">
           {initial}
         </div>
-        <div className="hidden text-left sm:block">
+        <div className="hidden text-left xl:block">
           <p className="max-w-40 truncate text-sm font-medium">{displayLabel}</p>
           <p className="text-[11px] text-muted-foreground">{roleLabel}</p>
         </div>
