@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api-client'
-import { Archive, RefreshCw, Plus, X } from 'lucide-react'
+import { Archive, RefreshCw, Plus, X, Settings } from 'lucide-react'
 import SurfaceCard from '../components/ui/SurfaceCard'
 
 export default function VaultListPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -175,12 +176,25 @@ export default function VaultListPage() {
               to={`/knowledge?vaultId=${vault.id}`}
               className="block"
             >
-              <SurfaceCard className="h-full p-5 transition-all duration-200 hover:-translate-y-0.5 hover:bg-card">
+              <SurfaceCard className="relative h-full p-5 transition-all duration-200 hover:-translate-y-0.5 hover:bg-card">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    navigate(`/vaults/${vault.id}`)
+                  }}
+                  className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Manage ${vault.name}`}
+                  title="Manage vault (edit or delete)"
+                >
+                  <Settings size={16} />
+                </button>
                 <div className="mb-3 flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <Archive size={18} />
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 pr-8">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="truncate font-semibold">{vault.name}</h3>
                       {vault.isDefault && (

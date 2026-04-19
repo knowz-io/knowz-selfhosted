@@ -62,6 +62,8 @@ export default function Header() {
 
   const visibleNavItems: NavItem[] = filterNavItems(primaryNav, user ?? null)
   const pageMeta = getPageMeta(pathname)
+  // Chat owns its entire vertical budget; skip the title/tagline band there.
+  const showPageMeta = !pathname.startsWith('/chat')
 
   const { data: tenants } = useQuery({
     queryKey: ['admin', 'tenants-header'],
@@ -236,23 +238,26 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Row 2: pageMeta — title + tagline only (see SH_PageMetaPreservation) */}
-        <div data-testid="sh-pagemeta" className="border-t border-border/40 py-2">
-          <div className="min-w-0">
-            <h1
-              data-testid="sh-pagemeta-title"
-              className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
-            >
-              {pageMeta.title}
-            </h1>
-            <p
-              data-testid="sh-pagemeta-description"
-              className="hidden max-w-2xl truncate text-sm text-muted-foreground sm:block"
-            >
-              {pageMeta.description}
-            </p>
+        {/* Row 2: pageMeta — title + tagline only. Suppressed on routes that
+            own their own chrome (e.g. /chat). See SH_PageMetaPreservation. */}
+        {showPageMeta && (
+          <div data-testid="sh-pagemeta" className="border-t border-border/40 py-2">
+            <div className="min-w-0">
+              <h1
+                data-testid="sh-pagemeta-title"
+                className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
+              >
+                {pageMeta.title}
+              </h1>
+              <p
+                data-testid="sh-pagemeta-description"
+                className="hidden max-w-2xl truncate text-sm text-muted-foreground sm:block"
+              >
+                {pageMeta.description}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Mobile drawer */}
