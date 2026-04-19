@@ -114,87 +114,90 @@ export default function Header() {
     <header
       data-testid="sh-header"
       role="banner"
-      className="sticky top-0 z-40 border-b border-border/60 bg-background/82 backdrop-blur-xl"
+      className="sticky top-0 z-40 overflow-x-hidden border-b border-border/60 bg-background/82 backdrop-blur-xl"
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Row 1: nav bar */}
+        {/* Row 1: nav bar — two-column layout mirrors platform (logo+nav left, actions right) */}
         <div className="flex h-20 items-center justify-between gap-4">
-          {/* LogoBlock + mobile hamburger + SuperAdmin viewing pill */}
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              ref={hamburgerRef}
-              type="button"
-              data-testid="sh-mobile-hamburger"
-              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={mobileMenuOpen}
-              aria-controls="sh-mobile-drawer"
-              onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="inline-flex items-center justify-center rounded-2xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:hidden"
-            >
-              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-            <Link
-              to="/"
-              data-testid="sh-logo-link"
-              className="group inline-flex items-center gap-2 shrink-0"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 rounded-xl border-2 border-primary/50 animate-ping opacity-40" />
-                <div className="absolute inset-0 rounded-xl border border-primary/40 animate-pulse" />
-                <div className="relative p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-primary shadow-md">
-                  <Brain className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" data-testid="sh-logo-brain-icon" />
+          {/* Left column: logo group + primary nav */}
+          <div className="flex min-w-0 items-center gap-3 lg:gap-8">
+            {/* Logo group (hamburger visible <lg only; viewing pill when SuperAdmin cross-tenant) */}
+            <div className="flex items-center gap-3">
+              <button
+                ref={hamburgerRef}
+                type="button"
+                data-testid="sh-mobile-hamburger"
+                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="sh-mobile-drawer"
+                onClick={() => setMobileMenuOpen((prev) => !prev)}
+                className="inline-flex items-center justify-center rounded-2xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:hidden"
+              >
+                {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+              </button>
+              <Link
+                to="/"
+                data-testid="sh-logo-link"
+                className="group inline-flex items-center gap-2 shrink-0"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-xl border-2 border-primary/50 animate-ping opacity-40" />
+                  <div className="absolute inset-0 rounded-xl border border-primary/40 animate-pulse" />
+                  <div className="relative p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-primary shadow-md">
+                    <Brain className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" data-testid="sh-logo-brain-icon" />
+                  </div>
                 </div>
-              </div>
-              <span
-                className="text-2xl sm:text-3xl font-normal tracking-wide text-foreground"
-                style={{
-                  fontFamily: "'Pacifico', 'Comic Sans MS', cursive, sans-serif",
-                  WebkitFontSmoothing: 'antialiased',
-                  MozOsxFontSmoothing: 'grayscale',
-                }}
-              >
-                knowz
-              </span>
-            </Link>
-            {isSuperAdmin && activeTenantId && activeTenantName && (
-              <span
-                data-testid="sh-superadmin-viewing-pill"
-                className="inline-flex items-center gap-1 rounded-full border border-purple-500/40 bg-purple-50 px-2.5 py-1 text-[10px] font-medium text-purple-700 dark:bg-purple-950/30 dark:text-purple-300"
-              >
-                <Building2 size={11} />
-                Viewing: {activeTenantName}
-              </span>
-            )}
-          </div>
+                <span
+                  className="text-2xl sm:text-3xl font-normal tracking-wide text-foreground"
+                  style={{
+                    fontFamily: "'Pacifico', 'Comic Sans MS', cursive, sans-serif",
+                    WebkitFontSmoothing: 'antialiased',
+                    MozOsxFontSmoothing: 'grayscale',
+                  }}
+                >
+                  knowz
+                </span>
+              </Link>
+              {isSuperAdmin && activeTenantId && activeTenantName && (
+                <span
+                  data-testid="sh-superadmin-viewing-pill"
+                  className="inline-flex items-center gap-1 rounded-full border border-purple-500/40 bg-purple-50 px-2.5 py-1 text-[10px] font-medium text-purple-700 dark:bg-purple-950/30 dark:text-purple-300"
+                >
+                  <Building2 size={11} />
+                  Viewing: {activeTenantName}
+                </span>
+              )}
+            </div>
 
-          {/* Primary nav (hidden <lg) */}
-          <nav
-            aria-label="Primary"
-            data-testid="sh-nav-primary"
-            className="hidden flex-1 justify-center lg:flex"
-          >
-            <ul className="flex items-center gap-1">
-              {visibleNavItems.map((item) => {
-                const Icon = item.icon
-                const active = isActivePath(item, pathname)
-                const testId = testIdFor(item)
-                return (
-                  <li key={item.path}>
-                    <NavLink
-                      to={item.path}
-                      end={item.end}
-                      data-testid={testId}
-                      className={() => topNavClass(active)}
-                      aria-current={active ? 'page' : undefined}
-                    >
-                      <Icon size={18} />
-                      <span className={`text-[9px] uppercase tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
-                    </NavLink>
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
+            {/* Primary nav (hidden <lg — mobile drawer handles <lg) */}
+            <nav
+              aria-label="Primary"
+              data-testid="sh-nav-primary"
+              className="hidden min-w-0 lg:flex"
+            >
+              <ul className="flex flex-wrap items-center gap-1">
+                {visibleNavItems.map((item) => {
+                  const Icon = item.icon
+                  const active = isActivePath(item, pathname)
+                  const testId = testIdFor(item)
+                  return (
+                    <li key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        end={item.end}
+                        data-testid={testId}
+                        className={() => topNavClass(active)}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        <Icon size={18} />
+                        <span className={`text-[9px] uppercase tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
+                      </NavLink>
+                    </li>
+                  )
+                })}
+              </ul>
+            </nav>
+          </div>
 
           {/* Right cluster */}
           <div className="flex shrink-0 items-center gap-2">
