@@ -236,20 +236,9 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Row 2: pageMeta (see SH_PageMetaPreservation) */}
-        <div data-testid="sh-pagemeta" className="border-t border-border/40 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <p data-testid="sh-pagemeta-section" className="sh-kicker">
-              {pageMeta.section}
-            </p>
-            {user?.tenantName && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/70 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
-                <Building2 size={11} />
-                {user.tenantName}
-              </span>
-            )}
-          </div>
-          <div className="mt-1 min-w-0">
+        {/* Row 2: pageMeta — title + tagline only (see SH_PageMetaPreservation) */}
+        <div data-testid="sh-pagemeta" className="border-t border-border/40 py-2">
+          <div className="min-w-0">
             <h1
               data-testid="sh-pagemeta-title"
               className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
