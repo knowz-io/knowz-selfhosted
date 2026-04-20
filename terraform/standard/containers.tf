@@ -146,6 +146,16 @@ resource "azurerm_container_app" "api" {
       }
 
       env {
+        name  = "Embedding__ModelName"
+        value = local.effective_ca_embedding_model_name
+      }
+
+      env {
+        name  = "Embedding__Dimensions"
+        value = tostring(local.effective_ca_embedding_dimensions)
+      }
+
+      env {
         name        = "AzureAISearch__Endpoint"
         secret_name = "search-endpoint"
       }

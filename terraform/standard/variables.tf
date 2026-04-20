@@ -104,6 +104,16 @@ variable "embedding_model_name" {
   default     = "text-embedding-3-small"
 }
 
+variable "embedding_dimensions" {
+  description = "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
+  type        = number
+  default     = 1536
+  validation {
+    condition     = var.embedding_dimensions > 0
+    error_message = "embedding_dimensions must be a positive integer matching the embedding model output size."
+  }
+}
+
 # =============================================================================
 # AZURE AI VISION
 # =============================================================================
@@ -295,4 +305,16 @@ variable "ca_embedding_deployment_name" {
   description = "Embedding deployment name for Container Apps config"
   type        = string
   default     = "text-embedding-3-small"
+}
+
+variable "ca_embedding_model_name" {
+  description = "Embedding model name for Container Apps config (Embedding__ModelName). Defaults to embedding_model_name."
+  type        = string
+  default     = ""
+}
+
+variable "ca_embedding_dimensions" {
+  description = "Embedding vector dimensions for Container Apps config (Embedding__Dimensions). 0 = inherit embedding_dimensions."
+  type        = number
+  default     = 0
 }

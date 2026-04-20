@@ -519,7 +519,7 @@ curl -sfS "https://${SEARCH_NAME}.search.windows.net/indexes/knowledge?api-versi
   Web UI               ✓ Healthy   https://knowz-sh-web.xxx.eastus2...
   MCP Server           ✓ Healthy   https://knowz-sh-mcp.xxx.eastus2...
   Azure OpenAI         ✓ Connected gpt-5.2-chat + text-embedding-3-small
-  AI Search            ✓ Indexed   knowledge (HNSW, 1536 dims)
+  AI Search            ✓ Indexed   knowledge (HNSW, ${Embedding__Dimensions} dims)
   Azure AI Vision      ✓ Connected S1
   Document Intelligence ✓ Connected S0
   SQL Database         ✓ Migrated  McpKnowledge
@@ -585,7 +585,7 @@ For each failed check, offer targeted automated fix:
 |---------|---------------|
 | API/Web/MCP not healthy | `az containerapp logs show --name X -g $RG --tail 100` to diagnose; offer restart |
 | OpenAI not connected | Retrieve real key, update secret, restart API: `az containerapp secret set --name X --secrets openai-apikey=$REAL_KEY` then restart revision |
-| Search index missing | Re-create using schema from `selfhosted-deploy.ps1` (1536-dim HNSW) |
+| Search index missing | Re-create using schema from `selfhosted-deploy.ps1` — pass `-EmbeddingDimensions $DIM` matching the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). HNSW, dim must match `Embedding__Dimensions` in the container. |
 | MCP key mismatch | Copy API's `MCP__ServiceKey` to MCP container env vars |
 | KV secrets empty | Re-populate from Terraform/Bicep outputs; check RBAC |
 | DB not migrated | Verify `Database__AutoMigrate=true`; trigger API container restart |

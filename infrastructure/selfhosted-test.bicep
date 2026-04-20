@@ -102,6 +102,9 @@ param embeddingDeploymentName string = 'text-embedding-3-small'
 @description('Embedding model name (text-embedding-3-small or text-embedding-3-large)')
 param embeddingModelName string = 'text-embedding-3-small'
 
+@description('Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container Apps as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership.')
+param embeddingDimensions int = 1536
+
 @description('Deploy Azure Key Vault for secret management (set to false for flat env var config)')
 param deployKeyVault bool = true
 
@@ -149,6 +152,12 @@ param caDeploymentName string = chatDeploymentName
 
 @description('Embedding deployment name for Container Apps config')
 param caEmbeddingDeploymentName string = 'text-embedding-3-small'
+
+@description('Embedding model name for Container Apps config (Embedding__ModelName)')
+param caEmbeddingModelName string = embeddingModelName
+
+@description('Embedding vector dimensions for Container Apps config (Embedding__Dimensions). Must match caEmbeddingModelName.')
+param caEmbeddingDimensions int = embeddingDimensions
 
 // ============================================================================
 // VARIABLES
@@ -869,6 +878,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             {
               name: 'AzureOpenAI__EmbeddingDeploymentName'
               value: caEmbeddingDeploymentName
+            }
+            {
+              name: 'Embedding__ModelName'
+              value: caEmbeddingModelName
+            }
+            {
+              name: 'Embedding__Dimensions'
+              value: string(caEmbeddingDimensions)
             }
             {
               name: 'AzureAISearch__Endpoint'

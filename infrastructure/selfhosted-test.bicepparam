@@ -41,6 +41,10 @@ param searchLocation = readEnvironmentVariable('SH_SEARCH_LOCATION', readEnviron
 param chatDeploymentName = 'gpt-4o'
 param embeddingDeploymentName = 'text-embedding-3-small'
 param embeddingModelName = readEnvironmentVariable('SH_EMBEDDING_MODEL', 'text-embedding-3-large')
+// Vector dim — MUST match the embeddingModelName value above.
+// text-embedding-3-small / ada-002 -> 1536, text-embedding-3-large -> 3072.
+// Override via SH_EMBEDDING_DIMENSIONS=3072 when bumping to -3-large.
+param embeddingDimensions = int(readEnvironmentVariable('SH_EMBEDDING_DIMENSIONS', '1536'))
 
 // Key Vault: deploy by default for enterprise secret management
 param deployKeyVault = readEnvironmentVariable('SH_DEPLOY_KEYVAULT', 'true') == 'true'
@@ -70,3 +74,6 @@ param registryUsername = readEnvironmentVariable('SH_REGISTRY_USERNAME', '')
 // Container Apps model deployment names (may differ from the OpenAI resource deployment names)
 param caDeploymentName = readEnvironmentVariable('SH_CA_DEPLOYMENT_NAME', 'gpt-4o')
 param caEmbeddingDeploymentName = readEnvironmentVariable('SH_CA_EMBEDDING_DEPLOYMENT_NAME', 'text-embedding-3-small')
+// CA Embedding model + dims (inherit defaults unless explicitly overridden)
+param caEmbeddingModelName = readEnvironmentVariable('SH_CA_EMBEDDING_MODEL_NAME', embeddingModelName)
+param caEmbeddingDimensions = int(readEnvironmentVariable('SH_CA_EMBEDDING_DIMENSIONS', string(embeddingDimensions)))

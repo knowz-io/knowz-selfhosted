@@ -202,6 +202,13 @@ az cognitiveservices account deployment list \
 #   chatDeploymentName    → must equal the 'name' of a gpt-5.2-chat deployment
 #   embeddingDeploymentName → must equal the 'name' of a text-embedding-3-small deployment
 # Mismatches surface later as "DeploymentNotFound" during Phase 5 Step 4.
+#
+# Also verify embeddingModelNameParam + embeddingDimensions match the actual
+# deployed embedding model. These become Embedding__ModelName / Embedding__Dimensions
+# in the container and drive the search index vector-field schema. A dim mismatch
+# silently breaks vector search (see FIX_SelfhostedVectorDimsConfigurable).
+#   text-embedding-3-small / ada-002 → 1536
+#   text-embedding-3-large           → 3072
 ```
 
 ---

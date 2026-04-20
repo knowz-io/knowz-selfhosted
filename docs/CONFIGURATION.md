@@ -52,6 +52,8 @@ Enable AI-powered chat, summarization, and embedding generation with your own Az
 | `AZURE_OPENAI_API_KEY` | `AzureOpenAI__ApiKey` | Azure OpenAI API key | `your-api-key` |
 | -- | `AzureOpenAI__DeploymentName` | Chat/completion model deployment name | `gpt-5.2-chat` |
 | -- | `AzureOpenAI__EmbeddingDeploymentName` | Embedding model deployment name | `text-embedding-3-small` |
+| `EMBEDDING_MODEL_NAME` | `Embedding__ModelName` | Embedding model identifier (must match deployed model) | `text-embedding-3-small` |
+| `EMBEDDING_DIMENSIONS` | `Embedding__Dimensions` | Embedding vector dimension count. **Required** when Azure AI Search is used. Must match the deployed model: `1536` for `text-embedding-3-small` / `ada-002`, `3072` for `text-embedding-3-large`. API fails to start if this is missing. See `ARCH_EmbeddingConfigOwnership`. | `1536` |
 
 ### Tier 2: Azure AI Search (Optional)
 
@@ -62,6 +64,8 @@ Enable semantic vector search across your knowledge base. Requires Azure OpenAI 
 | `AZURE_AI_SEARCH_ENDPOINT` | `AzureAISearch__Endpoint` | Azure AI Search service endpoint | `https://your-search.search.windows.net` |
 | `AZURE_AI_SEARCH_API_KEY` | `AzureAISearch__ApiKey` | Azure AI Search admin API key | `your-api-key` |
 | -- | `AzureAISearch__IndexName` | Search index name | `knowledge` |
+
+> **Embedding dim/model parity (important):** The search index `contentVector` field is created with the dimension count in `Embedding__Dimensions`. Changing the embedding model after the index is created (e.g. `-3-small` → `-3-large`) requires dropping the index and re-ingesting — a dim mismatch between the index schema and new embeddings silently breaks vector search. See `selfhosted/docs/UPGRADE_NOTES.md` for the runbook.
 
 ## Storage
 

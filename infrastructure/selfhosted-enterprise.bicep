@@ -72,6 +72,12 @@ param chatDeploymentName string = 'gpt-5.2-chat'
 @description('Embedding deployment name (must match appsettings EmbeddingDeploymentName)')
 param embeddingDeploymentName string = 'text-embedding-3-small'
 
+@description('Embedding model name (text-embedding-3-small or text-embedding-3-large). Propagated to Container App as Embedding__ModelName.')
+param embeddingModelNameParam string = 'text-embedding-3-small'
+
+@description('Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership.')
+param embeddingDimensions int = 1536
+
 @description('Deploy Azure AI Vision for image/diagram analysis (caption, tags, objects, OCR)')
 param deployVision bool = true
 
@@ -225,7 +231,8 @@ var effectiveRegistrySecrets = (!empty(externalAcrName) || empty(registryUsernam
   }
 ]
 
-var embeddingModelName = 'text-embedding-3-small'
+// Resolve effective embedding model name: explicit param wins; default matches text-embedding-3-small.
+var embeddingModelName = empty(embeddingModelNameParam) ? 'text-embedding-3-small' : embeddingModelNameParam
 
 // ============================================================================
 // BYO VNET REFERENCES + EFFECTIVE SUBNET IDS
@@ -1895,6 +1902,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AzureOpenAI__EmbeddingDeploymentName'
               value: embeddingDeploymentName
+            }
+            {
+              name: 'Embedding__ModelName'
+              value: embeddingModelName
+            }
+            {
+              name: 'Embedding__Dimensions'
+              value: string(embeddingDimensions)
             }
             {
               name: 'AzureAISearch__Endpoint'

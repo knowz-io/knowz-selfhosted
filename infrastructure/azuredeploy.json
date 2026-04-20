@@ -195,6 +195,13 @@
         "description": "Embedding model name (text-embedding-3-small or text-embedding-3-large)"
       }
     },
+    "embeddingDimensions": {
+      "type": "int",
+      "defaultValue": 1536,
+      "metadata": {
+        "description": "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
+      }
+    },
     "deployKeyVault": {
       "type": "bool",
       "defaultValue": true,
@@ -290,6 +297,20 @@
       "defaultValue": "text-embedding-3-small",
       "metadata": {
         "description": "Embedding deployment name for Container Apps config"
+      }
+    },
+    "caEmbeddingModelName": {
+      "type": "string",
+      "defaultValue": "[parameters('embeddingModelName')]",
+      "metadata": {
+        "description": "Embedding model name for Container Apps config (Embedding__ModelName)"
+      }
+    },
+    "caEmbeddingDimensions": {
+      "type": "int",
+      "defaultValue": "[parameters('embeddingDimensions')]",
+      "metadata": {
+        "description": "Embedding vector dimensions for Container Apps config (Embedding__Dimensions). Must match caEmbeddingModelName."
       }
     }
   },
@@ -1014,6 +1035,14 @@
                 {
                   "name": "AzureOpenAI__EmbeddingDeploymentName",
                   "value": "[parameters('caEmbeddingDeploymentName')]"
+                },
+                {
+                  "name": "Embedding__ModelName",
+                  "value": "[parameters('caEmbeddingModelName')]"
+                },
+                {
+                  "name": "Embedding__Dimensions",
+                  "value": "[string(parameters('caEmbeddingDimensions'))]"
                 },
                 {
                   "name": "AzureAISearch__Endpoint",

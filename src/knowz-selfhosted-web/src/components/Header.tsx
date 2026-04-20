@@ -33,7 +33,7 @@ function testIdFor(item: NavItem): string {
 
 function topNavClass(active: boolean): string {
   return [
-    'group inline-flex min-w-[56px] flex-col items-center justify-center gap-0.5 h-auto py-1.5 px-2.5 rounded-lg transition-all',
+    'group inline-flex flex-col items-center justify-center gap-0.5 h-auto py-1.5 px-2 rounded-lg transition-all',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
     active
       ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
@@ -177,7 +177,7 @@ export default function Header() {
               data-testid="sh-nav-primary"
               className="hidden min-w-0 lg:flex"
             >
-              <ul className="flex flex-wrap items-center gap-1">
+              <ul className="flex flex-nowrap items-center gap-0.5">
                 {visibleNavItems.map((item) => {
                   const Icon = item.icon
                   const active = isActivePath(item, pathname)
@@ -192,7 +192,7 @@ export default function Header() {
                         aria-current={active ? 'page' : undefined}
                       >
                         <Icon size={18} />
-                        <span className={`text-[9px] uppercase tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
+                        <span className={`hidden 2xl:inline text-[9px] uppercase tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
                       </NavLink>
                     </li>
                   )

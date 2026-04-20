@@ -87,9 +87,25 @@ public class SelfHostedToolBackend : IToolBackend
         ["list_comments"] = new(HttpMethod.Get, "/api/v1/knowledge/{knowledgeItemId}/comments",
             new[] { "knowledgeItemId" }, null, null),
 
+        // DEPRECATED — legacy synchronous path. Now a deprecation shim on the API side
+        // that enqueues an async request. Removal no earlier than 2026-08-01.
+        // Migrate to amend_knowledge_async. Spec: MCP_AmendKnowledge §1 Rule 2.
         ["amend_knowledge"] = new(HttpMethod.Post, "/api/v1/knowledge/{id}/amend",
             new[] { "id" }, null, null,
             new[] { "instruction" }),
+
+        // Async enqueue — returns { status, amendRequestId, knowledgeId, pollUrl, message }.
+        // Idempotency key (amendRequestId) dedupes retries per (tenant, key).
+        // Spec: MCP_AmendKnowledge §1 Rule 1, §2.
+        ["amend_knowledge_async"] = new(HttpMethod.Post, "/api/v1/knowledge/{id}/amend-requests",
+            new[] { "id" }, null, null,
+            new[] { "instruction", "amendRequestId" }),
+
+        // Request-scoped polling — clients poll a specific amendRequestId rather than
+        // racing against latestAmendRequest on get_knowledge_item.
+        // Spec: MCP_AmendKnowledge §1 Rule 10, §2.
+        ["get_amend_request_status"] = new(HttpMethod.Get, "/api/v1/knowledge/{knowledgeId}/amend-requests/{amendRequestId}",
+            new[] { "knowledgeId", "amendRequestId" }, null, null),
 
         ["get_version_history"] = new(HttpMethod.Get, "/api/v1/knowledge/{knowledgeId}/versions",
             new[] { "knowledgeId" }, null, null),

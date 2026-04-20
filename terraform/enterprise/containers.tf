@@ -177,6 +177,14 @@ resource "azurerm_container_app" "api" {
         value = var.embedding_deployment_name
       }
       env {
+        name  = "Embedding__ModelName"
+        value = var.embedding_model_name
+      }
+      env {
+        name  = "Embedding__Dimensions"
+        value = tostring(var.embedding_dimensions)
+      }
+      env {
         name        = "AzureAISearch__Endpoint"
         secret_name = "search-endpoint"
       }

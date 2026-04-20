@@ -21,6 +21,9 @@ deploy_openai           = true
 chat_deployment_name    = "gpt-5.2-chat"
 embedding_deployment_name = "text-embedding-3-small"
 embedding_model_name    = "text-embedding-3-small"
+# Vector dim — MUST match the deployed embedding model.
+# text-embedding-3-small / ada-002 -> 1536, text-embedding-3-large -> 3072.
+embedding_dimensions    = 1536
 # If using external OpenAI (deploy_openai = false):
 # external_openai_endpoint = "https://your-openai.openai.azure.com/"
 # external_openai_key      = ""  # pass via CLI or TF_VAR_external_openai_key

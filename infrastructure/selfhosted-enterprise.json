@@ -104,6 +104,20 @@
         "description": "Embedding deployment name (must match appsettings EmbeddingDeploymentName)"
       }
     },
+    "embeddingModelNameParam": {
+      "type": "string",
+      "defaultValue": "text-embedding-3-small",
+      "metadata": {
+        "description": "Embedding model name (text-embedding-3-small or text-embedding-3-large). Propagated to Container App as Embedding__ModelName."
+      }
+    },
+    "embeddingDimensions": {
+      "type": "int",
+      "defaultValue": 1536,
+      "metadata": {
+        "description": "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
+      }
+    },
     "deployVision": {
       "type": "bool",
       "defaultValue": true,
@@ -351,7 +365,7 @@
     "registryPath": "[format('{0}/{1}', variables('registryServer'), parameters('imageRepositoryPrefix'))]",
     "effectiveRegistries": "[if(not(empty(parameters('externalAcrName'))), createArray(createObject('server', variables('registryServer'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-identity', parameters('prefix'))))), if(empty(parameters('registryUsername')), createArray(), createArray(createObject('server', variables('registryServer'), 'username', parameters('registryUsername'), 'passwordSecretRef', 'registry-password'))))]",
     "effectiveRegistrySecrets": "[if(or(not(empty(parameters('externalAcrName'))), empty(parameters('registryUsername'))), createArray(), createArray(createObject('name', 'registry-password', 'value', parameters('registryPassword'))))]",
-    "embeddingModelName": "text-embedding-3-small",
+    "embeddingModelName": "[if(empty(parameters('embeddingModelNameParam')), 'text-embedding-3-small', parameters('embeddingModelNameParam'))]",
     "byoVnetSubscriptionId": "[if(not(empty(parameters('byoVnetSubnetId'))), split(parameters('byoVnetSubnetId'), '/')[2], '')]",
     "byoVnetResourceGroupName": "[if(not(empty(parameters('byoVnetSubnetId'))), split(parameters('byoVnetSubnetId'), '/')[4], '')]",
     "byoVnetName": "[if(not(empty(parameters('byoVnetSubnetId'))), split(parameters('byoVnetSubnetId'), '/')[8], '')]",
@@ -1834,6 +1848,14 @@
                 {
                   "name": "AzureOpenAI__EmbeddingDeploymentName",
                   "value": "[parameters('embeddingDeploymentName')]"
+                },
+                {
+                  "name": "Embedding__ModelName",
+                  "value": "[variables('embeddingModelName')]"
+                },
+                {
+                  "name": "Embedding__Dimensions",
+                  "value": "[string(parameters('embeddingDimensions'))]"
                 },
                 {
                   "name": "AzureAISearch__Endpoint",

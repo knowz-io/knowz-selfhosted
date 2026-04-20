@@ -86,6 +86,10 @@ locals {
   # Container Apps deployment name defaults
   effective_ca_deployment_name = var.ca_deployment_name != "" ? var.ca_deployment_name : var.chat_deployment_name
 
+  # Embedding model/dim for Container Apps (fall back to the deploy-time values).
+  effective_ca_embedding_model_name = var.ca_embedding_model_name != "" ? var.ca_embedding_model_name : var.embedding_model_name
+  effective_ca_embedding_dimensions = var.ca_embedding_dimensions > 0 ? var.ca_embedding_dimensions : var.embedding_dimensions
+
   # API key / JWT secret (auto-generate if empty)
   api_key    = var.api_key != "" ? var.api_key : "sh-${random_password.api_key[0].result}"
   jwt_secret = var.jwt_secret != "" ? var.jwt_secret : random_password.jwt_secret[0].result
