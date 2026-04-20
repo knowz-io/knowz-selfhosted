@@ -27,12 +27,24 @@
   // Full-featured: vector search, embeddings, completions, enrichment.
   // Requires your own Azure OpenAI and Azure AI Search resources.
   // Uncomment and fill in to enable.
+  //
+  // "Embedding" block (ModelName + Dimensions) is REQUIRED whenever Azure AI
+  // Search is used. Dimensions MUST match the deployed embedding model:
+  //   text-embedding-3-small  -> 1536
+  //   text-embedding-3-large  -> 3072
+  //   text-embedding-ada-002  -> 1536
+  // If Embedding:Dimensions is missing, the API fails to start with an
+  // actionable error. See ARCH_EmbeddingConfigOwnership.
   // ---------------------------------------------------------------------------
   // "AzureOpenAI": {
   //   "Endpoint": "https://your-openai-resource.openai.azure.com/",
   //   "ApiKey": "your-azure-openai-api-key",
   //   "DeploymentName": "gpt-5.2-chat",
   //   "EmbeddingDeploymentName": "text-embedding-3-small"
+  // },
+  // "Embedding": {
+  //   "ModelName": "text-embedding-3-small",
+  //   "Dimensions": 1536
   // },
   // "AzureAISearch": {
   //   "Endpoint": "https://your-search-service.search.windows.net/",

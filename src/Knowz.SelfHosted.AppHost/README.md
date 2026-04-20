@@ -97,6 +97,11 @@ dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
 dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-5.2-chat"
 dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
 
+# Embedding model + dim (required when using Azure AI Search).
+# Must match deployed model: 1536 for -3-small / ada-002, 3072 for -3-large.
+dotnet user-secrets set "Embedding:ModelName" "text-embedding-3-small"
+dotnet user-secrets set "Embedding:Dimensions" "1536"
+
 # Azure AI Search (hybrid vector + keyword search)
 dotnet user-secrets set "AzureAISearch:Endpoint" "https://your-search.search.windows.net/"
 dotnet user-secrets set "AzureAISearch:ApiKey" "your-key"

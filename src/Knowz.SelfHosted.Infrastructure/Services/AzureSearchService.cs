@@ -5,6 +5,7 @@ using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 using Knowz.Core.Interfaces;
 using Knowz.Core.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Knowz.SelfHosted.Infrastructure.Services;
@@ -20,6 +21,7 @@ public class AzureSearchService : ISearchService
     private readonly ILogger<AzureSearchService> _logger;
     private readonly Guid _tenantId;
     private readonly string _indexName;
+    private readonly int _vectorDimensions;
 
     private const string SemanticConfigName = "selfhosted-semantic";
 
@@ -30,13 +32,20 @@ public class AzureSearchService : ISearchService
         SearchClient searchClient,
         SearchIndexClient indexClient,
         ILogger<AzureSearchService> logger,
-        ITenantProvider tenantProvider)
+        ITenantProvider tenantProvider,
+        IConfiguration configuration)
     {
         _searchClient = searchClient;
         _indexClient = indexClient;
         _logger = logger;
         _tenantId = tenantProvider.TenantId;
         _indexName = searchClient.IndexName;
+        _vectorDimensions = configuration.GetValue<int?>("Embedding:Dimensions")
+            ?? throw new InvalidOperationException(
+                "Embedding:Dimensions is required but was not configured. " +
+                "Set Embedding:Dimensions (e.g. 1536 for text-embedding-3-small, " +
+                "3072 for text-embedding-3-large) in appsettings / environment. " +
+                "See ARCH_EmbeddingConfigOwnership for parity rules with the main platform.");
     }
 
     /// <inheritdoc />
@@ -283,7 +292,7 @@ public class AzureSearchService : ISearchService
         {
             if (_indexEnsured) return;
 
-            var fields = BuildIndexFields();
+            var fields = BuildIndexFields(_vectorDimensions);
 
             try
             {
@@ -372,8 +381,16 @@ public class AzureSearchService : ISearchService
         }
     }
 
-    internal static List<SearchField> BuildIndexFields()
+    internal static List<SearchField> BuildIndexFields(int vectorDimensions)
     {
+        if (vectorDimensions <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(vectorDimensions),
+                vectorDimensions,
+                "vectorDimensions must be a positive integer matching the embedding model (e.g. 1536 or 3072).");
+        }
+
         return new List<SearchField>
         {
             new SimpleField("id", SearchFieldDataType.String) { IsKey = true, IsFilterable = true },
@@ -393,7 +410,7 @@ public class AzureSearchService : ISearchService
             new SearchField("contentVector", SearchFieldDataType.Collection(SearchFieldDataType.Single))
             {
                 IsSearchable = true,
-                VectorSearchDimensions = 1536,
+                VectorSearchDimensions = vectorDimensions,
                 VectorSearchProfileName = "default-vector-profile"
             },
             new SimpleField("createdAt", SearchFieldDataType.DateTimeOffset) { IsFilterable = true, IsSortable = true },

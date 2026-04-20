@@ -23,6 +23,12 @@ param(
     [string]$SearchSku = "basic",
     [string]$SearchLocation = "",
     [string]$EmbeddingModel = "text-embedding-3-small",
+    # Vector dimensions — MUST match the embedding model:
+    #   text-embedding-3-small / ada-002 -> 1536
+    #   text-embedding-3-large           -> 3072
+    # Mismatch between this and the model silently breaks vector search.
+    # See FIX_SelfhostedVectorDimsConfigurable / ARCH_EmbeddingConfigOwnership.
+    [int]$EmbeddingDimensions = 1536,
     [switch]$SkipMigration,
     [switch]$SkipSearchIndex,
     [switch]$AllowAllIps,
@@ -471,7 +477,7 @@ if (-not $SkipSearchIndex) {
                 name = "contentVector"
                 type = "Collection(Edm.Single)"
                 searchable = $true
-                dimensions = 1536
+                dimensions = $EmbeddingDimensions
                 vectorSearchProfile = "default-profile"
             }
         )

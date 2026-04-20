@@ -106,6 +106,10 @@ $secretMappings = [ordered]@{
     "AzureOpenAI--DeploymentName"           = "AzureOpenAI:DeploymentName"
     "AzureOpenAI--EmbeddingDeploymentName"  = "AzureOpenAI:EmbeddingDeploymentName"
 
+    # AI: Embedding (model + dim — required whenever AzureAISearch is used; no silent 1536 default)
+    "Embedding--ModelName"                  = "Embedding:ModelName"
+    "Embedding--Dimensions"                 = "Embedding:Dimensions"
+
     # AI: Azure AI Search
     "AzureAISearch--Endpoint"               = "AzureAISearch:Endpoint"
     "AzureAISearch--ApiKey"                 = "AzureAISearch:ApiKey"

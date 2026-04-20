@@ -387,13 +387,13 @@ public class KnowzProxyTools
     }
 
     [McpServerTool(Name = "amend_knowledge")]
-    [Description("Apply a natural language edit instruction to an existing knowledge item. Use when you want to add a section, update part of the content, remove a paragraph, fix information, or make any incremental change — without replacing the entire content. The AI reads the existing content and applies your instruction.")]
+    [Description("DEPRECATED (removal no earlier than 2026-08-01). Use amend_knowledge_async instead. This tool now returns immediately with { status: 'queued', amendRequestId, message } and the amendment is applied in the background. Poll via get_amend_request_status. Apply a natural language edit instruction to an existing knowledge item — add a section, update part of the content, remove a paragraph, fix information, or make any incremental change — without replacing the entire content.")]
     public async Task<string> AmendKnowledge(
         [Description("Knowledge item ID (required)")] string id,
         [Description("Natural language instruction describing what to change, add, or remove from the existing content")] string instruction,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("SDK Tool: amend_knowledge - id={Id}, instructionLength={Length}",
+        _logger.LogInformation("SDK Tool: amend_knowledge (DEPRECATED shim) - id={Id}, instructionLength={Length}",
             id, instruction.Length);
 
         var args = new Dictionary<string, object>
@@ -403,6 +403,49 @@ public class KnowzProxyTools
         };
 
         return await _backend.ExecuteToolAsync("amend_knowledge", args, cancellationToken);
+    }
+
+    [McpServerTool(Name = "amend_knowledge_async")]
+    [Description("Apply a natural language edit instruction to an existing knowledge item. Returns immediately with { status, amendRequestId, knowledgeId, pollUrl }; the amendment is applied in the background via Service Bus. Poll with get_amend_request_status. Amendments against the same knowledge item are processed serially. Bursting many amends at one item will queue them; expect linear latency growth. Independent items amend in parallel. Supply an optional amendRequestId (idempotency key, up to 128 chars, GUID format) to deduplicate retries — repeated calls with the same (tenant, amendRequestId) return the existing request's current state without re-enqueuing.")]
+    public async Task<string> AmendKnowledgeAsync(
+        [Description("Knowledge item ID (required)")] string id,
+        [Description("Natural language instruction describing what to change, add, or remove from the existing content")] string instruction,
+        [Description("Optional client-supplied idempotency key (up to 128 chars, GUID format). Repeated calls with the same key return the existing request's current state.")] string? amendRequestId = null,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("SDK Tool: amend_knowledge_async - id={Id}, instructionLength={Length}, hasAmendRequestId={HasId}",
+            id, instruction.Length, amendRequestId != null);
+
+        var args = new Dictionary<string, object>
+        {
+            ["id"] = id,
+            ["instruction"] = instruction
+        };
+        if (!string.IsNullOrWhiteSpace(amendRequestId))
+        {
+            args["amendRequestId"] = amendRequestId;
+        }
+
+        return await _backend.ExecuteToolAsync("amend_knowledge_async", args, cancellationToken);
+    }
+
+    [McpServerTool(Name = "get_amend_request_status")]
+    [Description("Poll the status of a specific amend request by ID. Returns the full request row: status (queued | processing | completed | failed | staleBase | cancelled), timestamps, attempt count, last error, and resulting content hash (once complete).")]
+    public async Task<string> GetAmendRequestStatus(
+        [Description("ID of the knowledge item the amend request targets (required, GUID)")] string knowledgeId,
+        [Description("ID of the amend request to poll (required, GUID)")] string amendRequestId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("SDK Tool: get_amend_request_status - knowledgeId={KnowledgeId}, amendRequestId={AmendRequestId}",
+            knowledgeId, amendRequestId);
+
+        var args = new Dictionary<string, object>
+        {
+            ["knowledgeId"] = knowledgeId,
+            ["amendRequestId"] = amendRequestId
+        };
+
+        return await _backend.ExecuteToolAsync("get_amend_request_status", args, cancellationToken);
     }
 
     [McpServerTool(Name = "bulk_get_knowledge_items")]

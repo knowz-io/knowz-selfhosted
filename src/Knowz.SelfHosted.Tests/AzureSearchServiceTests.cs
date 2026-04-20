@@ -6,6 +6,7 @@ using Azure.Search.Documents.Models;
 using Knowz.Core.Configuration;
 using Knowz.Core.Interfaces;
 using Knowz.SelfHosted.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -16,6 +17,7 @@ namespace Knowz.SelfHosted.Tests;
 public class AzureSearchServiceTests : IDisposable
 {
     private static readonly Guid TenantId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private const int DefaultTestDim = 1536;
 
     public void Dispose()
     {
@@ -27,14 +29,14 @@ public class AzureSearchServiceTests : IDisposable
     [Fact]
     public void BuildIndexFields_Returns19Fields()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         Assert.Equal(19, fields.Count);
     }
 
     [Fact]
     public void BuildIndexFields_ContainsAllExpectedFieldNames()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         var fieldNames = fields.Select(f => f.Name).ToHashSet();
 
         var expected = new[]
@@ -54,7 +56,7 @@ public class AzureSearchServiceTests : IDisposable
     [Fact]
     public void BuildIndexFields_IdFieldIsKey()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         var idField = fields.First(f => f.Name == "id");
 
         Assert.True(idField.IsKey);
@@ -64,7 +66,7 @@ public class AzureSearchServiceTests : IDisposable
     [Fact]
     public void BuildIndexFields_NewFields_HaveCorrectTypes()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
 
         var updatedAt = fields.First(f => f.Name == "updatedAt");
         Assert.Equal(SearchFieldDataType.DateTimeOffset, updatedAt.Type);
@@ -84,7 +86,7 @@ public class AzureSearchServiceTests : IDisposable
     [Fact]
     public void BuildIndexFields_TagsAreSearchable()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         var tags = fields.First(f => f.Name == "tags");
 
         Assert.True(tags.IsSearchable);
@@ -94,28 +96,70 @@ public class AzureSearchServiceTests : IDisposable
     [Fact]
     public void BuildIndexFields_TopicNameIsSearchableAndFilterable()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         var topicName = fields.First(f => f.Name == "topicName");
 
         Assert.True(topicName.IsSearchable);
         Assert.True(topicName.IsFilterable);
     }
 
-    [Fact]
-    public void BuildIndexFields_ContentVectorHasCorrectConfig()
+    [Theory]
+    [InlineData(1536)]  // text-embedding-3-small / ada-002
+    [InlineData(3072)]  // text-embedding-3-large
+    [InlineData(768)]   // hypothetical smaller model
+    public void BuildIndexFields_ContentVectorDimensions_ReadFromArgument(int dim)
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(dim);
         var vector = fields.First(f => f.Name == "contentVector");
 
         Assert.True(vector.IsSearchable);
-        Assert.Equal(1536, vector.VectorSearchDimensions);
+        Assert.Equal(dim, vector.VectorSearchDimensions);
         Assert.Equal("default-vector-profile", vector.VectorSearchProfileName);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildIndexFields_InvalidDim_Throws(int dim)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => AzureSearchService.BuildIndexFields(dim));
+    }
+
+    [Fact]
+    public void Constructor_MissingEmbeddingDimensions_Throws()
+    {
+        var searchClient = Substitute.For<SearchClient>();
+        searchClient.IndexName.Returns("test-index");
+        var indexClient = Substitute.For<SearchIndexClient>();
+        var logger = Substitute.For<ILogger<AzureSearchService>>();
+        var tenantProvider = Substitute.For<ITenantProvider>();
+        tenantProvider.TenantId.Returns(TenantId);
+        var emptyConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new AzureSearchService(searchClient, indexClient, logger, tenantProvider, emptyConfig));
+
+        Assert.Contains("Embedding:Dimensions", ex.Message);
+        Assert.Contains("ARCH_EmbeddingConfigOwnership", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_WithEmbeddingDimensions_PropagatesToIndexSchema()
+    {
+        // Sanity check via BuildIndexFields — verifies the contract the
+        // ctor-wired instance depends on (dim flows from config to schema).
+        // The ctor itself reads Embedding:Dimensions; the schema builder uses it.
+        var fields = AzureSearchService.BuildIndexFields(3072);
+        var vector = fields.First(f => f.Name == "contentVector");
+        Assert.Equal(3072, vector.VectorSearchDimensions);
     }
 
     [Fact]
     public void BuildIndexFields_VaultNameIsFilterable()
     {
-        var fields = AzureSearchService.BuildIndexFields();
+        var fields = AzureSearchService.BuildIndexFields(DefaultTestDim);
         var vaultName = fields.First(f => f.Name == "vaultName");
 
         Assert.True(vaultName.IsFilterable);
@@ -287,6 +331,13 @@ public class AzureSearchServiceTests : IDisposable
         var tenantProvider = Substitute.For<ITenantProvider>();
         tenantProvider.TenantId.Returns(TenantId);
 
-        return new AzureSearchService(searchClient, indexClient, logger, tenantProvider);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Embedding:Dimensions"] = DefaultTestDim.ToString()
+            })
+            .Build();
+
+        return new AzureSearchService(searchClient, indexClient, logger, tenantProvider, configuration);
     }
 }

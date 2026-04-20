@@ -18,6 +18,10 @@ deploy_openai            = true
 # external_openai_key      = ""
 chat_deployment_name     = "gpt-5.2-chat"
 embedding_deployment_name = "text-embedding-3-small"
+embedding_model_name     = "text-embedding-3-small"
+# Vector dim — MUST match the deployed embedding model.
+# text-embedding-3-small / ada-002 -> 1536, text-embedding-3-large -> 3072.
+embedding_dimensions     = 1536
 
 # Document Intelligence (set deploy_document_intelligence = false to use external endpoint)
 deploy_document_intelligence = true

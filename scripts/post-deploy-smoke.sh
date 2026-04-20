@@ -65,6 +65,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Embedding-dim parity (FIX_SelfhostedVectorDimsConfigurable R6):
+# The container fails to boot if Embedding:Dimensions is missing (Step 1 will
+# then time out). A boot-time dim that mismatches the search index schema
+# surfaces as empty results from /api/v1/search/semantic in Step 6 — search_hit
+# fails the smoke loudly. No extra step needed: the end-to-end enrichment +
+# semantic search path exercises both legs.
+
 # --- Step 1: wait for bootstrap ready ----------------------------------------
 log "[1/9] Waiting for /api/bootstrap/status (60s timeout)..."
 ready=false
