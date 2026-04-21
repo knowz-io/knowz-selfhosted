@@ -128,11 +128,11 @@ dotnet user-secrets set "KnowzPlatform:ApiKey" "ukz_your_key"
 dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-openai.openai.azure.com/"
 dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
 dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-5.2-chat"
-dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-small"
+dotnet user-secrets set "AzureOpenAI:EmbeddingDeploymentName" "text-embedding-3-large"
 # Embedding dim/model — REQUIRED when using Azure AI Search. Must match the
-# deployed model: 1536 for -3-small / ada-002, 3072 for -3-large.
-dotnet user-secrets set "Embedding:ModelName" "text-embedding-3-small"
-dotnet user-secrets set "Embedding:Dimensions" "1536"
+# deployed model: 3072 for -3-large (default), 1536 for -3-small / ada-002.
+dotnet user-secrets set "Embedding:ModelName" "text-embedding-3-large"
+dotnet user-secrets set "Embedding:Dimensions" "3072"
 dotnet user-secrets set "AzureAISearch:Endpoint" "https://your-search.search.windows.net/"
 dotnet user-secrets set "AzureAISearch:ApiKey" "your-key"
 dotnet user-secrets set "AzureAISearch:IndexName" "knowledge"

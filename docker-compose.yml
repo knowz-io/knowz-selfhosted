@@ -72,13 +72,13 @@ services:
       AzureOpenAI__Endpoint: "${AZURE_OPENAI_ENDPOINT:-}"
       AzureOpenAI__ApiKey: "${AZURE_OPENAI_APIKEY:-}"
       AzureOpenAI__DeploymentName: "${AZURE_OPENAI_DEPLOYMENT:-gpt-5.2-chat}"
-      AzureOpenAI__EmbeddingDeploymentName: "${AZURE_OPENAI_EMBEDDING:-text-embedding-3-small}"
+      AzureOpenAI__EmbeddingDeploymentName: "${AZURE_OPENAI_EMBEDDING:-text-embedding-3-large}"
       # Embedding dim/model — MUST match the deployed embedding model.
-      # text-embedding-3-small / ada-002 -> 1536, text-embedding-3-large -> 3072.
+      # text-embedding-3-large -> 3072 (default), text-embedding-3-small / ada-002 -> 1536.
       # Mismatch causes search schema/query vector dim mismatch. API fails fast
       # on missing Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership.
-      Embedding__ModelName: "${EMBEDDING_MODEL_NAME:-text-embedding-3-small}"
-      Embedding__Dimensions: "${EMBEDDING_DIMENSIONS:-1536}"
+      Embedding__ModelName: "${EMBEDDING_MODEL_NAME:-text-embedding-3-large}"
+      Embedding__Dimensions: "${EMBEDDING_DIMENSIONS:-3072}"
       AzureAISearch__Endpoint: "${AZURE_SEARCH_ENDPOINT:-}"
       AzureAISearch__ApiKey: "${AZURE_SEARCH_APIKEY:-}"
       AzureAISearch__IndexName: "${AZURE_SEARCH_INDEX:-knowz-selfhosted}"

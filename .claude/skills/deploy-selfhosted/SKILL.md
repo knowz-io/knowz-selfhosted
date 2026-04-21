@@ -205,7 +205,7 @@ az cognitiveservices account deployment list \
   --query "[].{name:name, model:properties.model.name}" -o table
 ```
 
-If `gpt-5.2-chat` and `text-embedding-3-small` aren't found, warn the user and ask which deployments to use.
+If `gpt-5.2-chat` and `text-embedding-3-large` aren't found, warn the user and ask which deployments to use. (`text-embedding-3-small` at 1536 dims remains a supported option — if only small exists, warn and offer to deploy large alongside or proceed with small after flipping `Embedding__ModelName`/`Embedding__Dimensions` to match.)
 
 **For "Deploy New"**, attempt a quota pre-check (best-effort):
 ```bash
@@ -278,7 +278,7 @@ Ask sequentially with `AskUserQuestion` — **NOT multi-select**; each Yes branc
    - **Yes** → prompt `centralLogAnalyticsId`. Validate: `az monitor log-analytics workspace show --ids "$ID"` returns 200.
 
 5. **"Bring-your-own Azure OpenAI?"**
-   - **Yes** → prompt `existingOpenAiResourceId`. Validate: `az cognitiveservices account show --ids "$ID"` returns 200 AND `.kind in ('OpenAI', 'AIServices')`. Reject other kinds (e.g., `TextAnalytics`). Also probe required deployments (`gpt-5.2-chat`, `text-embedding-3-small`) via `az cognitiveservices account deployment list` — warn if missing, offer to proceed.
+   - **Yes** → prompt `existingOpenAiResourceId`. Validate: `az cognitiveservices account show --ids "$ID"` returns 200 AND `.kind in ('OpenAI', 'AIServices')`. Reject other kinds (e.g., `TextAnalytics`). Also probe required deployments (`gpt-5.2-chat`, `text-embedding-3-large`) via `az cognitiveservices account deployment list` — warn if missing, offer to proceed. Small (`text-embedding-3-small`, 1536 dims) is still supported — if the existing OpenAI resource has small instead of large, flag it so the operator can either add large or flip `Embedding__ModelName`/`Embedding__Dimensions` to 1536.
    - **No** → Bicep deploys a new OpenAI resource (warn about quota in the tenant).
 
 6. **"Pull images from external ACR (instead of GHCR)?"**
@@ -305,7 +305,7 @@ Display the full deployment plan:
   Deploy Mode:      Terraform
   
   AI Services:
-    OpenAI:         Deploy New (gpt-5.2-chat + text-embedding-3-small)
+    OpenAI:         Deploy New (gpt-5.2-chat + text-embedding-3-large)
     Vision:         Use Existing (knowz-vision in rg-knowz-shared)
     Doc Intel:      Deploy New
   
@@ -518,7 +518,7 @@ curl -sfS "https://${SEARCH_NAME}.search.windows.net/indexes/knowledge?api-versi
   API                  ✓ Healthy   https://knowz-sh-api.xxx.eastus2...
   Web UI               ✓ Healthy   https://knowz-sh-web.xxx.eastus2...
   MCP Server           ✓ Healthy   https://knowz-sh-mcp.xxx.eastus2...
-  Azure OpenAI         ✓ Connected gpt-5.2-chat + text-embedding-3-small
+  Azure OpenAI         ✓ Connected gpt-5.2-chat + text-embedding-3-large
   AI Search            ✓ Indexed   knowledge (HNSW, ${Embedding__Dimensions} dims)
   Azure AI Vision      ✓ Connected S1
   Document Intelligence ✓ Connected S0
@@ -585,7 +585,7 @@ For each failed check, offer targeted automated fix:
 |---------|---------------|
 | API/Web/MCP not healthy | `az containerapp logs show --name X -g $RG --tail 100` to diagnose; offer restart |
 | OpenAI not connected | Retrieve real key, update secret, restart API: `az containerapp secret set --name X --secrets openai-apikey=$REAL_KEY` then restart revision |
-| Search index missing | Re-create using schema from `selfhosted-deploy.ps1` — pass `-EmbeddingDimensions $DIM` matching the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). HNSW, dim must match `Embedding__Dimensions` in the container. |
+| Search index missing | Re-create using schema from `selfhosted-deploy.ps1` — pass `-EmbeddingDimensions $DIM` matching the deployed model (3072 for -3-large default, 1536 for -3-small / ada-002). HNSW, dim must match `Embedding__Dimensions` in the container. |
 | MCP key mismatch | Copy API's `MCP__ServiceKey` to MCP container env vars |
 | KV secrets empty | Re-populate from Terraform/Bicep outputs; check RBAC |
 | DB not migrated | Verify `Database__AutoMigrate=true`; trigger API container restart |

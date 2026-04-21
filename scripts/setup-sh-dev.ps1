@@ -106,7 +106,7 @@ $secretMappings = [ordered]@{
     "AzureOpenAI--DeploymentName"           = "AzureOpenAI:DeploymentName"
     "AzureOpenAI--EmbeddingDeploymentName"  = "AzureOpenAI:EmbeddingDeploymentName"
 
-    # AI: Embedding (model + dim — required whenever AzureAISearch is used; no silent 1536 default)
+    # AI: Embedding (model + dim — required whenever AzureAISearch is used; default is large/3072)
     "Embedding--ModelName"                  = "Embedding:ModelName"
     "Embedding--Dimensions"                 = "Embedding:Dimensions"
 

@@ -161,8 +161,8 @@
             "name": "embeddingDeploymentName",
             "type": "Microsoft.Common.TextBox",
             "label": "Embedding Model Deployment Name",
-            "toolTip": "The deployment name for the embedding model on your existing or external endpoint.",
-            "defaultValue": "text-embedding-3-small",
+            "toolTip": "The deployment name for the embedding model on your existing or external endpoint. Default: text-embedding-3-large (3072 dims). text-embedding-3-small (1536 dims) remains supported as an option.",
+            "defaultValue": "text-embedding-3-large",
             "visible": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]",
             "constraints": {
               "required": "[or(equals(steps('aiServices').openaiMode, 'existing'), equals(steps('aiServices').openaiMode, 'external'))]"
@@ -439,9 +439,9 @@
       "externalOpenAiEndpoint": "[if(equals(steps('aiServices').openaiMode, 'external'), steps('aiServices').externalOpenAiEndpoint, '')]",
       "externalOpenAiKey": "[if(equals(steps('aiServices').openaiMode, 'external'), steps('aiServices').externalOpenAiKey, '')]",
       "chatDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'gpt-5.2-chat', steps('aiServices').chatDeploymentName)]",
-      "embeddingDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'text-embedding-3-small', steps('aiServices').embeddingDeploymentName)]",
-      "embeddingModelNameParam": "text-embedding-3-small",
-      "embeddingDimensions": 1536,
+      "embeddingDeploymentName": "[if(equals(steps('aiServices').openaiMode, 'new'), 'text-embedding-3-large', steps('aiServices').embeddingDeploymentName)]",
+      "embeddingModelNameParam": "text-embedding-3-large",
+      "embeddingDimensions": 3072,
       "deployDocumentIntelligence": "[equals(steps('aiServices').docIntelMode, 'new')]",
       "existingDocIntelName": "[if(equals(steps('aiServices').docIntelMode, 'existing'), steps('aiServices').existingDocIntelName, '')]",
       "existingDocIntelResourceGroup": "[if(equals(steps('aiServices').docIntelMode, 'existing'), steps('aiServices').existingDocIntelResourceGroup, '')]",
