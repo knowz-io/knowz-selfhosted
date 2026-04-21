@@ -183,23 +183,23 @@
     },
     "embeddingDeploymentName": {
       "type": "string",
-      "defaultValue": "text-embedding-3-small",
+      "defaultValue": "text-embedding-3-large",
       "metadata": {
-        "description": "Embedding deployment name (must match appsettings EmbeddingDeploymentName)"
+        "description": "Embedding deployment name (must match appsettings EmbeddingDeploymentName). Default: text-embedding-3-large."
       }
     },
     "embeddingModelName": {
       "type": "string",
-      "defaultValue": "text-embedding-3-small",
+      "defaultValue": "text-embedding-3-large",
       "metadata": {
-        "description": "Embedding model name (text-embedding-3-small or text-embedding-3-large)"
+        "description": "Embedding model name. Default: text-embedding-3-large (3072 dims). text-embedding-3-small (1536 dims) and text-embedding-ada-002 (1536 dims) remain supported options."
       }
     },
     "embeddingDimensions": {
       "type": "int",
-      "defaultValue": 1536,
+      "defaultValue": 3072,
       "metadata": {
-        "description": "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
+        "description": "Embedding vector dimensions — MUST match the deployed model (3072 for -3-large default, 1536 for -3-small / ada-002). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
       }
     },
     "deployKeyVault": {
@@ -294,7 +294,7 @@
     },
     "caEmbeddingDeploymentName": {
       "type": "string",
-      "defaultValue": "text-embedding-3-small",
+      "defaultValue": "text-embedding-3-large",
       "metadata": {
         "description": "Embedding deployment name for Container Apps config"
       }
