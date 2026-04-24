@@ -29,6 +29,8 @@ param(
     # Mismatch between this and the model silently breaks vector search.
     # See FIX_SelfhostedVectorDimsConfigurable / ARCH_EmbeddingConfigOwnership.
     [int]$EmbeddingDimensions = 1536,
+    # Deployment name (how Azure exposes the model); defaults to matching the model name for clarity.
+    [string]$EmbeddingDeploymentName = "",
     [switch]$SkipMigration,
     [switch]$SkipSearchIndex,
     [switch]$AllowAllIps,
@@ -256,6 +258,8 @@ $deployBody = @{
             searchSku = @{ value = $SearchSku }
             searchLocation = @{ value = $SearchLocation }
             embeddingModelName = @{ value = $EmbeddingModel }
+            embeddingDimensions = @{ value = $EmbeddingDimensions }
+            embeddingDeploymentName = @{ value = ($(if ($EmbeddingDeploymentName) { $EmbeddingDeploymentName } else { $EmbeddingModel })) }
             allowAllIps = @{ value = [bool]$AllowAllIps }
             deployKeyVault = @{ value = -not [bool]$SkipKeyVault }
             deployMonitoring = @{ value = -not [bool]$SkipMonitoring }
