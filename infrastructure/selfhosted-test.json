@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "7283743084232921138"
+      "templateHash": "10373843575071463238"
     }
   },
   "parameters": {
@@ -199,7 +199,7 @@
       "type": "int",
       "defaultValue": 1536,
       "metadata": {
-        "description": "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container App as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
+        "description": "Embedding vector dimensions — MUST match the deployed model (1536 for -3-small / ada-002, 3072 for -3-large). Propagated to Container Apps as Embedding__Dimensions. See ARCH_EmbeddingConfigOwnership."
       }
     },
     "deployKeyVault": {
@@ -283,6 +283,13 @@
       "type": "securestring",
       "metadata": {
         "description": "SuperAdmin password for initial setup. REQUIRED — must be >=12 chars with upper/lower/digit/symbol and must not contain admin/changeme/password/letmein/... (see AuthService.WeakPasswordList). No default: SEC_P0Triage §Rule 2 forbids shipping a known-weak credential with the infrastructure template."
+      }
+    },
+    "superAdminUsername": {
+      "type": "string",
+      "defaultValue": "admin",
+      "metadata": {
+        "description": "SuperAdmin username for first-boot seed. AuthService.EnsureSuperAdminExistsAsync (SEC_P0Triage §Rule 3) hard-requires this; missing param breaks admin login on fresh deploys. Default \"admin\" matches skill docs + Web UI convention."
       }
     },
     "caDeploymentName": {
@@ -1079,6 +1086,10 @@
                 {
                   "name": "SelfHosted__SuperAdminPassword",
                   "secretRef": "selfhosted-adminpassword"
+                },
+                {
+                  "name": "SelfHosted__SuperAdminUsername",
+                  "value": "[parameters('superAdminUsername')]"
                 },
                 {
                   "name": "Database__AutoMigrate",

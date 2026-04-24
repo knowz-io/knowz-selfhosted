@@ -147,6 +147,9 @@ param jwtSecret string = ''
 @secure()
 param adminPassword string
 
+@description('SuperAdmin username for first-boot seed. AuthService.EnsureSuperAdminExistsAsync (SEC_P0Triage §Rule 3) hard-requires this; missing param breaks admin login on fresh deploys. Default "admin" matches skill docs + Web UI convention.')
+param superAdminUsername string = 'admin'
+
 @description('Chat model deployment name for Container Apps config')
 param caDeploymentName string = chatDeploymentName
 
@@ -922,6 +925,10 @@ resource apiContainerApp 'Microsoft.App/containerApps@2024-03-01' = if (deployCo
             {
               name: 'SelfHosted__SuperAdminPassword'
               secretRef: 'selfhosted-adminpassword'
+            }
+            {
+              name: 'SelfHosted__SuperAdminUsername'
+              value: superAdminUsername
             }
             {
               name: 'Database__AutoMigrate'
